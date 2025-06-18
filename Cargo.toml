@@ -1,0 +1,33 @@
+[package]
+name = "poc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+redb = "2.6.0"
+serde = { version = "1.0.219", features = ["derive"]}
+serde_json = "1.0.140"
+text_io = "0.1.13"
+
+rppal = "0.22.1"
+epd-waveshare = { version = "0.6.0" } # Vérifiez toujours votre version !epd-waveshare = { path = "./epd-waveshare-main" }
+embedded-graphics = "0.8.1"
+embedded-hal = "1.0.0"
+embedded-hal-mock = { version = "0.11", default-features = false, features = [
+    "eh1",
+] }
+
+# Nouvelle dépendance pour charger une image depuis un fichier
+image = "0.25.1"
+
+anyhow = "1.0"
+linux-embedded-hal = "0.4.0"
+tinybmp = "0.6.0"
+
+gt911 = "0.3.0"
+
+i2cdev = "0.6.1"
+
+byteorder = "1"
+
+embedded-graphics-framebuf = "0.5.0"
