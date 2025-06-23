@@ -1,6 +1,6 @@
 use embedded_graphics::{
     mono_font::MonoTextStyleBuilder,
-    image::Image as EgImage,
+    image::Image,
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{Circle, Line, PrimitiveStyle, Triangle, Rectangle, PrimitiveStyleBuilder},
@@ -30,7 +30,7 @@ use std::{error, thread, time};
 use gt911::Gt911Blocking;
 // use image::io::Reader as ImageReader; // <--- NOUVEAU: Pour lire le fichier image
 
-use embedded_graphics::{prelude::*, image::Image};
+// use embedded_graphics::{prelude::*, image::Image};
 
 // use embedded_hal::i2c::{I2c, Error};
 use rppal::i2c::I2c;
@@ -38,6 +38,36 @@ use rppal::i2c::I2c;
 use byteorder::{ByteOrder, LittleEndian};
 
 use i2cdev::linux::*;
+
+use redb::{Database, Error, TableDefinition, ReadableTable};
+use serde::{Serialize, Deserialize};
+use serde_json; // On importe serde_json
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+struct Personnage {
+    nom: String,
+    classe: String,
+    hp: u32,
+    max_hp: u32,
+    mp: u32,
+    max_mp: u32,
+    niveau: u8,
+    experience: u32,
+    inventaire: Vec<String>,
+}
+
+
+const PERSONNAGES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("personnages");
+
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+struct Context {
+    action: String,
+}
+
+const CONTEXT_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("context");
+
+
 
 const CS_PIN: u64 = 512+ 8;
 const BUSY_PIN: u64 = 512 + 24;
@@ -71,6 +101,15 @@ struct GTOld {
 
 
 fn main() -> Result<()> {
+
+    let db = Database::create("mon_rpg.redb")?;
+
+    init_db(&db)?;
+    println!("Database initialized");
+    let mut context = Context {
+        action: "overview".to_string(),
+    };
+
     let mut spi = SpidevDevice::open("/dev/spidev0.0").expect("spidev directory");
     let options = SpidevOptions::new()
         .bits_per_word(8)
@@ -107,14 +146,14 @@ fn main() -> Result<()> {
 
     let mut delay = Delay {};
 
-    let mut epd2in13 =
+    let mut epd2in13: Epd2in13<SpidevDevice, SysfsPin, SysfsPin, SysfsPin, Delay> =
         Epd2in13::new(&mut spi, busy, dc, rst, &mut delay, None).expect("eink initalize error");
     epd2in13.set_refresh(&mut spi, &mut delay, RefreshLut::Full).expect("set refresh");
 
     let mut display = Display2in13::default();
 
     display.set_rotation(DisplayRotation::Rotate0);
-    display.clear(Color::White).ok();
+    
 
     // const SPLASH: &[u8] = include_bytes!("./image(2).bmp");
     // let splash_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(SPLASH).unwrap();
@@ -126,35 +165,44 @@ fn main() -> Result<()> {
     // eg_img.draw(&mut display)?;
 
 
-    draw_line(&mut display, 0, 50, 121, 50);
-    draw_text(&mut display, "YOUHOUUUU !", 5, 50);
-    draw_text(&mut display, "Over ", 100, 50);
-    draw_line(&mut display, 0, 57, 121, 57);
+    // draw_line(&mut display, 0, 50, 121, 50);
+    // draw_text(&mut display, "YOUHOUUUU !", 5, 50);
+    // draw_text(&mut display, "Over ", 100, 50);
+    // draw_line(&mut display, 0, 57, 121, 57);
 
 
 
 
-    draw_line(&mut display, 0, 249, 121, 249);
-    draw_line(&mut display, 0, 200, 121, 200);
-    draw_line(&mut display, 0, 200, 0, 249);
-    draw_line(&mut display, 121, 200, 121, 249);
+    // draw_line(&mut display, 0, 249, 121, 249);
+    // draw_line(&mut display, 0, 200, 121, 200);
+    // draw_line(&mut display, 0, 200, 0, 249);
+    // draw_line(&mut display, 121, 200, 121, 249);
 
     // epd2in13.set_background_color(Color::White);
     // display.clear(Color::White).ok();
 
-    epd2in13
-    .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
-    .expect("display frame new graphics");
+    // epd2in13
+    // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
+    // .expect("display frame new graphics");
     // epd2in13.update_color_frame(&mut spi, &mut delay, display.buffer(), display.chromatic_buffer())?;
 
-    epd2in13
-    .display_frame(&mut spi, &mut delay)
-    .expect("display frame new graphics");
+    // epd2in13
+    // .display_frame(&mut spi, &mut delay)
+    // .expect("display frame new graphics");
 
 
     //wait 5000ms
     // thread::sleep(time::Duration::from_millis(2000));
 
+    // draw_body(&mut display, &context);
+    // draw_footer(&mut display);
+    // epd2in13
+    // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
+    // .expect("display frame new graphics");
+
+    let hero = get_hero(&db)?;
+
+    render(&mut epd2in13, &mut display, &mut spi, &mut delay, &context, &hero);
 
 
 
@@ -179,121 +227,191 @@ fn main() -> Result<()> {
     loop {
         let (x, y, s) = gt_scan(&mut i2c, &mut gt_dev, &mut gt_old)?;
         if x != 0 && y != 0 && s != 0 {
+
+            handle_touch(122 - x, 250 - y, s, &mut context);
+            render(&mut epd2in13, &mut display, &mut spi, &mut delay, &context, &hero);
             // println!("X: {}, Y: {}, S: {}", x, y, s);
             // display.clear(Color::White).ok();
-            epd2in13.set_refresh(&mut spi, &mut delay, RefreshLut::Quick).expect("set refresh");
 
-
-            // let style = PrimitiveStyleBuilder::new()
-            //     .stroke_color(Color::Black)
-            //     .stroke_width(1)
-            //     .fill_color(Color::Black)
-            //     .build();
-            // Rectangle::new(Point::new(122 - x as i32, 250 - y as i32), Size::new(250,10 ))
-            // .into_styled(style)
-            // .draw(&mut display)
-            // .unwrap();
+            // draw_text(&mut display, "Blablabla", 122 - x as i32, 250 - y as i32);
 
             // epd2in13
             // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
             // .expect("display frame new graphics");
-
-            // thread::sleep(time::Duration::from_millis(20));
-
-            // let style = PrimitiveStyleBuilder::new()
-            // .stroke_color(Color::White)
-            // .stroke_width(1)
-            // .fill_color(Color::White)
-            // .build();
-            // Rectangle::new(Point::new(122 - x as i32, 250 - y as i32), Size::new(250, 10))
-            // .into_styled(style)
-            // .draw(&mut display)
-            // .unwrap();
-
-            draw_text(&mut display, "Blablabla", 122 - x as i32, 250 - y as i32);
-
-            epd2in13
-            .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
-            .expect("display frame new graphics");
-
-            
-
            
-            
-            // epd2in13
-            // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
-            // .expect("display frame new graphics");
-
-
-            // let mut small_buffer = [Color::White; 512]; //16x16 16*256
-            // // println!("buffer before {:?}", small_buffer);
-
-            // let mut fbuf = FrameBuf::new(&mut small_buffer, 16, 32);
-
-            // let style = MonoTextStyleBuilder::new()
-            // .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-            // .text_color(Color::Black)
-            // .background_color(Color::White)
-            // .build();
-    
-            // let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
-        
-            // let _ = Text::with_text_style("XD", Point::zero(), style, text_style).draw(&mut fbuf).unwrap();
-
-            // println!("buffer after {:?}", small_buffer);
-
-            // let mut cut_buffer = [0u8; 32];
-
-            // for row in 0..16 {
-            //     for col in 0..16 {
-            //         // Index in the original 16x256 buffer
-            //         let src_idx = row * 256 + col;
-            //         // Index in the new 16x16 buffer
-            //         let dst_idx = row * 16 + col;
-            //         cut_buffer[dst_idx] = small_buffer[src_idx].get_byte_value();
-            //     }
-            // }
-
-            // let mut byte_buffer = [0u8; 512];
-            // for (i, color) in small_buffer.iter().enumerate() {
-            //     println!("color {:?}", color);
-            //     if color == &Color::Black {
-            //         byte_buffer[i] = Color::Black as u8;
-            //     } else {
-            //         byte_buffer[i] = Color::White as u8;
-            //     }
-            // }
-
-            // let width = 8;
-            // let height = 16;
-            // let mut packed_buffer = [0u8; 16]; // 16*32 = 512 pixels / 8 = 64 bytes
-
-            // for row in 0..height {
-            //     for col_byte in 0..(width / 8) {
-            //         let mut byte = 0u8;
-            //         for bit in 0..8 {
-            //             let col = col_byte * 8 + bit;
-            //             let idx = row * width + col;
-            //             if small_buffer[idx] == Color::Black {
-            //                 byte |= 1 << (7 - bit); // MSB first (common for e-paper)
-            //             }
-            //         }
-            //         packed_buffer[row * (width / 8) + col_byte] = byte;
-            //     }
-            // }
-
-            // epd2in13
-            // .update_partial_frame(&mut spi, &mut delay,  &packed_buffer, 122 - x as u32, 250 - y as u32, width as u32, height as u32)
-            // .expect("display frame new graphics");
-
-            // epd2in13
-            // .display_frame(&mut spi, &mut delay)
-            // .expect("display frame new graphics");
         }
         thread::sleep(time::Duration::from_millis(200));
     }
-
     Ok(())
+}
+
+
+fn handle_touch(x: u16, y: u16, s: u16, context: &mut Context) {
+    // On Action 1 (bottom left)
+    if (x < 60 && y > 200) {
+        println!("Action 1");
+        context.action = "battle".to_string();
+    } else if (x > 60 && y > 200) {
+        println!("Action 2");
+        context.action = "overview".to_string();
+    }
+        
+}
+    
+fn init_db(db: &Database) -> Result<()> {
+     let read_txn = db.begin_read()?;
+     let table = match read_txn.open_table(PERSONNAGES_TABLE) {
+         Ok(table) => table,
+         Err(e) => {
+            init_db_data(&db)?;
+            return Ok(());
+         }
+     };    
+
+   Ok(())
+}
+
+fn init_db_data(db: &Database) -> Result<()> {
+    let hero: Personnage = Personnage {
+        nom: "Lyrocs".to_string(),
+        classe: "Novice".to_string(),
+        hp: 75,
+        max_hp: 100,
+        mp: 100,
+        max_mp: 100,
+        experience: 0,
+        niveau: 1,
+        inventaire: vec!["Épée".to_string(), "Arc".to_string(), "Herbes".to_string()],
+    };
+    let write_txn = db.begin_write()?;
+    {
+        let mut table = write_txn.open_table(PERSONNAGES_TABLE)?;
+        
+        // On convertit notre objet `hero` en bytes
+        let hero_bytes = serde_json::to_vec(&hero)?;
+        // On stocke les bytes dans la DB
+        table.insert(hero.nom.as_str(), hero_bytes.as_slice())?;
+        println!("\n'{}' a été sérialisé et sauvegardé dans la base de données.", hero.nom);
+    }
+    write_txn.commit()?;
+    Ok(())
+}
+
+fn get_hero(db: &Database) -> Result<Personnage> {
+    let read_txn = db.begin_read()?;
+    let table = read_txn.open_table(PERSONNAGES_TABLE)?;
+    if let Some(personnage_data) = table.get("Lyrocs")? {
+        let personnage_bytes = personnage_data.value();
+        let personnage_recupere: Personnage = serde_json::from_slice(personnage_bytes)?;
+        Ok(personnage_recupere)
+    } else {
+        Err(anyhow::anyhow!("Personnage non trouvé"))
+    }
+}
+
+
+fn render(epd2in13: &mut Epd2in13<SpidevDevice, SysfsPin, SysfsPin, SysfsPin, Delay>, display: &mut Display2in13, spi: &mut SpidevDevice, delay: &mut Delay, context: &Context, hero: &Personnage) {
+    epd2in13.set_refresh(spi, delay, RefreshLut::Quick).expect("set refresh");
+    display.clear(Color::White).ok();
+    draw_body(display, &context, &hero);
+    draw_footer(display);
+    epd2in13
+    .update_and_display_frame(spi, display.buffer(), delay)
+    .expect("display frame new graphics");
+}
+
+
+fn draw_body(display: &mut Display2in13, context: &Context, hero: &Personnage) {
+    if context.action == "battle" {
+        draw_battle(display);
+    } else if context.action == "overview" {
+        draw_hero(display, hero);
+    }
+}
+
+fn draw_battle(display: &mut Display2in13) {
+    const MONSTER: &[u8] = include_bytes!("./assets/poring/front.bmp");
+    let monster_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(MONSTER).unwrap();
+    Image::new(&monster_bmp, Point::new(120-40, 0)).draw(&mut display.color_converted()).unwrap();
+
+    const HERO: &[u8] = include_bytes!("./assets/novice/back.bmp");
+    let hero_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(HERO).unwrap();
+    Image::new(&hero_bmp, Point::new(0, 100)).draw(&mut display.color_converted()).unwrap();
+
+
+
+}
+
+fn draw_hero(display: &mut Display2in13, hero: &Personnage) {
+    const START_X: i32 = 65;
+    const START_Y: i32 = 5;
+    const SPLASH: &[u8] = include_bytes!("./assets/novice/front.bmp");
+    let splash_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(SPLASH).unwrap();
+    Image::new(&splash_bmp, Point::zero()).draw(&mut display.color_converted()).unwrap();
+
+    let hp_bar_width: f32 = 35.0;
+    let hp = hero.hp as f32 / hero.max_hp as f32;
+    let hp_value = (hp * hp_bar_width).round() as u32;
+
+    draw_text(display, "Lyrocs", START_X, START_Y);
+    draw_text(display, "Novice", START_X, START_Y + 10);
+    // HP LINE
+    draw_text(display, "HP:", START_X, START_Y + 20);
+    let style = PrimitiveStyleBuilder::new()
+    .stroke_color(Color::Black)
+    .stroke_width(1)
+    .fill_color(Color::White)
+    .build();
+    Rectangle::new(Point::new(START_X + 20, START_Y + 23), Size::new(35,5 ))
+    .into_styled(style)
+    .draw(display)
+    .unwrap();
+
+    let style = PrimitiveStyleBuilder::new()
+    .stroke_color(Color::Black)
+    .stroke_width(1)
+    .fill_color(Color::Black)
+    .build();
+    Rectangle::new(Point::new(START_X + 20, START_Y + 23), Size::new(hp_value,5 ))
+    .into_styled(style)
+    .draw(display)
+    .unwrap();
+
+    // SP LINE
+    draw_text(display, "SP:", START_X, START_Y + 30);
+    let style = PrimitiveStyleBuilder::new()
+    .stroke_color(Color::Black)
+    .stroke_width(1)
+    .fill_color(Color::White)
+    .build();
+    Rectangle::new(Point::new(START_X + 20, START_Y + 33), Size::new(35,5 ))
+    .into_styled(style)
+    .draw(display)
+    .unwrap();
+
+    let style = PrimitiveStyleBuilder::new()
+    .stroke_color(Color::Black)
+    .stroke_width(1)
+    .fill_color(Color::Black)
+    .build();
+    Rectangle::new(Point::new(START_X + 20, START_Y + 33), Size::new(30,5 ))
+    .into_styled(style)
+    .draw(display)
+    .unwrap();
+}
+
+fn draw_footer(display: &mut Display2in13) {
+     let style = PrimitiveStyleBuilder::new()
+                .stroke_color(Color::Black)
+                .stroke_width(1)
+                .fill_color(Color::White)
+                .build();
+            Rectangle::new(Point::new(0, 200), Size::new(122,50 ))
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+        draw_line(display, 60, 200, 60, 250);
+    
 }
 
 
@@ -349,6 +467,7 @@ fn gt_scan(i2c: &mut rppal::i2c::I2c, gt_dev: &mut GTDev, gt_old: &mut GTOld) ->
             // Write mask to 0x814E
             i2c.write(&[0x81, 0x4E, mask])?;
 
+
             // Save old values
             gt_old.x[0] = gt_dev.x[0];
             gt_old.y[0] = gt_dev.y[0];
@@ -359,6 +478,13 @@ fn gt_scan(i2c: &mut rppal::i2c::I2c, gt_dev: &mut GTDev, gt_old: &mut GTOld) ->
                 gt_dev.x[i] = ((buf[2 + 8 * i] as u16) << 8) | (buf[1 + 8 * i] as u16);
                 gt_dev.y[i] = ((buf[4 + 8 * i] as u16) << 8) | (buf[3 + 8 * i] as u16);
                 gt_dev.s[i] = ((buf[6 + 8 * i] as u16) << 8) | (buf[5 + 8 * i] as u16);
+            }
+
+            if gt_old.x[0] == gt_dev.x[0] && gt_old.y[0] == gt_dev.y[0] && gt_old.s[0] == gt_dev.s[0] && (
+                gt_old.x[0] != 0 && gt_old.y[0] != 0 && gt_old.s[0] != 0
+            ) {
+                println!("Same values");
+                return Ok((0,0,0));
             }
 
             println!("X: {}, Y: {}, S: {}", gt_dev.x[0], gt_dev.y[0], gt_dev.s[0]);

@@ -880,6 +880,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "byteorder",
+ "embedded-graphics",
  "embedded-graphics-framebuf",
  "embedded-hal",
  "embedded-hal-mock",
