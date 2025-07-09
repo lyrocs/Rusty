@@ -17,7 +17,9 @@ use linux_embedded_hal::{Delay, SpidevDevice, SysfsPin};
 
 use crate::hero::Personnage;
 
+use crate::battle::Battle;
 use crate::context::Context;
+use crate::enemy::Enemy;
 
 pub fn draw_text(display: &mut Display2in13, text: &str, x: i32, y: i32) {
     let style = MonoTextStyleBuilder::new()
@@ -44,38 +46,69 @@ pub fn render(
     delay: &mut Delay,
     context: &Context,
     hero: &Personnage,
+    battle: &Battle,
+    enemy: &Enemy,
 ) {
     epd2in13
         .set_refresh(spi, delay, RefreshLut::Quick)
         .expect("set refresh");
     display.clear(Color::White).ok();
-    draw_body(display, &context, &hero);
+    draw_body(display, &context, &hero, &battle, &enemy);
     draw_footer(display);
     epd2in13
         .update_and_display_frame(spi, display.buffer(), delay)
         .expect("display frame new graphics");
 }
 
-fn draw_body(display: &mut Display2in13, context: &Context, hero: &Personnage) {
+fn draw_body(
+    display: &mut Display2in13,
+    context: &Context,
+    hero: &Personnage,
+    battle: &Battle,
+    enemy: &Enemy,
+) {
     if context.action == "battle" {
-        draw_battle(display);
+        draw_battle(display, hero, battle, enemy);
     } else if context.action == "overview" {
         draw_hero(display, hero);
     }
 }
 
-fn draw_battle(display: &mut Display2in13) {
+fn draw_battle(display: &mut Display2in13, hero: &Personnage, battle: &Battle, enemy: &Enemy) {
+    draw_character_info(
+        display,
+        &hero.nom,
+        hero.hp,
+        hero.max_hp,
+        hero.mp,
+        hero.max_mp,
+        65,
+        100,
+    );
+
     const MONSTER: &[u8] = include_bytes!("./assets/poring/front.bmp");
     let monster_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(MONSTER).unwrap();
     Image::new(&monster_bmp, Point::new(120 - 40, 0))
         .draw(&mut display.color_converted())
         .unwrap();
 
+    draw_text(display, &battle.message, 5, 75);
+
     const HERO: &[u8] = include_bytes!("./assets/novice/back.bmp");
     let hero_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(HERO).unwrap();
     Image::new(&hero_bmp, Point::new(0, 100))
         .draw(&mut display.color_converted())
         .unwrap();
+    draw_character_info(
+        display,
+        &enemy.name,
+        enemy.hp,
+        enemy.max_hp,
+        enemy.mp,
+        enemy.max_mp,
+        5,
+        5,
+    );
 }
 
 fn draw_hero(display: &mut Display2in13, hero: &Personnage) {
@@ -136,6 +169,70 @@ fn draw_hero(display: &mut Display2in13, hero: &Personnage) {
         .fill_color(Color::Black)
         .build();
     Rectangle::new(Point::new(START_X + 20, START_Y + 33), Size::new(30, 5))
+        .into_styled(style)
+        .draw(display)
+        .unwrap();
+}
+
+fn draw_character_info(
+    display: &mut Display2in13,
+    name: &str,
+    hp: u32,
+    max_hp: u32,
+    mp: u32,
+    max_mp: u32,
+    start_x: i32,
+    start_y: i32,
+) {
+    let hp_bar_width: f32 = 35.0;
+    let hp = hp as f32 / max_hp as f32;
+    let hp_value = (hp * hp_bar_width).round() as u32;
+
+    draw_text(display, name, start_x, start_y);
+    // draw_text(display, "Novice", START_X, START_Y + 10);
+    // HP LINE
+    draw_text(display, "HP:", start_x, start_y + 20);
+    let style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(1)
+        .fill_color(Color::White)
+        .build();
+    Rectangle::new(Point::new(start_x + 20, start_y + 23), Size::new(35, 5))
+        .into_styled(style)
+        .draw(display)
+        .unwrap();
+
+    let style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(1)
+        .fill_color(Color::Black)
+        .build();
+    Rectangle::new(
+        Point::new(start_x + 20, start_y + 23),
+        Size::new(hp_value, 5),
+    )
+    .into_styled(style)
+    .draw(display)
+    .unwrap();
+
+    // SP LINE
+    draw_text(display, "SP:", start_x, start_y + 30);
+    let style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(1)
+        .fill_color(Color::White)
+        .build();
+    Rectangle::new(Point::new(start_x + 20, start_y + 33), Size::new(35, 5))
+        .into_styled(style)
+        .draw(display)
+        .unwrap();
+
+    let style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(1)
+        .fill_color(Color::Black)
+        .build();
+    Rectangle::new(Point::new(start_x + 20, start_y + 33), Size::new(30, 5))
         .into_styled(style)
         .draw(display)
         .unwrap();

@@ -2,13 +2,22 @@ mod render;
 use render::render;
 
 mod hero;
+use hero::Personnage;
+
+mod battle;
+use battle::Battle;
+
+mod enemy;
+use enemy::Enemy;
 
 mod context;
 use context::Context;
 
 mod database;
+use database::get_context;
 use database::get_hero;
 use database::init_db;
+use database::update_context;
 
 mod eink;
 use eink::GTDev;
@@ -34,9 +43,10 @@ use std::{thread, time};
 // use embedded_graphics::{prelude::*, image::Image};
 
 // use embedded_hal::i2c::{I2c, Error};
-use rppal::i2c::I2c;
-
+use chrono::Duration;
+use chrono::prelude::*;
 use redb::Database;
+use rppal::i2c::I2c;
 
 const BUSY_PIN: u64 = 512 + 24;
 const DC_PIN: u64 = 512 + 25;
@@ -47,9 +57,7 @@ fn main() -> Result<()> {
 
     init_db(&db)?;
     println!("Database initialized");
-    let mut context = Context {
-        action: "overview".to_string(),
-    };
+    let mut context = get_context(&db)?;
 
     let mut spi = SpidevDevice::open("/dev/spidev0.0").expect("spidev directory");
     let options = SpidevOptions::new()
@@ -135,7 +143,21 @@ fn main() -> Result<()> {
     // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
     // .expect("display frame new graphics");
 
-    let hero = get_hero(&db)?;
+    let mut hero: hero::Personnage = get_hero(&db)?;
+
+    let mut battle: battle::Battle = Battle {
+        turn: "".to_string(),
+        status: "".to_string(),
+        message: "".to_string(),
+    };
+
+    let mut enemy: enemy::Enemy = Enemy {
+        name: "".to_string(),
+        hp: 0,
+        max_hp: 0,
+        mp: 0,
+        max_mp: 0,
+    };
 
     render(
         &mut epd2in13,
@@ -144,6 +166,8 @@ fn main() -> Result<()> {
         &mut delay,
         &context,
         &hero,
+        &battle,
+        &enemy,
     );
 
     let mut i2c = I2c::new()?;
@@ -169,7 +193,7 @@ fn main() -> Result<()> {
     loop {
         let (x, y) = gt_scan(&mut i2c, &mut gt_dev, &mut gt_old)?;
         if x != 0 && y != 0 {
-            handle_touch(122 - x, 250 - y, &mut context);
+            let _ = handle_touch(122 - x, 250 - y, &mut context, &db);
             render(
                 &mut epd2in13,
                 &mut display,
@@ -177,6 +201,8 @@ fn main() -> Result<()> {
                 &mut delay,
                 &context,
                 &hero,
+                &battle,
+                &enemy,
             );
             // println!("X: {}, Y: {}, S: {}", x, y, s);
             // display.clear(Color::White).ok();
@@ -187,17 +213,83 @@ fn main() -> Result<()> {
             // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
             // .expect("display frame new graphics");
         }
+        let ten_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(10);
+
+        if ten_seconds_from_now > context.last_action_time {
+            context.last_action_time = Utc::now();
+            let _ = update_context(&db, context.clone());
+            handle_action_routine(&mut context, &mut hero, &mut battle, &mut enemy);
+            render(
+                &mut epd2in13,
+                &mut display,
+                &mut spi,
+                &mut delay,
+                &context,
+                &hero,
+                &battle,
+                &enemy,
+            );
+        }
         thread::sleep(time::Duration::from_millis(200));
     }
 }
 
-fn handle_touch(x: u16, y: u16, context: &mut Context) {
+fn handle_action_routine(
+    context: &mut Context,
+    hero: &mut Personnage,
+    battle: &mut Battle,
+    enemy: &mut Enemy,
+) {
+    if context.action == "battle" {
+        if battle.turn == "" {
+            *battle = create_battle();
+            *enemy = create_enemy();
+        } else if battle.turn == "hero" {
+            enemy.hp -= 5;
+            battle.turn = "enemy".to_string();
+            battle.message = "Tu es attaqué !".to_string();
+        } else if battle.turn == "enemy" {
+            hero.hp -= 2;
+            battle.turn = "hero".to_string();
+            battle.message = "L'ennemi attaque !".to_string();
+        }
+
+        // TODO
+        println!("Loop battle");
+    }
+}
+
+fn create_battle() -> Battle {
+    Battle {
+        turn: "hero".to_string(),
+        status: "ongoing".to_string(),
+        message: "L'ennemi apparaît !".to_string(),
+    }
+}
+
+fn create_enemy() -> Enemy {
+    Enemy {
+        name: "Poring".to_string(),
+        hp: 50,
+        max_hp: 50,
+        mp: 50,
+        max_mp: 50,
+    }
+}
+
+fn handle_touch(x: u16, y: u16, context: &mut Context, db: &Database) -> Result<()> {
     // On Action 1 (bottom left)
     if x < 60 && y > 200 {
         println!("Action 1");
         context.action = "battle".to_string();
+        update_context(db, context.clone())?;
+        Ok(())
     } else if x > 60 && y > 200 {
         println!("Action 2");
         context.action = "overview".to_string();
+        update_context(db, context.clone())?;
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Action non trouvée"))
     }
 }
