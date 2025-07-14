@@ -18,8 +18,8 @@ pub fn handle_action(action_name: String,
             match action_name.as_str() {
                 "action_1" => {
                     context.action = "battle".to_string();
-                    context.battle = Some(create_battle());
-                    context.enemy = Some(create_enemy().unwrap());
+                    context.battle = create_battle();
+                    context.enemy = create_enemy().unwrap();
                     // update_context(db, context.clone()).unwrap();
                 },
                 "action_2" => println!("Action 2"),
@@ -27,14 +27,7 @@ pub fn handle_action(action_name: String,
             }
             return;
         }
-        let battle = match context.battle.as_mut() {
-            Some(b) => b,
-            None => return,
-        };
-        let enemy = match context.enemy.as_mut() {
-            Some(e) => e,
-            None => return,
-        };
+
         // let mut battle;
         // if let Some(existing_battle) = context.battle.as_mut() {
         //    battle = existing_battle;
@@ -47,14 +40,12 @@ pub fn handle_action(action_name: String,
         // } else {
         //     return;
         // }
-        if context.action == "battle" && battle.turn == "hero" { 
-            // let battle = context.battle.as_mut().unwrap();
-            // let enemy = context.enemy.as_mut().unwrap();
+        if context.action == "battle" && context.battle.turn == "hero" { 
             match action_name.as_str() {
                 "action_1" => {
-                     enemy.hp -= 5;
-                     battle.turn = "enemy".to_string();
-                     battle.message = "You're attacking !".to_string();
+                     context.enemy.hp -= 5;
+                     context.battle.turn = "enemy".to_string();
+                     context.battle.message = "You're attacking !".to_string();
                      context.last_action_time = Utc::now();
                 },
                 "action_2" => {
@@ -75,30 +66,30 @@ pub fn handle_action(action_name: String,
                     // update_context(db, context).unwrap();
                 },
                 "skill_1" => {
-                    enemy.hp -= 5;
-                    battle.turn = "enemy".to_string();
-                    battle.message = "Using skill 1 !".to_string();
+                    context.enemy.hp -= 5;
+                    context.battle.turn = "enemy".to_string();
+                    context.battle.message = "Using skill 1 !".to_string();
                     context.last_action_time = Utc::now();
                     context.action = "battle".to_string();
                 },
                 "skill_2" => {
-                    enemy.hp -= 10;
-                    battle.turn = "enemy".to_string();
-                    battle.message = "Using skill 2 !".to_string();
+                    context.enemy.hp -= 10;
+                    context.battle.turn = "enemy".to_string();
+                    context.battle.message = "Using skill 2 !".to_string();
                     context.last_action_time = Utc::now();
                     context.action = "battle".to_string();
                 },
                 "skill_3" => {
-                    enemy.hp -= 15;
-                    battle.turn = "enemy".to_string();
-                    battle.message = "Using skill 3 !".to_string();
+                    context.enemy.hp -= 15;
+                    context.battle.turn = "enemy".to_string();
+                    context.battle.message = "Using skill 3 !".to_string();
                     context.last_action_time = Utc::now();
                     context.action = "battle".to_string();
                 },
                 "skill_4" => {
-                    enemy.hp -= 20;
-                    battle.turn = "enemy".to_string();
-                    battle.message = "Using skill 4 !".to_string();
+                    context.enemy.hp -= 20;
+                    context.battle.turn = "enemy".to_string();
+                    context.battle.message = "Using skill 4 !".to_string();
                     context.last_action_time = Utc::now();
                     context.action = "battle".to_string();
                 },
@@ -110,26 +101,18 @@ pub fn handle_action(action_name: String,
 pub fn handle_action_routine(
     context: &mut Context,
 ) {
-    let battle = match context.battle.as_mut() {
-        Some(b) => b,
-        None => return,
-    };
-    let enemy = match context.enemy.as_mut() {
-        Some(e) => e,
-        None => return,
-    };
     if context.action == "battle" {
-        if battle.turn == "" {
-            *battle = create_battle();
-            *enemy = create_enemy().unwrap();
-        } else if battle.turn == "hero" {
+        if context.battle.turn == "" {
+            context.battle = create_battle();
+            context.enemy = create_enemy().unwrap();
+        } else if context.battle.turn == "hero" {
             // enemy.hp -= 5;
             // battle.turn = "enemy".to_string();
             // battle.message = "You're attacking !".to_string();
-        } else if battle.turn == "enemy" {
+        } else if context.battle.turn == "enemy" {
             context.hero.hp -= 2;
-            battle.turn = "hero".to_string();
-            battle.message = "Enemy is attacking !".to_string();
+            context.battle.turn = "hero".to_string();
+            context.battle.message = "Enemy is attacking !".to_string();
         }
 
         // TODO

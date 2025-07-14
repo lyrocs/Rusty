@@ -20,7 +20,6 @@ use models::context::Context;
 
 mod database;
 use database::get_context;
-use database::get_hero;
 use database::init_db;
 use database::update_context;
 
@@ -151,22 +150,6 @@ fn main() -> Result<()> {
     // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
     // .expect("display frame new graphics");
 
-    let mut hero: Personnage = get_hero(&db)?;
-
-    let mut battle: Battle = Battle {
-        turn: "".to_string(),
-        status: "".to_string(),
-        message: "".to_string(),
-    };
-
-    let mut enemy: Enemy = Enemy {
-        name: "".to_string(),
-        hp: 0,
-        max_hp: 0,
-        mp: 0,
-        max_mp: 0,
-    };
-
     render(
         &mut epd2in13,
         &mut display,
@@ -200,7 +183,6 @@ fn main() -> Result<()> {
         if x != 0 && y != 0 {
             let action_name = handle_touch(122 - x, 250 - y, &mut context, &db);
             if action_name.is_ok() {
-                println!("Action: {:?}", action_name);
                 handle_action(action_name.unwrap(), &db, &mut context);
                 render(
                     &mut epd2in13,

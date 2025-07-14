@@ -86,22 +86,13 @@ fn draw_body(
 }
 
 fn draw_battle(display: &mut Display2in13, context: &Context) {
-
-    let battle = match &context.battle {
-        Some(b) => b,
-        None => return,
-    };
-    let enemy = match &context.enemy {
-        Some(e) => e,
-        None => return,
-    };
     draw_character_info(
         display,
-        &enemy.name,
-        enemy.hp,
-        enemy.max_hp,
-        enemy.mp,
-        enemy.max_mp,
+        &context.enemy.name,
+        context.enemy.hp,
+        context.enemy.max_hp,
+        context.enemy.mp,
+        context.enemy.max_mp,
         5,
         5,
     );
@@ -112,7 +103,7 @@ fn draw_battle(display: &mut Display2in13, context: &Context) {
         .draw(&mut display.color_converted())
         .unwrap();
 
-    draw_text(display, &battle.message, 5, 75);
+    draw_text(display, &context.battle.message, 5, 75);
 
     if context.action != "battle_spell" {
         let hero_data: Vec<u8> = std::fs::read("data/back.bmp").unwrap();
@@ -264,7 +255,6 @@ fn draw_character_info(
 
 fn draw_footer(display: &mut Display2in13, context: &Context) {
 
-
     if context.action == "overview" {
         let style = PrimitiveStyleBuilder::new()
         .stroke_color(Color::Black)
@@ -296,11 +286,7 @@ fn draw_footer(display: &mut Display2in13, context: &Context) {
         return;
     }
 
-    let battle = match &context.battle {
-        Some(b) => b,
-        None => return,
-    };
-    if (context.action == "battle" || context.action == "battle_spell") && battle.turn != "hero" {
+    if (context.action == "battle" || context.action == "battle_spell") && context.battle.turn != "hero" {
         return;
     }
 
@@ -328,7 +314,6 @@ fn draw_footer(display: &mut Display2in13, context: &Context) {
         draw_text(display, "Back", 5, 225);
     }
 }
-
 
 
 fn draw_spell(display: &mut Display2in13, skill: &Skill, start_y: i32) {
