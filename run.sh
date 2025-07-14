@@ -1,4 +1,4 @@
-cross clean 
+# cross clean 
 
 # cross build --target=arm-unknown-linux-gnueabihf --release
 cross build --target=arm-unknown-linux-musleabi

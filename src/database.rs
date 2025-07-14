@@ -1,5 +1,6 @@
-use crate::context::Context;
-use crate::hero::Personnage;
+use crate::models::context::Context;
+use crate::models::hero::Personnage;
+use crate::models::hero::Skill;
 use anyhow::Result;
 use chrono::prelude::*;
 use redb::{Database, TableDefinition};
@@ -31,6 +32,13 @@ pub fn init_db_data(db: &Database) -> Result<()> {
         experience: 0,
         niveau: 1,
         inventaire: vec!["Épée".to_string(), "Arc".to_string(), "Herbes".to_string()],
+        skills: vec![Skill {
+            name: "Bash".to_string(),
+            icon: "bash.bmp".to_string(),
+            level: 1,
+            mp_cost: 10,
+            description: "ATK 110%".to_string(),
+        }],
     };
     let write_txn = db.begin_write()?;
     {

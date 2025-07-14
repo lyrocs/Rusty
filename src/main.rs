@@ -1,17 +1,22 @@
 mod render;
 use render::render;
 
-mod hero;
-use hero::Personnage;
+mod gameplay;
+use gameplay::handle_action;
+use gameplay::handle_action_routine;
 
-mod battle;
-use battle::Battle;
+mod models;
+// mod hero;
+use models::hero::Personnage;
 
-mod enemy;
-use enemy::Enemy;
+// mod battle;
+use models::battle::Battle;
 
-mod context;
-use context::Context;
+// mod enemy;
+use models::enemy::Enemy;
+
+// mod context;
+use models::context::Context;
 
 mod database;
 use database::get_context;
@@ -36,6 +41,9 @@ use linux_embedded_hal::{
 };
 
 use anyhow::Result;
+use std::fs;
+use serde::Deserialize;
+
 
 use std::{thread, time};
 // use image::io::Reader as ImageReader; // <--- NOUVEAU: Pour lire le fichier image
@@ -143,15 +151,15 @@ fn main() -> Result<()> {
     // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
     // .expect("display frame new graphics");
 
-    let mut hero: hero::Personnage = get_hero(&db)?;
+    let mut hero: Personnage = get_hero(&db)?;
 
-    let mut battle: battle::Battle = Battle {
+    let mut battle: Battle = Battle {
         turn: "".to_string(),
         status: "".to_string(),
         message: "".to_string(),
     };
 
-    let mut enemy: enemy::Enemy = Enemy {
+    let mut enemy: Enemy = Enemy {
         name: "".to_string(),
         hp: 0,
         max_hp: 0,
@@ -193,17 +201,22 @@ fn main() -> Result<()> {
     loop {
         let (x, y) = gt_scan(&mut i2c, &mut gt_dev, &mut gt_old)?;
         if x != 0 && y != 0 {
-            let _ = handle_touch(122 - x, 250 - y, &mut context, &db);
-            render(
-                &mut epd2in13,
-                &mut display,
-                &mut spi,
-                &mut delay,
-                &context,
-                &hero,
-                &battle,
-                &enemy,
-            );
+            let action_name = handle_touch(122 - x, 250 - y, &mut context, &db);
+            if action_name.is_ok() {
+                println!("Action: {:?}", action_name);
+                handle_action(action_name.unwrap(), &db, &mut context, &mut hero, &mut battle, &mut enemy);
+                render(
+                    &mut epd2in13,
+                    &mut display,
+                    &mut spi,
+                    &mut delay,
+                    &context,
+                    &hero,
+                    &battle,
+                    &enemy,
+                );
+            }
+            
             // println!("X: {}, Y: {}, S: {}", x, y, s);
             // display.clear(Color::White).ok();
 
@@ -213,7 +226,7 @@ fn main() -> Result<()> {
             // .update_and_display_frame(&mut spi, display.buffer(), &mut delay)
             // .expect("display frame new graphics");
         }
-        let ten_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(10);
+        let ten_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(5);
 
         if ten_seconds_from_now > context.last_action_time {
             context.last_action_time = Utc::now();
@@ -234,62 +247,28 @@ fn main() -> Result<()> {
     }
 }
 
-fn handle_action_routine(
-    context: &mut Context,
-    hero: &mut Personnage,
-    battle: &mut Battle,
-    enemy: &mut Enemy,
-) {
-    if context.action == "battle" {
-        if battle.turn == "" {
-            *battle = create_battle();
-            *enemy = create_enemy();
-        } else if battle.turn == "hero" {
-            enemy.hp -= 5;
-            battle.turn = "enemy".to_string();
-            battle.message = "Tu es attaqué !".to_string();
-        } else if battle.turn == "enemy" {
-            hero.hp -= 2;
-            battle.turn = "hero".to_string();
-            battle.message = "L'ennemi attaque !".to_string();
+fn handle_touch(x: u16, y: u16, context: &mut Context, db: &Database) -> Result<String> {
+    if context.action == "battle_spell" {
+        if y > 220 {
+            Ok("Back".to_string())
+        } else if y > 190 {
+            Ok("skill_4".to_string())
+        } else if y > 160 {
+            Ok("skill_3".to_string())
+        } else if y > 130 {
+            Ok("skill_2".to_string())
+        } else if y > 100 {
+            Ok("skill_1".to_string())
+        } else {
+            Err(anyhow::anyhow!("Action non trouvée"))
         }
-
-        // TODO
-        println!("Loop battle");
-    }
-}
-
-fn create_battle() -> Battle {
-    Battle {
-        turn: "hero".to_string(),
-        status: "ongoing".to_string(),
-        message: "L'ennemi apparaît !".to_string(),
-    }
-}
-
-fn create_enemy() -> Enemy {
-    Enemy {
-        name: "Poring".to_string(),
-        hp: 50,
-        max_hp: 50,
-        mp: 50,
-        max_mp: 50,
-    }
-}
-
-fn handle_touch(x: u16, y: u16, context: &mut Context, db: &Database) -> Result<()> {
-    // On Action 1 (bottom left)
-    if x < 60 && y > 200 {
-        println!("Action 1");
-        context.action = "battle".to_string();
-        update_context(db, context.clone())?;
-        Ok(())
-    } else if x > 60 && y > 200 {
-        println!("Action 2");
-        context.action = "overview".to_string();
-        update_context(db, context.clone())?;
-        Ok(())
     } else {
-        Err(anyhow::anyhow!("Action non trouvée"))
+        if x < 60 && y > 200 {
+            Ok("action_1".to_string())
+        } else if x > 60 && y > 200 {
+            Ok("action_2".to_string())
+        } else {
+            Err(anyhow::anyhow!("Action non trouvée"))
+        }
     }
 }

@@ -15,15 +15,30 @@ use epd_waveshare::{
 
 use linux_embedded_hal::{Delay, SpidevDevice, SysfsPin};
 
-use crate::hero::Personnage;
+use crate::models::hero::Personnage;
+use crate::models::hero::Skill;
+use crate::models::battle::Battle;
+use crate::models::context::Context;
+use crate::models::enemy::Enemy;
 
-use crate::battle::Battle;
-use crate::context::Context;
-use crate::enemy::Enemy;
+use image::{GenericImageView, DynamicImage};
+
 
 pub fn draw_text(display: &mut Display2in13, text: &str, x: i32, y: i32) {
     let style = MonoTextStyleBuilder::new()
         .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+        .text_color(Color::Black)
+        .background_color(Color::White)
+        .build();
+
+    let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
+
+    let _ = Text::with_text_style(text, Point::new(x, y), style, text_style).draw(display);
+}
+
+pub fn draw_bold_text(display: &mut Display2in13, text: &str, x: i32, y: i32) {
+    let style = MonoTextStyleBuilder::new()
+        .font(&embedded_graphics::mono_font::ascii::FONT_6X13_BOLD)
         .text_color(Color::Black)
         .background_color(Color::White)
         .build();
@@ -49,12 +64,14 @@ pub fn render(
     battle: &Battle,
     enemy: &Enemy,
 ) {
+    // RefreshLut::Full
+    // RefreshLut::Quick
     epd2in13
         .set_refresh(spi, delay, RefreshLut::Quick)
         .expect("set refresh");
     display.clear(Color::White).ok();
     draw_body(display, &context, &hero, &battle, &enemy);
-    draw_footer(display);
+    draw_footer(display, &context, &battle, &hero);
     epd2in13
         .update_and_display_frame(spi, display.buffer(), delay)
         .expect("display frame new graphics");
@@ -67,38 +84,15 @@ fn draw_body(
     battle: &Battle,
     enemy: &Enemy,
 ) {
-    if context.action == "battle" {
-        draw_battle(display, hero, battle, enemy);
+    if context.action == "battle" || context.action == "battle_spell" {
+        draw_battle(display, context, hero, battle, enemy);
     } else if context.action == "overview" {
         draw_hero(display, hero);
     }
 }
 
-fn draw_battle(display: &mut Display2in13, hero: &Personnage, battle: &Battle, enemy: &Enemy) {
-    draw_character_info(
-        display,
-        &hero.nom,
-        hero.hp,
-        hero.max_hp,
-        hero.mp,
-        hero.max_mp,
-        65,
-        100,
-    );
+fn draw_battle(display: &mut Display2in13, context: &Context, hero: &Personnage, battle: &Battle, enemy: &Enemy) {
 
-    const MONSTER: &[u8] = include_bytes!("./assets/poring/front.bmp");
-    let monster_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(MONSTER).unwrap();
-    Image::new(&monster_bmp, Point::new(120 - 40, 0))
-        .draw(&mut display.color_converted())
-        .unwrap();
-
-    draw_text(display, &battle.message, 5, 75);
-
-    const HERO: &[u8] = include_bytes!("./assets/novice/back.bmp");
-    let hero_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(HERO).unwrap();
-    Image::new(&hero_bmp, Point::new(0, 100))
-        .draw(&mut display.color_converted())
-        .unwrap();
     draw_character_info(
         display,
         &enemy.name,
@@ -109,6 +103,34 @@ fn draw_battle(display: &mut Display2in13, hero: &Personnage, battle: &Battle, e
         5,
         5,
     );
+    let monster_data: Vec<u8> = std::fs::read("data/poring.bmp").unwrap();
+    // const MONSTER: &[u8] = include_bytes!("./assets/poring/front.bmp");
+    let monster_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(&monster_data).unwrap();
+    Image::new(&monster_bmp, Point::new(120 - 40, 0))
+        .draw(&mut display.color_converted())
+        .unwrap();
+
+    draw_text(display, &battle.message, 5, 75);
+
+    if context.action != "battle_spell" {
+        let hero_data: Vec<u8> = std::fs::read("data/back.bmp").unwrap();
+        // const HERO: &[u8] = include_bytes!("./assets/novice/back.bmp");
+        let hero_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(&hero_data).unwrap();
+        Image::new(&hero_bmp, Point::new(0, 100))
+            .draw(&mut display.color_converted())
+            .unwrap();
+
+        draw_character_info(
+            display,
+            &hero.nom,
+            hero.hp,
+            hero.max_hp,
+            hero.mp,
+            hero.max_mp,
+            65,
+            100,
+        );
+    }
 }
 
 fn draw_hero(display: &mut Display2in13, hero: &Personnage) {
@@ -238,15 +260,74 @@ fn draw_character_info(
         .unwrap();
 }
 
-fn draw_footer(display: &mut Display2in13) {
-    let style = PrimitiveStyleBuilder::new()
+fn draw_footer(display: &mut Display2in13, context: &Context, battle: &Battle, hero: &Personnage) {
+    if (context.action == "battle" || context.action == "battle_spell") && battle.turn != "hero" {
+        return;
+    }
+
+    if context.action == "battle_spell" {
+        let style = PrimitiveStyleBuilder::new()
         .stroke_color(Color::Black)
         .stroke_width(1)
         .fill_color(Color::White)
         .build();
-    Rectangle::new(Point::new(0, 200), Size::new(122, 50))
-        .into_styled(style)
-        .draw(display)
+        Rectangle::new(Point::new(0, 100), Size::new(122, 150))
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+        draw_line(display, 0, 130, 122, 130);
+        draw_line(display, 0, 160, 122, 160);
+        draw_line(display, 0, 190, 122, 190);
+        draw_line(display, 0, 220, 122, 220);
+
+        let mut y = 100;
+        for skill in hero.skills.iter() {
+            draw_spell(display, skill, y);
+            y += 30;
+        }
+
+        draw_text(display, "Back", 5, 225);
+
+    } else {
+        let style = PrimitiveStyleBuilder::new()
+            .stroke_color(Color::Black)
+            .stroke_width(1)
+            .fill_color(Color::White)
+            .build();
+        Rectangle::new(Point::new(0, 200), Size::new(122, 50))
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+        draw_line(display, 60, 200, 60, 250);
+        if context.action == "battle" {
+            draw_text(display, "Attack", 5, 225);
+            draw_text(display, "Spell", 65, 225);
+        }
+        if context.action == "overview" {
+            draw_text(display, "Overview", 5, 225);
+            draw_text(display, "Battle", 65, 225);
+        }
+    }
+}
+
+
+
+fn draw_spell(display: &mut Display2in13, skill: &Skill, start_y: i32) {
+    let icon_path = "data/".to_owned() + &skill.icon;
+    let bash_data: Vec<u8> = std::fs::read(icon_path).unwrap();
+    let bash_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(&bash_data).unwrap();
+    Image::new(&bash_bmp, Point::new(3, start_y + 3))
+        .draw(&mut display.color_converted())
         .unwrap();
-    draw_line(display, 60, 200, 60, 250);
+    draw_bold_text(display, &skill.name, 35, start_y + 3);
+    let lvl_x = 35 + 8 + 6 * skill.name.len() as i32;
+    let lvl_text = format!("{}{}", "lvl", skill.level);
+    draw_text(display, lvl_text.as_str(), lvl_x, start_y + 5);
+    draw_text(display, &skill.description, 35, start_y + 3 + 13 + 2);
+
+    // Push MP text to the right
+    // screen Width = 122 - border
+    let mp_text = format!("{}{}", skill.mp_cost, "SP");
+    let mp_x = 121 - 6 * mp_text.len() as i32;
+    draw_text(display, mp_text.as_str(), mp_x, start_y + 3 + 13 + 2);
 }
