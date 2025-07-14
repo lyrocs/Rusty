@@ -53,11 +53,14 @@ pub fn init_db_data(db: &Database) -> Result<()> {
             hero.nom
         );
     }
-    write_txn.commit()?;
+    write_txn.commit()?;    
 
     let context: Context = Context {
         action: "overview".to_string(),
         last_action_time: Utc::now(),
+        hero,
+        battle: None,
+        enemy: None,
     };
     let write_txn = db.begin_write()?;
     {

@@ -11,21 +11,45 @@ use anyhow::Result;
 
 pub fn handle_action(action_name: String,
     db: &Database,
-    context: &mut Context,
-    hero: &mut Personnage,
-    battle: &mut Battle,
-    enemy: &mut Enemy) {
+    context: &mut Context) {
+     
+        
         if context.action == "overview" {
             match action_name.as_str() {
                 "action_1" => {
                     context.action = "battle".to_string();
-                    update_context(db, context.clone()).unwrap();
+                    context.battle = Some(create_battle());
+                    context.enemy = Some(create_enemy().unwrap());
+                    // update_context(db, context.clone()).unwrap();
                 },
                 "action_2" => println!("Action 2"),
                 _ => println!("Action non trouvée"),
             }
+            return;
         }
-        if context.action == "battle" && battle.turn == "hero" {
+        let battle = match context.battle.as_mut() {
+            Some(b) => b,
+            None => return,
+        };
+        let enemy = match context.enemy.as_mut() {
+            Some(e) => e,
+            None => return,
+        };
+        // let mut battle;
+        // if let Some(existing_battle) = context.battle.as_mut() {
+        //    battle = existing_battle;
+        // } else {
+        //     return;
+        // }
+        // let mut enemy;
+        // if let Some(existing_enemy) = context.enemy.as_mut() {
+        //   enemy = existing_enemy;
+        // } else {
+        //     return;
+        // }
+        if context.action == "battle" && battle.turn == "hero" { 
+            // let battle = context.battle.as_mut().unwrap();
+            // let enemy = context.enemy.as_mut().unwrap();
             match action_name.as_str() {
                 "action_1" => {
                      enemy.hp -= 5;
@@ -48,7 +72,7 @@ pub fn handle_action(action_name: String,
             match action_name.as_str() {
                 "Back" => {
                     context.action = "battle".to_string();
-                    update_context(db, context.clone()).unwrap();
+                    // update_context(db, context).unwrap();
                 },
                 "skill_1" => {
                     enemy.hp -= 5;
@@ -85,10 +109,15 @@ pub fn handle_action(action_name: String,
 
 pub fn handle_action_routine(
     context: &mut Context,
-    hero: &mut Personnage,
-    battle: &mut Battle,
-    enemy: &mut Enemy,
 ) {
+    let battle = match context.battle.as_mut() {
+        Some(b) => b,
+        None => return,
+    };
+    let enemy = match context.enemy.as_mut() {
+        Some(e) => e,
+        None => return,
+    };
     if context.action == "battle" {
         if battle.turn == "" {
             *battle = create_battle();
@@ -98,7 +127,7 @@ pub fn handle_action_routine(
             // battle.turn = "enemy".to_string();
             // battle.message = "You're attacking !".to_string();
         } else if battle.turn == "enemy" {
-            hero.hp -= 2;
+            context.hero.hp -= 2;
             battle.turn = "hero".to_string();
             battle.message = "Enemy is attacking !".to_string();
         }

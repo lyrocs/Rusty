@@ -173,9 +173,6 @@ fn main() -> Result<()> {
         &mut spi,
         &mut delay,
         &context,
-        &hero,
-        &battle,
-        &enemy,
     );
 
     let mut i2c = I2c::new()?;
@@ -204,16 +201,13 @@ fn main() -> Result<()> {
             let action_name = handle_touch(122 - x, 250 - y, &mut context, &db);
             if action_name.is_ok() {
                 println!("Action: {:?}", action_name);
-                handle_action(action_name.unwrap(), &db, &mut context, &mut hero, &mut battle, &mut enemy);
+                handle_action(action_name.unwrap(), &db, &mut context);
                 render(
                     &mut epd2in13,
                     &mut display,
                     &mut spi,
                     &mut delay,
                     &context,
-                    &hero,
-                    &battle,
-                    &enemy,
                 );
             }
             
@@ -231,16 +225,13 @@ fn main() -> Result<()> {
         if ten_seconds_from_now > context.last_action_time {
             context.last_action_time = Utc::now();
             let _ = update_context(&db, context.clone());
-            handle_action_routine(&mut context, &mut hero, &mut battle, &mut enemy);
+            handle_action_routine(&mut context);
             render(
                 &mut epd2in13,
                 &mut display,
                 &mut spi,
                 &mut delay,
-                &context,
-                &hero,
-                &battle,
-                &enemy,
+                &context
             );
         }
         thread::sleep(time::Duration::from_millis(200));

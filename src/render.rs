@@ -60,9 +60,6 @@ pub fn render(
     spi: &mut SpidevDevice,
     delay: &mut Delay,
     context: &Context,
-    hero: &Personnage,
-    battle: &Battle,
-    enemy: &Enemy,
 ) {
     // RefreshLut::Full
     // RefreshLut::Quick
@@ -70,8 +67,8 @@ pub fn render(
         .set_refresh(spi, delay, RefreshLut::Quick)
         .expect("set refresh");
     display.clear(Color::White).ok();
-    draw_body(display, &context, &hero, &battle, &enemy);
-    draw_footer(display, &context, &battle, &hero);
+    draw_body(display, &context);
+    draw_footer(display, &context);
     epd2in13
         .update_and_display_frame(spi, display.buffer(), delay)
         .expect("display frame new graphics");
@@ -80,19 +77,24 @@ pub fn render(
 fn draw_body(
     display: &mut Display2in13,
     context: &Context,
-    hero: &Personnage,
-    battle: &Battle,
-    enemy: &Enemy,
 ) {
     if context.action == "battle" || context.action == "battle_spell" {
-        draw_battle(display, context, hero, battle, enemy);
+        draw_battle(display, context);
     } else if context.action == "overview" {
-        draw_hero(display, hero);
+        draw_hero(display, &context.hero);
     }
 }
 
-fn draw_battle(display: &mut Display2in13, context: &Context, hero: &Personnage, battle: &Battle, enemy: &Enemy) {
+fn draw_battle(display: &mut Display2in13, context: &Context) {
 
+    let battle = match &context.battle {
+        Some(b) => b,
+        None => return,
+    };
+    let enemy = match &context.enemy {
+        Some(e) => e,
+        None => return,
+    };
     draw_character_info(
         display,
         &enemy.name,
@@ -122,11 +124,11 @@ fn draw_battle(display: &mut Display2in13, context: &Context, hero: &Personnage,
 
         draw_character_info(
             display,
-            &hero.nom,
-            hero.hp,
-            hero.max_hp,
-            hero.mp,
-            hero.max_mp,
+            &context.hero.nom,
+            context.hero.hp,
+            context.hero.max_hp,
+            context.hero.mp,
+            context.hero.max_mp,
             65,
             100,
         );
@@ -260,7 +262,44 @@ fn draw_character_info(
         .unwrap();
 }
 
-fn draw_footer(display: &mut Display2in13, context: &Context, battle: &Battle, hero: &Personnage) {
+fn draw_footer(display: &mut Display2in13, context: &Context) {
+
+
+    if context.action == "overview" {
+        let style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(1)
+        .fill_color(Color::White)
+        .build();
+        Rectangle::new(Point::new(0, 200), Size::new(122, 50))
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+        draw_line(display, 60, 200, 60, 250);
+        draw_text(display, "Battle", 5, 225);
+        draw_text(display, "Nothing", 65, 225);
+        return;
+    }
+    if context.action == "battle" {
+        let style = PrimitiveStyleBuilder::new()
+        .stroke_color(Color::Black)
+        .stroke_width(1)
+        .fill_color(Color::White)
+        .build();
+        Rectangle::new(Point::new(0, 200), Size::new(122, 50))
+            .into_styled(style)
+            .draw(display)
+            .unwrap();
+        draw_line(display, 60, 200, 60, 250);
+        draw_text(display, "Attack", 5, 225);
+        draw_text(display, "Spell", 65, 225);
+        return;
+    }
+
+    let battle = match &context.battle {
+        Some(b) => b,
+        None => return,
+    };
     if (context.action == "battle" || context.action == "battle_spell") && battle.turn != "hero" {
         return;
     }
@@ -281,32 +320,12 @@ fn draw_footer(display: &mut Display2in13, context: &Context, battle: &Battle, h
         draw_line(display, 0, 220, 122, 220);
 
         let mut y = 100;
-        for skill in hero.skills.iter() {
+        for skill in context.hero.skills.iter() {
             draw_spell(display, skill, y);
             y += 30;
         }
 
         draw_text(display, "Back", 5, 225);
-
-    } else {
-        let style = PrimitiveStyleBuilder::new()
-            .stroke_color(Color::Black)
-            .stroke_width(1)
-            .fill_color(Color::White)
-            .build();
-        Rectangle::new(Point::new(0, 200), Size::new(122, 50))
-            .into_styled(style)
-            .draw(display)
-            .unwrap();
-        draw_line(display, 60, 200, 60, 250);
-        if context.action == "battle" {
-            draw_text(display, "Attack", 5, 225);
-            draw_text(display, "Spell", 65, 225);
-        }
-        if context.action == "overview" {
-            draw_text(display, "Overview", 5, 225);
-            draw_text(display, "Battle", 65, 225);
-        }
     }
 }
 
