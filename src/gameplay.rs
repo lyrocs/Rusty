@@ -1,23 +1,20 @@
-use redb::Database;
 use crate::models::context::Context;
-use crate::models::hero::Personnage;
+use crate::models::context::Action;
 use crate::models::battle::Battle;
 use crate::models::enemy::Enemy;
-use crate::database::update_context;
 use serde::Deserialize;
 use std::fs;
 use chrono::prelude::*;
 use anyhow::Result;
 
 pub fn handle_action(action_name: String,
-    db: &Database,
     context: &mut Context) {
      
         
-        if context.action == "overview" {
+        if context.action == Action::Overview {
             match action_name.as_str() {
                 "action_1" => {
-                    context.action = "battle".to_string();
+                    context.action = Action::Battle;
                     context.battle = create_battle();
                     context.enemy = create_enemy().unwrap();
                     // update_context(db, context.clone()).unwrap();
@@ -40,7 +37,7 @@ pub fn handle_action(action_name: String,
         // } else {
         //     return;
         // }
-        if context.action == "battle" && context.battle.turn == "hero" { 
+        if context.action == Action::Battle && context.battle.turn == "hero" { 
             match action_name.as_str() {
                 "action_1" => {
                      context.enemy.hp -= 5;
@@ -49,7 +46,7 @@ pub fn handle_action(action_name: String,
                      context.last_action_time = Utc::now();
                 },
                 "action_2" => {
-                    context.action = "battle_spell".to_string();
+                    context.action = Action::BattleSpell;
                     
                     // enemy.hp -= 25;
                     // battle.turn = "enemy".to_string();
@@ -59,10 +56,10 @@ pub fn handle_action(action_name: String,
                 _ => println!("Action non trouvée"),
             }
         }
-        if context.action == "battle_spell" {
+        if context.action == Action::BattleSpell {
             match action_name.as_str() {
                 "Back" => {
-                    context.action = "battle".to_string();
+                    context.action = Action::Battle;
                     // update_context(db, context).unwrap();
                 },
                 "skill_1" => {
@@ -70,28 +67,28 @@ pub fn handle_action(action_name: String,
                     context.battle.turn = "enemy".to_string();
                     context.battle.message = "Using skill 1 !".to_string();
                     context.last_action_time = Utc::now();
-                    context.action = "battle".to_string();
+                    context.action = Action::Battle;
                 },
                 "skill_2" => {
                     context.enemy.hp -= 10;
                     context.battle.turn = "enemy".to_string();
                     context.battle.message = "Using skill 2 !".to_string();
                     context.last_action_time = Utc::now();
-                    context.action = "battle".to_string();
+                    context.action = Action::Battle;
                 },
                 "skill_3" => {
                     context.enemy.hp -= 15;
                     context.battle.turn = "enemy".to_string();
                     context.battle.message = "Using skill 3 !".to_string();
                     context.last_action_time = Utc::now();
-                    context.action = "battle".to_string();
+                    context.action = Action::Battle;
                 },
                 "skill_4" => {
                     context.enemy.hp -= 20;
                     context.battle.turn = "enemy".to_string();
                     context.battle.message = "Using skill 4 !".to_string();
                     context.last_action_time = Utc::now();
-                    context.action = "battle".to_string();
+                    context.action = Action::Battle;
                 },
                 _ => println!("Action non trouvée"),
             }
@@ -101,7 +98,7 @@ pub fn handle_action(action_name: String,
 pub fn handle_action_routine(
     context: &mut Context,
 ) {
-    if context.action == "battle" {
+    if context.action == Action::Battle {
         if context.battle.turn == "" {
             context.battle = create_battle();
             context.enemy = create_enemy().unwrap();

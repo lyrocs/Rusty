@@ -9,19 +9,14 @@ use embedded_graphics::{
 
 use epd_waveshare::{
     color::*,
-    epd2in13_v2::{Display2in13, Epd2in13},
+    epd2in13_v2::{Display2in13},
     prelude::*,
 };
-
-use linux_embedded_hal::{Delay, SpidevDevice, SysfsPin};
-
 use crate::models::hero::Personnage;
 use crate::models::hero::Skill;
-use crate::models::battle::Battle;
 use crate::models::context::Context;
-use crate::models::enemy::Enemy;
-
-use image::{GenericImageView, DynamicImage};
+use crate::models::context::Action;
+use crate::models::eink::Eink;
 
 
 pub fn draw_text(display: &mut Display2in13, text: &str, x: i32, y: i32) {
@@ -55,22 +50,19 @@ pub fn draw_line(display: &mut Display2in13, x1: i32, y1: i32, x2: i32, y2: i32)
 }
 
 pub fn render(
-    epd2in13: &mut Epd2in13<SpidevDevice, SysfsPin, SysfsPin, SysfsPin, Delay>,
-    display: &mut Display2in13,
-    spi: &mut SpidevDevice,
-    delay: &mut Delay,
+    eink: &mut Eink,
     context: &Context,
 ) {
     // RefreshLut::Full
     // RefreshLut::Quick
-    epd2in13
-        .set_refresh(spi, delay, RefreshLut::Quick)
+    eink.epd2in13
+        .set_refresh(&mut eink.spi, &mut eink.delay, RefreshLut::Quick)
         .expect("set refresh");
-    display.clear(Color::White).ok();
-    draw_body(display, &context);
-    draw_footer(display, &context);
-    epd2in13
-        .update_and_display_frame(spi, display.buffer(), delay)
+    eink.display.clear(Color::White).ok();
+    draw_body(&mut eink.display, &context);
+    draw_footer(&mut eink.display, &context);
+    eink.epd2in13
+        .update_and_display_frame(&mut eink.spi, eink.display.buffer(), &mut eink.delay)
         .expect("display frame new graphics");
 }
 
@@ -78,9 +70,9 @@ fn draw_body(
     display: &mut Display2in13,
     context: &Context,
 ) {
-    if context.action == "battle" || context.action == "battle_spell" {
+    if context.action == Action::Battle || context.action == Action::BattleSpell {
         draw_battle(display, context);
-    } else if context.action == "overview" {
+    } else if context.action == Action::Overview {
         draw_hero(display, &context.hero);
     }
 }
@@ -105,7 +97,7 @@ fn draw_battle(display: &mut Display2in13, context: &Context) {
 
     draw_text(display, &context.battle.message, 5, 75);
 
-    if context.action != "battle_spell" {
+    if context.action != Action::BattleSpell {
         let hero_data: Vec<u8> = std::fs::read("data/back.bmp").unwrap();
         // const HERO: &[u8] = include_bytes!("./assets/novice/back.bmp");
         let hero_bmp = tinybmp::Bmp::<BinaryColor>::from_slice(&hero_data).unwrap();
@@ -231,13 +223,16 @@ fn draw_character_info(
     .unwrap();
 
     // SP LINE
+    let mp_bar_width: f32 = 35.0;
+    let mp = mp as f32 / max_mp as f32;
+    let mp_value = (mp * mp_bar_width).round() as u32;
     draw_text(display, "SP:", start_x, start_y + 30);
     let style = PrimitiveStyleBuilder::new()
         .stroke_color(Color::Black)
         .stroke_width(1)
         .fill_color(Color::White)
         .build();
-    Rectangle::new(Point::new(start_x + 20, start_y + 33), Size::new(35, 5))
+    Rectangle::new(Point::new(start_x + 20, start_y + 33), Size::new(mp_bar_width as u32, 5))
         .into_styled(style)
         .draw(display)
         .unwrap();
@@ -247,7 +242,7 @@ fn draw_character_info(
         .stroke_width(1)
         .fill_color(Color::Black)
         .build();
-    Rectangle::new(Point::new(start_x + 20, start_y + 33), Size::new(30, 5))
+    Rectangle::new(Point::new(start_x + 20, start_y + 33), Size::new(mp_value, 5))
         .into_styled(style)
         .draw(display)
         .unwrap();
@@ -255,7 +250,7 @@ fn draw_character_info(
 
 fn draw_footer(display: &mut Display2in13, context: &Context) {
 
-    if context.action == "overview" {
+    if context.action == Action::Overview {
         let style = PrimitiveStyleBuilder::new()
         .stroke_color(Color::Black)
         .stroke_width(1)
@@ -270,7 +265,7 @@ fn draw_footer(display: &mut Display2in13, context: &Context) {
         draw_text(display, "Nothing", 65, 225);
         return;
     }
-    if context.action == "battle" {
+    if context.action == Action::Battle {
         let style = PrimitiveStyleBuilder::new()
         .stroke_color(Color::Black)
         .stroke_width(1)
@@ -286,11 +281,11 @@ fn draw_footer(display: &mut Display2in13, context: &Context) {
         return;
     }
 
-    if (context.action == "battle" || context.action == "battle_spell") && context.battle.turn != "hero" {
+    if (context.action == Action::Battle || context.action == Action::BattleSpell) && context.battle.turn != "hero" {
         return;
     }
 
-    if context.action == "battle_spell" {
+    if context.action == Action::BattleSpell {
         let style = PrimitiveStyleBuilder::new()
         .stroke_color(Color::Black)
         .stroke_width(1)

@@ -1,3 +1,19 @@
+use linux_embedded_hal::{
+    Delay, SpidevDevice, SysfsPin,
+    spidev::{self, SpidevOptions},
+    sysfs_gpio::Direction,
+};
+
+use epd_waveshare::{
+    epd2in13_v2::{Display2in13, Epd2in13},
+    graphics::DisplayRotation,
+    prelude::*,
+};
+
+use rppal::i2c::I2c;
+
+use crate::models::eink::Eink;
+
 pub struct GTDev {
     pub touchpoint_flag: u8,
     pub touch_count: u8,
@@ -11,6 +27,63 @@ pub struct GTOld {
     pub x: [u16; 5],
     pub y: [u16; 5],
     pub s: [u16; 5],
+}
+
+const BUSY_PIN: u64 = 512 + 24;
+const DC_PIN: u64 = 512 + 25;
+const RST_PIN: u64 = 512 + 17;
+
+pub fn init_eink() -> Eink {
+    let mut spi = SpidevDevice::open("/dev/spidev0.0").expect("spidev directory");
+    let options = SpidevOptions::new()
+        .bits_per_word(8)
+        .max_speed_hz(10_000_000)
+        .mode(spidev::SpiModeFlags::SPI_MODE_0)
+        .build();
+    spi.configure(&options).expect("spi configuration");
+
+    let busy = SysfsPin::new(BUSY_PIN); // GPIO 24, board J-18
+    busy.export().expect("busy export");
+    while !busy.is_exported() {}
+    busy.set_direction(Direction::In).expect("busy Direction");
+    //busy.set_value(1).expect("busy Value set to 1");
+
+    let dc = SysfsPin::new(DC_PIN); // GPIO 25, board J-22
+    dc.export().expect("dc export");
+    while !dc.is_exported() {}
+    dc.set_direction(Direction::Out).expect("dc Direction");
+    dc.set_value(1).expect("dc Value set to 1");
+
+    let rst = SysfsPin::new(RST_PIN); // GPIO 17, board J-11
+    rst.export().expect("rst export");
+    while !rst.is_exported() {}
+    rst.set_direction(Direction::Out).expect("rst Direction");
+    rst.set_value(1).expect("rst Value set to 1");
+
+    let mut delay = Delay {};
+
+    let mut epd2in13: Epd2in13<SpidevDevice, SysfsPin, SysfsPin, SysfsPin, Delay> =
+        Epd2in13::new(&mut spi, busy, dc, rst, &mut delay, None).expect("eink initalize error");
+    epd2in13
+        .set_refresh(&mut spi, &mut delay, RefreshLut::Full)
+        .expect("set refresh");
+
+    let mut display = Display2in13::default();
+
+    display.set_rotation(DisplayRotation::Rotate0);
+
+
+    let mut i2c = I2c::new().unwrap();
+    i2c.set_slave_address(0x14).unwrap();
+
+    return Eink {
+        i2c,
+        display,
+        epd2in13,
+        spi,
+        delay,
+    };
+
 }
 
 pub fn gt_scan(
@@ -67,13 +140,10 @@ pub fn gt_scan(
             && gt_old.s[0] == gt_dev.s[0]
             && (gt_old.x[0] != 0 && gt_old.y[0] != 0 && gt_old.s[0] != 0)
         {
-            println!("Same values");
             return Ok((0, 0));
         }
 
-        println!("X: {}, Y: {}, S: {}", gt_dev.x[0], gt_dev.y[0], gt_dev.s[0]);
         return Ok((gt_dev.x[0], gt_dev.y[0]));
-        // }
     }
     Ok((0, 0))
 }

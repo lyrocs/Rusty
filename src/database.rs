@@ -1,4 +1,5 @@
 use crate::models::context::Context;
+use crate::models::context::Action;
 use crate::models::hero::Personnage;
 use crate::models::hero::Skill;
 use crate::models::battle::Battle;
@@ -24,7 +25,7 @@ pub fn init_db(db: &Database) -> Result<()> {
 
 pub fn init_db_data(db: &Database) -> Result<()> {
     let context: Context = Context {
-        action: "overview".to_string(),
+        action: Action::Overview,
         last_action_time: Utc::now(),
         hero: Personnage {
             nom: "Lyrocs".to_string(),
@@ -60,10 +61,7 @@ pub fn init_db_data(db: &Database) -> Result<()> {
     let write_txn = db.begin_write()?;
     {
         let mut table = write_txn.open_table(CONTEXT_TABLE)?;
-
-        // On convertit notre objet `hero` en bytes
         let context_bytes = serde_json::to_vec(&context)?;
-        // On stocke les bytes dans la DB
         table.insert("context", context_bytes.as_slice())?;
     }
     write_txn.commit()?;
@@ -93,15 +91,8 @@ pub fn update_context(db: &Database, context: Context) -> Result<Context> {
         let write_txn = db.begin_write()?;
         {
             let mut table = write_txn.open_table(CONTEXT_TABLE)?;
-
-            // On convertit notre objet `hero` en bytes
             let hero_bytes = serde_json::to_vec(&context)?;
-            // On stocke les bytes dans la DB
             table.insert("context", hero_bytes.as_slice())?;
-            println!(
-                "\n'{}' a été sérialisé et sauvegardé dans la base de données.",
-                "context"
-            );
         }
         write_txn.commit()?;
         Ok(context_recupere)
