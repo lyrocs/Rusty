@@ -1,6 +1,7 @@
 # cross clean 
 
 # cross build --target=arm-unknown-linux-gnueabihf --release
-cross build --target=arm-unknown-linux-musleabi
+# cross build --target=arm-unknown-linux-musleabi
+cross build
 
 scp target/arm-unknown-linux-musleabi/debug/poc lyrocs@rusty.local:~/

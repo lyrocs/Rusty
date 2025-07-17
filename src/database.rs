@@ -1,9 +1,11 @@
 use crate::models::context::Context;
 use crate::models::context::Action;
+use crate::models::context::Activity;
 use crate::models::hero::Personnage;
 use crate::models::hero::Skill;
 use crate::models::battle::Battle;
 use crate::models::enemy::Enemy;
+use crate::game_data;
 use anyhow::Result;
 use chrono::prelude::*;
 use redb::{Database, TableDefinition};
@@ -24,18 +26,25 @@ pub fn init_db(db: &Database) -> Result<()> {
 }
 
 pub fn init_db_data(db: &Database) -> Result<()> {
+    let locations = game_data::get_locations()?;
+    let first_location = locations.first().unwrap();
     let context: Context = Context {
         action: Action::Overview,
+        // activity: Activity::HeroOverview,
+        activity: Activity::HeroOverview,
         last_action_time: Utc::now(),
+        needs_redraw: true,
         hero: Personnage {
             nom: "Lyrocs".to_string(),
             classe: "Novice".to_string(),
+            base_level: 1,
+            base_exp: 0,
+            job_level: 1,
+            job_exp: 0,
             hp: 100,
             max_hp: 100,
             mp: 100,
             max_mp: 100,
-            experience: 0,
-            niveau: 1,
             inventaire: vec!["Épée".to_string(), "Arc".to_string(), "Herbes".to_string()],
             skills: vec![Skill {
                 name: "Bash".to_string(),
@@ -52,11 +61,17 @@ pub fn init_db_data(db: &Database) -> Result<()> {
         },
         enemy: Enemy {
             name: "".to_string(),
+            id: 0,
+            level: 0,
             hp: 0,
             max_hp: 0,
-            mp: 0,
-            max_mp: 0,
+            attack: 0,
+            defense: 0,
+            base_exp: 0,
+            job_exp: 0,
+            drops: Vec::new(),
         },
+        location: first_location.clone(),
     };
     let write_txn = db.begin_write()?;
     {

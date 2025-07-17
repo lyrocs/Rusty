@@ -1,12 +1,12 @@
 
-mod render;
-use render::render;
 mod gameplay;
 use gameplay::handle_action;
 use gameplay::handle_action_routine;
+mod game_data;
 mod models;
 use models::context::Context;
-use models::context::Action;
+use models::context::Activity;
+use models::context::ManualCombatState;
 use models::eink::Eink;
 mod database;
 use database::get_context;
@@ -22,6 +22,7 @@ use std::{thread, time};
 use chrono::Duration;
 use chrono::prelude::*;
 use redb::Database;
+mod rendering;
 
 fn main() -> Result<()> {
     let db = Database::create("mon_rpg.redb")?;
@@ -47,20 +48,20 @@ fn main() -> Result<()> {
             let action_name = handle_touch(122 - x, 250 - y, &mut context);
             if action_name.is_ok() {
                 handle_action(action_name.unwrap(), &mut context);
-                render(
+                rendering::render(
                     &mut eink,
-                    &context,
+                    &mut context,
                 );
             }
         }
-        let five_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(5);
-        if five_seconds_from_now > context.last_action_time {
+        let two_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(2);
+        if two_seconds_from_now > context.last_action_time {
             context.last_action_time = Utc::now();
             let _ = update_context(&db, context.clone());
             handle_action_routine(&mut context);
-            render(
+            rendering::render(
                 &mut eink,
-                &context
+                &mut context
             );
         }
         thread::sleep(time::Duration::from_millis(200));
@@ -68,26 +69,56 @@ fn main() -> Result<()> {
 }
 
 fn handle_touch(x: u16, y: u16, context: &mut Context) -> Result<String> {
-    if context.action == Action::BattleSpell {
-        if y > 220 {
-            Ok("Back".to_string())
-        } else if y > 190 {
-            Ok("skill_4".to_string())
-        } else if y > 160 {
-            Ok("skill_3".to_string())
-        } else if y > 130 {
-            Ok("skill_2".to_string())
-        } else if y > 100 {
-            Ok("skill_1".to_string())
-        } else {
-            Err(anyhow::anyhow!("Action non trouvée"))
+    context.needs_redraw = true;
+    match &context.activity {
+        Activity::ManualCombat(ManualCombatState::SelectingSkill) => {
+            if y > 220 {
+                Ok("Back".to_string())
+            } else if y > 190 {
+                Ok("skill_4".to_string())
+            } else if y > 160 {
+                Ok("skill_3".to_string())
+            } else if y > 130 {
+                Ok("skill_2".to_string())
+            } else if y > 100 {
+                Ok("skill_1".to_string())
+            } else {
+                Err(anyhow::anyhow!("Action non trouvée"))
+            }
         }
-    } else {
-        if x < 60 && y > 200 {
-            Ok("action_1".to_string())
-        } else if x > 60 && y > 200 {
-            Ok("action_2".to_string())
-        } else {
+        Activity::ManualCombat(ManualCombatState::Overview) => {
+            if x < 60 && y > 200 {
+                Ok("action_1".to_string())
+            } else if x > 60 && y > 200 {
+                Ok("action_2".to_string())
+            } else {
+                Err(anyhow::anyhow!("Action non trouvée"))
+            }
+        }
+        Activity::ManualCombat(ManualCombatState::Result { rewards }) => {
+            if y > 220 {
+                Ok("Back".to_string())
+            } else {
+                Err(anyhow::anyhow!("Action non trouvée"))
+            }
+        }
+        Activity::BrowseLocation => {
+            if y > 220 {
+                Ok("Fight".to_string())
+            } else {
+                Err(anyhow::anyhow!("Action non trouvée"))
+            }
+        }
+        Activity::HeroOverview => {
+            if x < 60 && y > 200 {
+                Ok("action_1".to_string())
+            } else if x > 60 && y > 200 {
+                Ok("action_2".to_string())
+            } else {
+                Err(anyhow::anyhow!("Action non trouvée"))
+            }
+        }
+        _ => {
             Err(anyhow::anyhow!("Action non trouvée"))
         }
     }

@@ -1,0 +1,58 @@
+[
+    {
+        "name": "Poring",
+        "id": 1002,
+        "level": 1,
+        "hp": 60,
+        "max_hp": 60,
+        "attack": 13,
+        "defense": 2,
+        "base_exp": 150,
+        "job_exp": 40,
+        "drops": [
+            {
+                "item": "Jellopy",
+                "id": 909,
+                "chance": 70
+            },
+            {
+                "item": "Apple",
+                "id": 512,
+                "chance": 1.5
+            },
+            {
+                "item": "Poring Card",
+                "id": 4001,
+                "chance": 0.2
+            }
+        ]
+    },
+    {
+        "name": "Fabre",
+        "id": 1007,
+        "level": 6,
+        "hp": 72,
+        "max_hp": 72,
+        "attack": 27,
+        "defense": 24,
+        "base_exp": 158,
+        "job_exp": 65,
+        "drops": [
+            {
+                "item": "Fluff",
+                "id": 914,
+                "chance": 70
+            },
+            {
+                "item": "Green Herb",
+                "id": 511,
+                "chance": 30
+            },
+            {
+                "item": "Fabre Card",
+                "id": 4002,
+                "chance": 0.2
+            }
+        ]
+    }
+]

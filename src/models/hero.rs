@@ -13,12 +13,14 @@ pub struct Skill {
 pub struct Personnage {
     pub nom: String,
     pub classe: String,
+    pub base_level: u32,
+    pub base_exp: u32,
+    pub job_level: u32,
+    pub job_exp: u32,
     pub hp: u32,
     pub max_hp: u32,
     pub mp: u32,
     pub max_mp: u32,
-    pub niveau: u8,
-    pub experience: u32,
     pub inventaire: Vec<String>,
     pub skills: Vec<Skill>,
 }

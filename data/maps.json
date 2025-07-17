@@ -1,0 +1,33 @@
+[
+    {
+        "name": "Prontera",
+        "id": 1,
+        "connections": [
+            {
+                "label": "Sortir par le sud",
+                "target_id": 2
+            }
+        ],
+        "enemies": []
+    },
+    {
+        "name": "Prontera South",
+        "id": 2,
+        "connections": [
+            {
+                "label": "Entrer à Prontera",
+                "target_id": 1
+            }
+        ],
+        "enemies": [
+            {
+                "name": "Poring",
+                "id": 1002
+            },
+            {
+                "name": "Fabre",
+                "id": 1007
+            }
+        ]
+    }
+]
