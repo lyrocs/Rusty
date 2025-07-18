@@ -29,8 +29,6 @@ pub fn init_db_data(db: &Database) -> Result<()> {
     let locations = game_data::get_locations()?;
     let first_location = locations.first().unwrap();
     let context: Context = Context {
-        action: Action::Overview,
-        // activity: Activity::HeroOverview,
         activity: Activity::HeroOverview,
         last_action_time: Utc::now(),
         needs_redraw: true,

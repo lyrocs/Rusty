@@ -4,6 +4,7 @@ use crate::models::context::Context;
 use crate::models::context::Activity;
 use crate::models::context::ManualCombatState;
 use crate::models::context::CTA;
+use crate::models::context::Action;
 
 const SCREEN_WIDTH: i32 = 122;
 const HALF_SCREEN_WIDTH: i32 = SCREEN_WIDTH / 2;
@@ -20,7 +21,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
             if context.location.enemies.len() > 0 {
                 cta.push(CTA {
                     label: "Fight".to_string(),
-                    action: "fight_manual".to_string(),
+                    action: Action::FightManual,
                     id: None,
                     x: 0,
                     y: CTA_ZONE_1,
@@ -29,7 +30,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
                 });
                 cta.push(CTA {
                     label: "Menu".to_string(),
-                    action: "menu".to_string(),
+                    action: Action::HeroOverview,
                     id: None,
                     x: HALF_SCREEN_WIDTH,
                     y: CTA_ZONE_1,
@@ -39,7 +40,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
             } else {
                 cta.push(CTA {
                     label: "Menu".to_string(),
-                    action: "menu".to_string(),
+                    action: Action::HeroOverview,
                     id: None,
                     x: 0,
                     y: CTA_ZONE_1,
@@ -50,7 +51,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
             for connection in context.location.connections.iter() {
                 cta.push(CTA {
                     label: connection.label.clone(),
-                    action: "connection".to_string(),
+                    action: Action::Wrap,
                     id: Some(connection.target_id.clone() as i32),
                     x: 0,
                     y: CTA_ZONE_2,
@@ -62,7 +63,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
         Activity::HeroOverview => {
             cta.push(CTA {
                 label: "Map".to_string(),
-                action: "map".to_string(),
+                action: Action::Map,
                 id: None,
                 x: 0,
                 y: CTA_ZONE_1,
@@ -71,7 +72,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
             });
             cta.push(CTA {
                 label: "Inventory".to_string(),
-                action: "inventory".to_string(),
+                action: Action::Inventory,
                 id: None,
                 x: HALF_SCREEN_WIDTH,
                 y: CTA_ZONE_1,
@@ -80,29 +81,31 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
             });
         }
         Activity::ManualCombat(ManualCombatState::Overview) => {
-            cta.push(CTA {
-                label: "Fight".to_string(),
-                action: "attack".to_string(),
-                id: None,
-                x: 0,
-                y: CTA_ZONE_1,
-                width: HALF_SCREEN_WIDTH,
-                height: CTA_HEIGHT,
-            });
-            cta.push(CTA {
-                label: "Spell".to_string(),
-                action: "spell".to_string(),
-                id: None,
-                x: HALF_SCREEN_WIDTH,
-                y: CTA_ZONE_1,
-                width: HALF_SCREEN_WIDTH,
-                height: CTA_HEIGHT,
-            });
+            if context.battle.turn == "hero" {
+                cta.push(CTA {
+                    label: "Fight".to_string(),
+                    action: Action::Attack,
+                    id: None,
+                    x: 0,
+                    y: CTA_ZONE_1,
+                    width: HALF_SCREEN_WIDTH,
+                    height: CTA_HEIGHT,
+                });
+                cta.push(CTA {
+                    label: "Spell".to_string(),
+                    action: Action::SkillList,
+                    id: None,
+                    x: HALF_SCREEN_WIDTH,
+                    y: CTA_ZONE_1,
+                    width: HALF_SCREEN_WIDTH,
+                    height: CTA_HEIGHT,
+                });
+            }
         }
         Activity::ManualCombat(ManualCombatState::SelectingSkill) => {
             cta.push(CTA {
                 label: "Back".to_string(),
-                action: "back_manual_overview".to_string(),
+                action: Action::BackManualFight,
                 id: None,
                 x: 0,
                 y: CTA_ZONE_1,
@@ -113,7 +116,7 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
             for skill in context.hero.skills.iter() {
                 cta.push(CTA {
                     label: skill.name.clone(),
-                    action: "skill".to_string(),
+                    action: Action::Skill,
                     id: Some(skill.id.clone() as i32),
                     x: 0,
                     y: y,
@@ -122,6 +125,17 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
                 });
                 y -= CTA_HEIGHT;
             }
+        }
+        Activity::ManualCombat(ManualCombatState::Result { rewards }) => {
+            cta.push(CTA {
+                label: "Back to map".to_string(),
+                action: Action::BackMap,
+                id: None,
+                x: 0,
+                y: CTA_ZONE_1,
+                width: SCREEN_WIDTH,
+                height: CTA_HEIGHT,
+            });
         }
         _ => {}
     }

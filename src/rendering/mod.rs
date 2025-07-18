@@ -25,7 +25,7 @@ pub fn render(
     if !context.needs_redraw {
         return;
     }
-    //RefreshLut::Quick
+    // RefreshLut::Quick
     // RefreshLut::Quick
     context.needs_redraw = false;
     eink.epd2in13
@@ -59,8 +59,6 @@ pub fn render(
             println!("Activity no found");
         }
     }
-    // primitives::draw_line(&mut eink.display, 0, 0, 122, 250);
-
     eink.epd2in13
     .update_and_display_frame(&mut eink.spi, eink.display.buffer(), &mut eink.delay)
     .expect("display frame new graphics");

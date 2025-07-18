@@ -6,10 +6,17 @@ use crate::models::enemy::Enemy;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Action {
-    Overview,
-    Battle,
-    BattleSpell,
-    BattleAuto,
+    Map,
+    HeroOverview,
+    Inventory,
+    FightManual,
+    FightAuto,
+    BackMap,
+    BackManualFight,
+    Wrap,
+    Attack,
+    SkillList,
+    Skill
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -78,7 +85,7 @@ pub struct EnemyShort {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct CTA {
     pub label: String,
-    pub action: String,
+    pub action: Action,
     pub id: Option<i32>,
     pub x: i32,
     pub y: i32,
@@ -88,7 +95,6 @@ pub struct CTA {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Context {
-    pub action: Action,
     pub activity: Activity,
     pub last_action_time: DateTime<Utc>,
     pub hero: Personnage,

@@ -51,20 +51,7 @@ pub fn draw_fighting(display: &mut Display2in13, context: &Context) {
 }
 
 pub fn draw_selecting_skill(display: &mut Display2in13, context: &Context) {
-    primitives::draw_rectangle(display, 0, 100, 122, 150);
-    // primitives::draw_line(display, 0, 130, 122, 130);
-    // primitives::draw_line(display, 0, 160, 122, 160);
-    // primitives::draw_line(display, 0, 190, 122, 190);
-    // primitives::draw_line(display, 0, 220, 122, 220);
-
     components::draw_ctas(display, context);
-
-    // let mut y = 100;
-    // for skill in context.hero.skills.iter() {
-    //     components::draw_spell(display, skill, y);
-    //     y += 30;
-    // }
-    // primitives::draw_text(display, "Back", 5, 225);
 }
 
 pub fn draw_result(display: &mut Display2in13, context: &Context, rewards: &Vec<LootItem>) {
@@ -75,5 +62,6 @@ pub fn draw_result(display: &mut Display2in13, context: &Context, rewards: &Vec<
         primitives::draw_text(display, &item_format, 5, y);
         y += 30;
     }
+    components::draw_ctas(display, context);
 }
 

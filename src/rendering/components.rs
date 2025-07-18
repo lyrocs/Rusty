@@ -1,6 +1,7 @@
 use crate::rendering::primitives;
 use crate::models::hero::Skill;
 use crate::models::context::Context;
+use crate::models::context::Action;
 use crate::ui::generate_cta;
 use epd_waveshare::{
     color::*,
@@ -113,7 +114,7 @@ pub fn draw_ctas(display: &mut Display2in13, context: &Context) {
     for cta in cta.iter() {
         primitives::draw_rectangle(display, cta.x, cta.y, cta.width, cta.height);
         let text_y = (cta.y + cta.height / 2) - 5;
-        if cta.action == "skill" {
+        if cta.action == Action::Skill {
             let skill = context.hero.skills.iter().find(|skill| skill.id == cta.id.unwrap() as u32).unwrap();
             draw_spell(display, skill, cta.y);
         } else {
