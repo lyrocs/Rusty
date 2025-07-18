@@ -954,6 +954,7 @@ dependencies = [
  "i2cdev",
  "image",
  "linux-embedded-hal",
+ "rand",
  "redb",
  "rppal",
  "serde",

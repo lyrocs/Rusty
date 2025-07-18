@@ -27,6 +27,7 @@ tinybmp = "0.6.0"
 gt911 = "0.3.0"
 
 i2cdev = "0.6.1"
+rand = "0.8.5"
 
 byteorder = "1"
 

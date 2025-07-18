@@ -80,6 +80,13 @@ pub fn draw_hero(display: &mut Display2in13,
         .draw(display)
         .unwrap();
 
+    // inventary
+    let mut y = START_Y + 120;
+    for item in context .hero.inventaire.iter() {
+        let item_name = format!("{} x {}", item.name, item.quantity);
+        primitives::draw_text_center(display, item_name.as_str(), y);
+        y += 15;
+    }  
 
     // FOOTER
     let style = PrimitiveStyleBuilder::new()
@@ -92,6 +99,6 @@ pub fn draw_hero(display: &mut Display2in13,
         .draw(display)
         .unwrap();
     primitives::draw_line(display, 60, 200, 60, 250);
-    primitives::draw_text(display, "Battle", 5, 225);
+    primitives::draw_text(display, "Map", 5, 225);
     primitives::draw_text(display, "Nothing", 65, 225);
 }

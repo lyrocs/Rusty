@@ -3,12 +3,17 @@ use crate::models::context::ManualCombatState;
 use crate::models::context::Activity;
 use crate::models::battle::Battle;
 use crate::models::enemy::Enemy;
+use rand::seq::SliceRandom;
+use rand::Rng;
 use crate::models::context::AutoCombatState;
+use crate::models::context::EnemyShort;
+use crate::models::context::LootItem;
 use serde::Deserialize;
 use std::fs;
 use chrono::prelude::*;
 use anyhow::Result;
 use chrono::Duration;
+use crate::game_data;
 
 pub fn handle_action(action_name: String,
     context: &mut Context) {
@@ -22,9 +27,9 @@ pub fn handle_action(action_name: String,
                     },
                     "action_2" => {
                         // context.action = Action::BattleAuto;
-                        context.activity = Activity::AutoCombat(AutoCombatState::Searching { end_time:  Utc::now() + Duration::seconds(5) });
-                        context.battle = create_battle();
-                        context.enemy = create_enemy().unwrap();
+                        // context.activity = Activity::AutoCombat(AutoCombatState::Searching { end_time:  Utc::now() + Duration::seconds(5) });
+                        // context.battle = create_battle();
+                        // context.enemy = create_enemy().unwrap();
                     },
                     _ => println!("Action non trouvée"),
                 }
@@ -74,10 +79,20 @@ pub fn handle_action(action_name: String,
             },
             Activity::BrowseLocation => {
                 match action_name.as_str() {
+                    "action_1" => {
+                        if context.location.connections.len() > 0 {
+                            let maps = game_data::get_locations().unwrap();
+                            let target_location = maps.iter().find(|map| map.id == context.location.connections[0].target_id).unwrap();
+                            context.location = target_location.clone();
+                        }
+                    },
+                    "Menu" => {
+                        context.activity = Activity::HeroOverview;
+                    },
                     "Fight" => {
                         context.activity = Activity::ManualCombat(ManualCombatState::Overview);
                         context.battle = create_battle();
-                        context.enemy = create_enemy().unwrap();
+                        context.enemy = create_enemy(&context.location.enemies).unwrap();
                     },
                     _ => println!("Action non trouvée"),
                 }
@@ -151,7 +166,35 @@ fn apply_damage(context: &mut Context, damage: u32) {
         context.battle.status = "victory".to_string();
         context.battle.message = "You won !".to_string();
         context.battle.turn = "hero".to_string();
-        context.activity = Activity::ManualCombat(ManualCombatState::Result { rewards: Vec::new() });
+        let mut rewards = Vec::new();
+        for drop in context.enemy.drops.iter() {
+            // get reward based on drop rate
+            let random_number = rand::thread_rng().gen_range(0..1000);
+            if random_number < (drop.chance as u32 * 10) {
+                rewards.push(LootItem {
+                    id: drop.id,
+                    name: drop.item.clone(),
+                    quantity: 1,
+                });
+            }  
+        }
+        // add reward into inventory
+        for reward in rewards.iter() {
+            // check if item already exists in inventory
+            let mut item_exists = false;
+            for item in context.hero.inventaire.iter_mut() {
+                if item.id == reward.id {
+                    item_exists = true;
+                    item.quantity += reward.quantity;
+                    break;
+                }
+            }
+            if !item_exists {
+                context.hero.inventaire.push(reward.clone());
+            }
+        }
+        
+        context.activity = Activity::ManualCombat(ManualCombatState::Result { rewards });
     }
 }
     
@@ -221,11 +264,12 @@ fn create_battle() -> Battle {
 
 
 
-fn create_enemy() -> Result<Enemy> {
-    let json_contenu = fs::read_to_string("data/enemies.json")?;
-    let game_data: Enemy = serde_json::from_str(&json_contenu)?;
+fn create_enemy(enemies: &Vec<EnemyShort>) -> Result<Enemy> {
+    let random_enemy = enemies.choose(&mut rand::thread_rng()).unwrap();
+    let enemies = game_data::get_enemies().unwrap();
+    let enemy = enemies.iter().find(|enemy| enemy.id == random_enemy.id).unwrap();
 
-    Ok(game_data)
+    Ok(enemy.clone())
     // Enemy {
     //     name: "Poring".to_string(),
     //     hp: 50,

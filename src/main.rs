@@ -104,7 +104,19 @@ fn handle_touch(x: u16, y: u16, context: &mut Context) -> Result<String> {
         }
         Activity::BrowseLocation => {
             if y > 220 {
-                Ok("Fight".to_string())
+                if x < 60 {
+                    Ok("Fight".to_string())
+                } else {
+                    Ok("Menu".to_string())
+                }
+            } else if y > 190 {
+                Ok("action_1".to_string())
+            } else if y > 160 {
+                Ok("action_2".to_string())
+            } else if y > 130 {
+                Ok("action_3".to_string())
+            } else if y > 100 {
+                Ok("action_4".to_string())
             } else {
                 Err(anyhow::anyhow!("Action non trouvée"))
             }

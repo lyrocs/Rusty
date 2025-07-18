@@ -50,7 +50,7 @@ pub fn render(
             screens::manual_battle::draw_selecting_skill(&mut eink.display, &context);
         }
         Activity::ManualCombat(ManualCombatState::Result { rewards }) => {
-            screens::manual_battle::draw_result(&mut eink.display, &context);
+            screens::manual_battle::draw_result(&mut eink.display, &context, rewards);
         }
         Activity::BrowseLocation => {
             screens::browse_location::draw_browse_location(&mut eink.display, &context);

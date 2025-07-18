@@ -45,7 +45,7 @@ pub fn init_db_data(db: &Database) -> Result<()> {
             max_hp: 100,
             mp: 100,
             max_mp: 100,
-            inventaire: vec!["Épée".to_string(), "Arc".to_string(), "Herbes".to_string()],
+            inventaire: Vec::new(),
             skills: vec![Skill {
                 name: "Bash".to_string(),
                 icon: "bash.bmp".to_string(),

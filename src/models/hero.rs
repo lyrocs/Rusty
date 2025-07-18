@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::models::context::LootItem;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Skill {
@@ -21,6 +22,6 @@ pub struct Personnage {
     pub max_hp: u32,
     pub mp: u32,
     pub max_mp: u32,
-    pub inventaire: Vec<String>,
+    pub inventaire: Vec<LootItem>,
     pub skills: Vec<Skill>,
 }

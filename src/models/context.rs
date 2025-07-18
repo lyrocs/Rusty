@@ -40,7 +40,8 @@ pub enum ManualCombatState {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct LootItem { 
-    pub item_id: String, 
+    pub id: u32, 
+    pub name: String,
     pub quantity: u32 
 }
 
