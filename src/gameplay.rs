@@ -10,96 +10,135 @@ use crate::models::context::EnemyShort;
 use crate::models::context::LootItem;
 use serde::Deserialize;
 use std::fs;
+use crate::models::context::CTA;
 use chrono::prelude::*;
 use anyhow::Result;
 use chrono::Duration;
 use crate::game_data;
 
-pub fn handle_action(action_name: String,
+pub fn handle_action(cta: CTA,
     context: &mut Context) {
      
-        match &context.activity {
-            Activity::HeroOverview => {
-                match action_name.as_str() {
-                    "action_1" => {
-                        context.activity = Activity::BrowseLocation;
-                        // update_context(db, context.clone()).unwrap();
-                    },
-                    "action_2" => {
-                        // context.action = Action::BattleAuto;
-                        // context.activity = Activity::AutoCombat(AutoCombatState::Searching { end_time:  Utc::now() + Duration::seconds(5) });
-                        // context.battle = create_battle();
-                        // context.enemy = create_enemy().unwrap();
-                    },
-                    _ => println!("Action non trouvée"),
-                }
-                return;
+        match cta.action.as_str() {
+            "map" => {
+                context.activity = Activity::BrowseLocation;
             },
-            Activity::ManualCombat(ManualCombatState::Overview) => {
-                match action_name.as_str() {
-                    "action_1" => {
-                        apply_damage(context, 5);
-                    },
-                    "action_2" => {
-                        context.activity = Activity::ManualCombat(ManualCombatState::SelectingSkill);
-                    },
-                    _ => println!("Action non trouvée"),
-                }
-                return;
+            "inventory" => {
+                context.activity = Activity::HeroOverview;
             },
-            Activity::ManualCombat(ManualCombatState::SelectingSkill) => {
-                match action_name.as_str() {
-                    "Back" => {
-                        context.activity = Activity::ManualCombat(ManualCombatState::Overview);
-                    },
-                    "skill_1" => {
-                        apply_damage(context, 5);
-                    },
-                    "skill_2" => {
-                        apply_damage(context, 10);
-                    },
-                    "skill_3" => {
-                        apply_damage(context, 15);
-                    },
-                    "skill_4" => {
-                        apply_damage(context, 100);
-                    },
-                    _ => println!("Action non trouvée"),
-                }
-                return;
+            "fight_manual" => {
+                context.activity = Activity::ManualCombat(ManualCombatState::Overview);
+                context.battle = create_battle();
+                context.enemy = create_enemy(&context.location.enemies).unwrap();
             },
-            Activity::ManualCombat(ManualCombatState::Result { rewards: _ }) => {
-                match action_name.as_str() {
-                    "Back" => {
-                        context.activity = Activity::BrowseLocation;
-                    },
-                    _ => println!("Action non trouvée"),
-                }
-                return;
+            "fight_auto" => {
+                context.activity = Activity::AutoCombat(AutoCombatState::Searching { end_time:  Utc::now() + Duration::seconds(5) });
             },
-            Activity::BrowseLocation => {
-                match action_name.as_str() {
-                    "action_1" => {
-                        if context.location.connections.len() > 0 {
-                            let maps = game_data::get_locations().unwrap();
-                            let target_location = maps.iter().find(|map| map.id == context.location.connections[0].target_id).unwrap();
-                            context.location = target_location.clone();
-                        }
-                    },
-                    "Menu" => {
-                        context.activity = Activity::HeroOverview;
-                    },
-                    "Fight" => {
-                        context.activity = Activity::ManualCombat(ManualCombatState::Overview);
-                        context.battle = create_battle();
-                        context.enemy = create_enemy(&context.location.enemies).unwrap();
-                    },
-                    _ => println!("Action non trouvée"),
-                }
-                return;
+            "back" => {
+                context.activity = Activity::BrowseLocation;
             },
-            _ => println!("Activity non trouvée"),
+            "back_manual_overview" => {
+                context.activity = Activity::ManualCombat(ManualCombatState::Overview);
+            },
+            "connection" => {
+                let maps = game_data::get_locations().unwrap();
+                let location = context.location.connections.iter().find(|connection| connection.target_id == cta.id.unwrap() as u32).unwrap();
+                context.location = maps.iter().find(|map| map.id == location.target_id).unwrap().clone();
+                context.activity = Activity::BrowseLocation;
+            },
+            "attack" => {
+                apply_damage(context, 5);
+            },
+            "spell" => {
+                context.activity = Activity::ManualCombat(ManualCombatState::SelectingSkill);
+            },
+            "skill" => {
+                apply_damage(context, 5);
+            },
+            _ => println!("Action non trouvée"),
         }
+        // match &context.activity {
+        //     Activity::HeroOverview => {
+        //         match action_name.as_str() {
+        //             "action_1" => {
+        //                 context.activity = Activity::BrowseLocation;
+        //                 // update_context(db, context.clone()).unwrap();
+        //             },
+        //             "action_2" => {
+        //                 // context.action = Action::BattleAuto;
+        //                 // context.activity = Activity::AutoCombat(AutoCombatState::Searching { end_time:  Utc::now() + Duration::seconds(5) });
+        //                 // context.battle = create_battle();
+        //                 // context.enemy = create_enemy().unwrap();
+        //             },
+        //             _ => println!("Action non trouvée"),
+        //         }
+        //         return;
+        //     },
+        //     Activity::ManualCombat(ManualCombatState::Overview) => {
+        //         match action_name.as_str() {
+        //             "action_1" => {
+        //                 apply_damage(context, 5);
+        //             },
+        //             "action_2" => {
+        //                 context.activity = Activity::ManualCombat(ManualCombatState::SelectingSkill);
+        //             },
+        //             _ => println!("Action non trouvée"),
+        //         }
+        //         return;
+        //     },
+        //     Activity::ManualCombat(ManualCombatState::SelectingSkill) => {
+        //         match action_name.as_str() {
+        //             "Back" => {
+        //                 context.activity = Activity::ManualCombat(ManualCombatState::Overview);
+        //             },
+        //             "skill_1" => {
+        //                 apply_damage(context, 5);
+        //             },
+        //             "skill_2" => {
+        //                 apply_damage(context, 10);
+        //             },
+        //             "skill_3" => {
+        //                 apply_damage(context, 15);
+        //             },
+        //             "skill_4" => {
+        //                 apply_damage(context, 100);
+        //             },
+        //             _ => println!("Action non trouvée"),
+        //         }
+        //         return;
+        //     },
+        //     Activity::ManualCombat(ManualCombatState::Result { rewards: _ }) => {
+        //         match action_name.as_str() {
+        //             "Back" => {
+        //                 context.activity = Activity::BrowseLocation;
+        //             },
+        //             _ => println!("Action non trouvée"),
+        //         }
+        //         return;
+        //     },
+        //     Activity::BrowseLocation => {
+        //         match action_name.as_str() {
+        //             "action_1" => {
+        //                 if context.location.connections.len() > 0 {
+        //                     let maps = game_data::get_locations().unwrap();
+        //                     let target_location = maps.iter().find(|map| map.id == context.location.connections[0].target_id).unwrap();
+        //                     context.location = target_location.clone();
+        //                 }
+        //             },
+        //             "Menu" => {
+        //                 context.activity = Activity::HeroOverview;
+        //             },
+        //             "Fight" => {
+        //                 context.activity = Activity::ManualCombat(ManualCombatState::Overview);
+        //                 context.battle = create_battle();
+        //                 context.enemy = create_enemy(&context.location.enemies).unwrap();
+        //             },
+        //             _ => println!("Action non trouvée"),
+        //         }
+        //         return;
+        //     },
+        //     _ => println!("Activity non trouvée"),
+        // }
         
         // if context.action == Action::Overview {
         //     match action_name.as_str() {

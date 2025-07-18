@@ -4,6 +4,7 @@ use crate::models::context::LootItem;
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Skill {
     pub name: String,
+    pub id: u32,
     pub icon: String,
     pub level: u32,
     pub mp_cost: u32,

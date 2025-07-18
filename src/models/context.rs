@@ -76,6 +76,17 @@ pub struct EnemyShort {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct CTA {
+    pub label: String,
+    pub action: String,
+    pub id: Option<i32>,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Context {
     pub action: Action,
     pub activity: Activity,

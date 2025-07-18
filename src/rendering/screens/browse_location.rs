@@ -2,6 +2,7 @@ use crate::models::context::Context;
 use crate::models::context::Action;
 use crate::rendering::components;
 use crate::rendering::primitives;
+use crate::ui::generate_cta;
 use embedded_graphics::{
     image::Image,
     mono_font::MonoTextStyleBuilder,
@@ -18,7 +19,7 @@ use epd_waveshare::{
 };
 
 pub fn draw_browse_location(display: &mut Display2in13, context: &Context) {
-    components::draw_modal(display, "Browse Location", "");
+    components::draw_modal(display, "Browse Location");
     primitives::draw_text(display, "Fight", 15, 230);
     primitives::draw_text(display, "Menu", 75, 230);
     primitives::draw_line(display, 60, 220, 60, 246);
@@ -37,4 +38,6 @@ pub fn draw_browse_location(display: &mut Display2in13, context: &Context) {
         primitives::draw_text_center(display, connection.label.as_str(), y);
         y -= 30;
     }
+
+    components::draw_ctas(display, context);
 }

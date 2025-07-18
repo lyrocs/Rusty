@@ -2,6 +2,7 @@
 use crate::models::context::Context;
 use crate::models::eink::Eink;
 use crate::rendering::primitives;
+use crate::rendering::components;
 use embedded_graphics::{
     image::Image,
     mono_font::MonoTextStyleBuilder,
@@ -88,17 +89,5 @@ pub fn draw_hero(display: &mut Display2in13,
         y += 15;
     }  
 
-    // FOOTER
-    let style = PrimitiveStyleBuilder::new()
-    .stroke_color(Color::Black)
-    .stroke_width(1)
-    .fill_color(Color::White)
-    .build();
-    Rectangle::new(Point::new(0, 200), Size::new(122, 50))
-        .into_styled(style)
-        .draw(display)
-        .unwrap();
-    primitives::draw_line(display, 60, 200, 60, 250);
-    primitives::draw_text(display, "Map", 5, 225);
-    primitives::draw_text(display, "Nothing", 65, 225);
+    components::draw_ctas(display, context);
 }

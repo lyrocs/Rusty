@@ -49,6 +49,21 @@ pub fn draw_text_center(display: &mut Display2in13, text: &str, y: i32) {
     let _ = Text::with_text_style(text, Point::new((122 - text_width) / 2, y), style, text_style).draw(display);
 }
 
+pub fn draw_text_center_by_width(display: &mut Display2in13, text: &str, y: i32, x: i32, width: i32) {
+    let style = MonoTextStyleBuilder::new()
+        .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+        .text_color(Color::Black)
+        .background_color(Color::White)
+        .build();
+
+    let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
+    // text should be beetween x and x + width at y position
+    // x is start x of cta, end of x is x + width
+    let text_width = (text.len() * 6) as i32;
+    let start_x = x + (width - text_width) / 2;
+let _ = Text::with_text_style(text, Point::new(start_x, y), style, text_style).draw(display);
+}
+
 pub fn draw_bold_text(display: &mut Display2in13, text: &str, x: i32, y: i32) {
     let style = MonoTextStyleBuilder::new()
         .font(&embedded_graphics::mono_font::ascii::FONT_6X13_BOLD)

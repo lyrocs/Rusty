@@ -48,6 +48,7 @@ pub fn init_db_data(db: &Database) -> Result<()> {
             inventaire: Vec::new(),
             skills: vec![Skill {
                 name: "Bash".to_string(),
+                id: 5,
                 icon: "bash.bmp".to_string(),
                 level: 1,
                 mp_cost: 10,

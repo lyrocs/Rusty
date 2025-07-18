@@ -1,5 +1,7 @@
 use crate::rendering::primitives;
 use crate::models::hero::Skill;
+use crate::models::context::Context;
+use crate::ui::generate_cta;
 use epd_waveshare::{
     color::*,
     epd2in13_v2::{Display2in13},
@@ -101,9 +103,21 @@ pub fn draw_spell(display: &mut Display2in13, skill: &Skill, start_y: i32) {
     primitives::draw_text(display, mp_text.as_str(), mp_x, start_y + 3 + 13 + 2);
 }
 
-pub fn draw_modal(display: &mut Display2in13, title: &str, footer: &str) {
-    primitives::draw_rectangle(display, 3, 12, 116, 235);
+pub fn draw_modal(display: &mut Display2in13, title: &str) {
+    primitives::draw_rectangle(display, 0, 12, 122, 235);
     primitives::draw_text_center(display, title, 8);
-    primitives::draw_line(display, 3, 220, 119, 220);
-    primitives::draw_text_center(display, footer, 230);
+}
+
+pub fn draw_ctas(display: &mut Display2in13, context: &Context) {
+    let cta = generate_cta(&context);
+    for cta in cta.iter() {
+        primitives::draw_rectangle(display, cta.x, cta.y, cta.width, cta.height);
+        let text_y = (cta.y + cta.height / 2) - 5;
+        if cta.action == "skill" {
+            let skill = context.hero.skills.iter().find(|skill| skill.id == cta.id.unwrap() as u32).unwrap();
+            draw_spell(display, skill, cta.y);
+        } else {
+            primitives::draw_text_center_by_width(display, cta.label.as_str(), text_y, cta.x, cta.width);
+        }
+    }
 }
