@@ -60,6 +60,8 @@ pub enum AutoCombatState {
     Fighting,
     /// Affiche les récompenses du dernier combat avant de relancer la recherche.
     Result { rewards: Vec<LootItem> },
+    /// Le joueur est mort.
+    Dead { end_time: DateTime<Utc> },
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]

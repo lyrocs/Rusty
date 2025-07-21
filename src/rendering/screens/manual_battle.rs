@@ -33,7 +33,8 @@ pub fn draw_fighting(display: &mut Display2in13, context: &Context) {
         5,
         5,
     );
-    primitives::draw_image(display, "poring", 120 - 40, 0);
+    let enemy_name = context.enemy.name.to_lowercase();
+    primitives::draw_image(display, &enemy_name, 120 - 40, 0);
     primitives::draw_text(display, &context.battle.message, 5, 75);
     primitives::draw_image(display, "back", 0, 100);
     components::draw_character_info(

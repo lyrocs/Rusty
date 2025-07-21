@@ -55,6 +55,8 @@ echo " Starting new process in the background..."
 # `nohup` rend le processus insensible à la fermeture de la session SSH.
 # `&` le lance en arrière-plan.
 # `> app.log 2>&1` redirige la sortie vers un fichier de log au lieu du terminal.
-ssh -f -n ${PI_USER}@${PI_HOST} "cd ${REMOTE_DEST_PATH} && sudo rm mon_rpg.redb && nohup sudo ./${REMOTE_BINARY_NAME} > app.log 2>&1 &"
+# && sudo rm mon_rpg.redb
+# ssh -f -n ${PI_USER}@${PI_HOST} "cd ${REMOTE_DEST_PATH} && sudo rm mon_rpg.redb && nohup sudo ./${REMOTE_BINARY_NAME} > app.log 2>&1 &"
+ssh -f -n ${PI_USER}@${PI_HOST} "cd ${REMOTE_DEST_PATH}  && nohup sudo ./${REMOTE_BINARY_NAME} > app.log 2>&1 &"
 echo "-------------------------------------"
 echo " DEPLOYMENT COMPLETE! "

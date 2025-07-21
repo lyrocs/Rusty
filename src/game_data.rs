@@ -1,6 +1,7 @@
 use std::fs;
 use anyhow::Result;
 use serde::Deserialize;
+use crate::models::hero::Exp;
 use crate::models::context::Location;
 use crate::models::enemy::Enemy;
 
@@ -17,4 +18,17 @@ pub fn get_enemies() -> Result<Vec<Enemy>> {
 
     Ok(game_data)
 }
-    
+
+pub fn get_base_exp() -> Result<Vec<Exp>> {
+    let json_contenu = fs::read_to_string("data/base_exp.json")?;
+    let game_data: Vec<Exp> = serde_json::from_str(&json_contenu)?;
+
+    Ok(game_data)
+}
+
+pub fn get_novice_exp() -> Result<Vec<Exp>> {
+    let json_contenu = fs::read_to_string("data/novice_exp.json")?;
+    let game_data: Vec<Exp> = serde_json::from_str(&json_contenu)?;
+
+    Ok(game_data)
+}

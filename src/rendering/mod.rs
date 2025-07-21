@@ -55,6 +55,9 @@ pub fn render(
         Activity::BrowseLocation => {
             screens::browse_location::draw_browse_location(&mut eink.display, &context);
         }
+        Activity::AutoCombat(AutoCombatState::Dead { end_time }) => {
+            screens::auto_battle::draw_dead(&mut eink.display, &context);
+        }
         _ => {
             println!("Activity no found");
         }

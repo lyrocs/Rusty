@@ -81,6 +81,10 @@ pub fn draw_hero(display: &mut Display2in13,
         .draw(display)
         .unwrap();
 
+    let level = format!("{} / {}", context.hero.base_level, context.hero.job_level);
+    primitives::draw_text(display, level.as_str(), START_X, START_Y + 40);
+    
+
     // inventary
     let mut y = START_Y + 120;
     for item in context .hero.inventaire.iter() {

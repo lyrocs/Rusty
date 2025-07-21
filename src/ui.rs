@@ -18,35 +18,48 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
     let mut cta = Vec::new();
     match &context.activity {
         Activity::BrowseLocation => {
+            let mut y = CTA_ZONE_1;
             if context.location.enemies.len() > 0 {
                 cta.push(CTA {
                     label: "Fight".to_string(),
                     action: Action::FightManual,
                     id: None,
                     x: 0,
-                    y: CTA_ZONE_1,
+                    y: y,
                     width: HALF_SCREEN_WIDTH,
                     height: CTA_HEIGHT,
                 });
                 cta.push(CTA {
-                    label: "Menu".to_string(),
-                    action: Action::HeroOverview,
+                    label: "Auto".to_string(),
+                    action: Action::FightAuto,
                     id: None,
                     x: HALF_SCREEN_WIDTH,
-                    y: CTA_ZONE_1,
+                    y: y,
                     width: HALF_SCREEN_WIDTH,
                     height: CTA_HEIGHT,
                 });
+                y -= CTA_HEIGHT;
+                cta.push(CTA {
+                    label: "Menu".to_string(),
+                    action: Action::HeroOverview,
+                    id: None,
+                    x: 0,
+                    y: y,
+                    width: SCREEN_WIDTH,
+                    height: CTA_HEIGHT,
+                });
+                y -= CTA_HEIGHT;
             } else {
                 cta.push(CTA {
                     label: "Menu".to_string(),
                     action: Action::HeroOverview,
                     id: None,
                     x: 0,
-                    y: CTA_ZONE_1,
+                    y: y,
                     width: SCREEN_WIDTH,
                     height: CTA_HEIGHT,
                 });
+                y -= CTA_HEIGHT;
             }
             for connection in context.location.connections.iter() {
                 cta.push(CTA {
@@ -54,10 +67,11 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
                     action: Action::Wrap,
                     id: Some(connection.target_id.clone() as i32),
                     x: 0,
-                    y: CTA_ZONE_2,
+                    y: y,
                     width: SCREEN_WIDTH,
                     height: CTA_HEIGHT,
                 });
+                y -= CTA_HEIGHT;
             }
         }
         Activity::HeroOverview => {
@@ -129,6 +143,17 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
         Activity::ManualCombat(ManualCombatState::Result { rewards }) => {
             cta.push(CTA {
                 label: "Back to map".to_string(),
+                action: Action::BackMap,
+                id: None,
+                x: 0,
+                y: CTA_ZONE_1,
+                width: SCREEN_WIDTH,
+                height: CTA_HEIGHT,
+            });
+        }
+        Activity::AutoCombat(_) => {
+            cta.push(CTA {
+                label: "Stop".to_string(),
                 action: Action::BackMap,
                 id: None,
                 x: 0,

@@ -18,7 +18,8 @@ use epd_waveshare::{
 };
 
 pub fn draw_searching(display: &mut Display2in13, context: &Context) {
-    primitives::draw_text(display, "Searching for enemy", 65, 5);
+    primitives::draw_text_center(display, "Searching for enemy", 100);
+    components::draw_ctas(display, context);
 }
 
 pub fn draw_fighting(display: &mut Display2in13, context: &Context) {
@@ -32,7 +33,8 @@ pub fn draw_fighting(display: &mut Display2in13, context: &Context) {
         5,
         5,
     );
-    primitives::draw_image(display, "poring", 120 - 40, 0);
+    let enemy_name = context.enemy.name.to_lowercase();
+    primitives::draw_image(display, &enemy_name, 120 - 40, 0);
     primitives::draw_text(display, &context.battle.message, 5, 75);
     primitives::draw_image(display, "back", 0, 100);
     components::draw_character_info(
@@ -45,4 +47,11 @@ pub fn draw_fighting(display: &mut Display2in13, context: &Context) {
         65,
         100,
     );
+    components::draw_ctas(display, context);
+}
+
+pub fn draw_dead(display: &mut Display2in13, context: &Context) {
+    primitives::draw_text_center(display, "You're dead", 100);
+    primitives::draw_text_center(display, "You will revive in 1 minute", 120);
+    components::draw_ctas(display, context);
 }
