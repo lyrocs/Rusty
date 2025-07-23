@@ -25,7 +25,17 @@ mod ui;
 mod combat;
 
 
-fn main() -> Result<()> {
+use axum::{
+    routing::get, Router,
+};
+use std::net::SocketAddr;
+use tower_http::{
+    services::{ServeDir, ServeFile},
+    trace::TraceLayer,
+};
+
+#[tokio::main]
+async fn main() -> Result<()> {
     let db = Database::create("mon_rpg.redb")?;
     init_db(&db)?;
     let mut context = get_context(&db)?;
@@ -43,31 +53,46 @@ fn main() -> Result<()> {
         y: [0; 5],
         s: [0; 5],
     };
-    loop {
-        let (x, y) = gt_scan(&mut eink.i2c, &mut gt_dev, &mut gt_old)?;
-        if x != 0 && y != 0 {
-            let cta = handle_touch(122 - x as i32, 250 - y as i32, &mut context);
-            if cta.is_ok() {
-                handle_action(cta.unwrap(), &mut context);
+
+    tokio::task::spawn_blocking(move || {
+        loop {
+            let (x, y) = gt_scan(&mut eink.i2c, &mut gt_dev, &mut gt_old).unwrap();
+            if x != 0 && y != 0 {
+                let cta = handle_touch(122 - x as i32, 250 - y as i32, &mut context);
+                if cta.is_ok() {
+                    handle_action(cta.unwrap(), &mut context);
+                    rendering::render(
+                        &mut eink,
+                        &mut context,
+                    );
+                }
+            }
+            let two_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(2);
+            if two_seconds_from_now > context.last_action_time {
+                context.last_action_time = Utc::now();
+                let _ = update_context(&db, context.clone());
+                handle_action_routine(&mut context);
                 rendering::render(
                     &mut eink,
-                    &mut context,
+                    &mut context
                 );
             }
+            thread::sleep(time::Duration::from_millis(200));
         }
-        let two_seconds_from_now: DateTime<Utc> = Utc::now() - Duration::seconds(2);
-        if two_seconds_from_now > context.last_action_time {
-            context.last_action_time = Utc::now();
-            let _ = update_context(&db, context.clone());
-            handle_action_routine(&mut context);
-            rendering::render(
-                &mut eink,
-                &mut context
-            );
-        }
-        thread::sleep(time::Duration::from_millis(200));
-    }
+    });
+
+    let serve_dir = ServeDir::new("assets").not_found_service(ServeFile::new("assets/index.html"));
+
+    let app = Router::new()
+        .route("/foo", get(|| async { "Hi from /foo" }))
+        .fallback_service(serve_dir);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app)
+        .await
+        .unwrap();
+
+
+    Ok(())
 }
-
-
-
