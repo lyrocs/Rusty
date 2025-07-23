@@ -19,6 +19,7 @@ pub enum Action {
     SkillList,
     Skill,
     Equip,
+    EquipmentPage,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -30,9 +31,14 @@ pub enum Activity {
     // automatic fight with multiple page (search enemy, battle overview, battle resume, global resume)
     AutoCombat(AutoCombatState),
     // show hero stats
-    HeroOverview,
-    // show inventory
-    Inventory
+    HeroOverview(HeroOverviewState),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum HeroOverviewState {
+    Overview,
+    Inventory,
+    Equipment,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]

@@ -131,8 +131,9 @@ pub fn draw_ctas(display: &mut Display2in13, context: &Context) {
                     _ => None,
                 }
             });
-            let item = item.unwrap();
-            primitives::draw_image(display, &item.icon, 5, cta.y+2);
+            if let Some(equipment) = item {
+                primitives::draw_image(display, &equipment.icon, 5, cta.y + 2);
+            }
             primitives::draw_text_center_by_width(display, cta.label.as_str(), text_y, cta.x+15, cta.width);
         } else {
             primitives::draw_text_center_by_width(display, cta.label.as_str(), text_y, cta.x, cta.width);

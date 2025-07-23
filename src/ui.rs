@@ -5,6 +5,7 @@ use crate::models::context::Activity;
 use crate::models::context::ManualCombatState;
 use crate::models::context::CTA;
 use crate::models::context::Action;
+use crate::models::context::HeroOverviewState;
 use crate::models::hero::InventoryItem;
 
 const SCREEN_WIDTH: i32 = 122;
@@ -75,27 +76,36 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
                 y -= CTA_HEIGHT;
             }
         }
-        Activity::HeroOverview => {
+        Activity::HeroOverview(HeroOverviewState::Overview) => {
             cta.push(CTA {
                 label: "Map".to_string(),
                 action: Action::Map,
                 id: None,
                 x: 0,
                 y: CTA_ZONE_1,
-                width: HALF_SCREEN_WIDTH,
+                width: SCREEN_WIDTH,
                 height: CTA_HEIGHT,
             });
             cta.push(CTA {
                 label: "Inventory".to_string(),
                 action: Action::Inventory,
                 id: None,
-                x: HALF_SCREEN_WIDTH,
-                y: CTA_ZONE_1,
-                width: HALF_SCREEN_WIDTH,
+                x: 0,
+                y: CTA_ZONE_2,
+                width: SCREEN_WIDTH,
+                height: CTA_HEIGHT,
+            });
+            cta.push(CTA {
+                label: "Equipment".to_string(),
+                action: Action::EquipmentPage,
+                id: None,
+                x: 0,
+                y: CTA_ZONE_3,
+                width: SCREEN_WIDTH,
                 height: CTA_HEIGHT,
             });
         }
-        Activity::Inventory => {
+        Activity::HeroOverview(HeroOverviewState::Equipment) => {
             cta.push(CTA {
                 label: "Back".to_string(),
                 action: Action::HeroOverview,
@@ -123,6 +133,18 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
                     _ => {}
                 }
             }
+        }
+        Activity::HeroOverview(HeroOverviewState::Inventory) => {
+            cta.push(CTA {
+                label: "Back".to_string(),
+                action: Action::HeroOverview,
+                id: None,
+                x: 0,
+                y: CTA_ZONE_1,
+                width: SCREEN_WIDTH,
+                height: CTA_HEIGHT,
+            });
+            
         }
         Activity::ManualCombat(ManualCombatState::Overview) => {
             if context.battle.turn == "hero" {

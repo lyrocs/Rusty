@@ -5,6 +5,7 @@ use crate::models::hero::InventoryItem;
 use crate::models::context::AutoCombatState;
 use crate::models::context::Action;
 use crate::models::context::CTA;
+use crate::models::context::HeroOverviewState;
 use chrono::prelude::*;
 use anyhow::Result;
 use chrono::Duration;
@@ -21,7 +22,7 @@ pub fn handle_action(cta: CTA,
                 context.activity = Activity::BrowseLocation;
             },
             Action::HeroOverview => {
-                context.activity = Activity::HeroOverview;
+                context.activity = Activity::HeroOverview(HeroOverviewState::Overview);
             },
             Action::FightManual => {
                 context.activity = Activity::ManualCombat(ManualCombatState::Overview);
@@ -53,7 +54,10 @@ pub fn handle_action(cta: CTA,
                 combat::apply_damage(context, 1.2);
             },
             Action::Inventory => {
-                context.activity = Activity::Inventory;
+                context.activity = Activity::HeroOverview(HeroOverviewState::Inventory);
+            },
+            Action::EquipmentPage => {
+                context.activity = Activity::HeroOverview(HeroOverviewState::Equipment);
             },
             Action::Equip => {
                 let item = context.hero.inventaire.iter().find_map(|item| {

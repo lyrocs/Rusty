@@ -84,30 +84,40 @@ pub fn draw_hero(display: &mut Display2in13,
 
     let level = format!("{} / {}", context.hero.base_level, context.hero.job_level);
     primitives::draw_text(display, level.as_str(), START_X, START_Y + 40);
-    
-    if context.hero.weapon.is_some() {
-        let weapon = context.hero.weapon.as_ref().unwrap();
-        primitives::draw_image(display, &weapon.icon, START_X, START_Y + 45);
-        primitives::draw_text(display, &weapon.name, START_X, START_Y + 45);
-    }
 
-    // inventary
-    let mut y = START_Y + 120;
-    for item in context.hero.inventaire.iter() {
-        match item {
-            InventoryItem::Stackable(item) => {
-                let item_name = format!("{} x {}", item.name, item.quantity);
-                primitives::draw_text_center(display, item_name.as_str(), y);
-                y += 15;
-            },
-            InventoryItem::Equipment(item) => {
-                let item_name = format!("{}", item.name);
-                primitives::draw_text_center(display, item_name.as_str(), y);
-                y += 15;
-            },
-            _ => {}
-        }
-    }  
+
+   
 
     components::draw_ctas(display, context);
+}
+
+pub fn draw_inventory(display: &mut Display2in13, context: &Context) {
+    components::draw_ctas(display, context);
+
+     // inventary
+     let mut y = 50;
+     for item in context.hero.inventaire.iter() {
+         match item {
+             InventoryItem::Stackable(item) => {
+                 let item_name = format!("{} x {}", item.name, item.quantity);
+                 primitives::draw_text_center(display, item_name.as_str(), y);
+                 y += 15;
+             },
+             InventoryItem::Equipment(item) => {
+                 primitives::draw_text_center(display, item.name.as_str(), y);
+                 y += 15;
+             }, 
+             _ => {}
+         }
+     }  
+}
+
+pub fn draw_equipment(display: &mut Display2in13, context: &Context) {
+    components::draw_ctas(display, context);
+
+    // if context.hero.weapon.is_some() {
+    //     let weapon = context.hero.weapon.as_ref().unwrap();
+    //     primitives::draw_image(display, &weapon.icon, START_X, START_Y + 45);
+    //     primitives::draw_text(display, &weapon.name, START_X, START_Y + 45);
+    // }
 }

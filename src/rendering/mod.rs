@@ -1,7 +1,7 @@
 mod primitives;
 mod screens;
 mod components;
-use crate::models::context::{AutoCombatState, ManualCombatState, Context};
+use crate::models::context::{AutoCombatState, ManualCombatState, Context, HeroOverviewState};
 use crate::models::eink::Eink;
 use crate::models::context::Activity;
 use epd_waveshare::{
@@ -34,7 +34,7 @@ pub fn render(
     eink.display.clear(Color::White).ok();
 
     match &context.activity {
-        Activity::HeroOverview => {
+        Activity::HeroOverview(HeroOverviewState::Overview) => {
             screens::hero::draw_hero(&mut eink.display, &context);
         }
         Activity::AutoCombat(AutoCombatState::Searching { end_time }) => {
@@ -58,8 +58,11 @@ pub fn render(
         Activity::AutoCombat(AutoCombatState::Dead { end_time }) => {
             screens::auto_battle::draw_dead(&mut eink.display, &context);
         }
-        Activity::Inventory => {
-            screens::inventory::draw_inventory(&mut eink.display, &context);
+        Activity::HeroOverview(HeroOverviewState::Inventory) => {
+            screens::hero::draw_inventory(&mut eink.display, &context);
+        }
+        Activity::HeroOverview(HeroOverviewState::Equipment) => {
+            screens::hero::draw_equipment(&mut eink.display, &context);
         }
         _ => {
             println!("Activity no found");
