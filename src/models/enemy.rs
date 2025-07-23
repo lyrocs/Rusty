@@ -2,9 +2,20 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct DropItem {
-    pub item: String,
-    pub id: u32,
     pub chance: f32,
+    pub drop: Loot,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum Loot {
+    /// Un objet de base avec une quantité (ex: 3 Jellopy).
+    Item { id: u32, name: String, quantity: u32 },
+    
+    /// Une pièce d'équipement (ex: une Dague).
+    Equipment { id: u32, name: String },
+    
+    /// De la monnaie du jeu.
+    Zeny { amount: u32 },
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]

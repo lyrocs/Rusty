@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::hero::Personnage;
 use crate::models::battle::Battle;
 use crate::models::enemy::Enemy;
+use crate::models::enemy::Loot;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Action {
@@ -16,7 +17,8 @@ pub enum Action {
     Wrap,
     Attack,
     SkillList,
-    Skill
+    Skill,
+    Equip,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -42,15 +44,10 @@ pub enum ManualCombatState {
     /// Le joueur est en train de choisir un objet.
     SelectingItem,
     /// Affiche le résumé du combat qui vient de se terminer.
-    Result { rewards: Vec<LootItem> },
+    Result { rewards: Vec<Loot> },
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct LootItem { 
-    pub id: u32, 
-    pub name: String,
-    pub quantity: u32 
-}
+
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum AutoCombatState {
@@ -59,7 +56,7 @@ pub enum AutoCombatState {
     /// Le combat automatique se déroule.
     Fighting,
     /// Affiche les récompenses du dernier combat avant de relancer la recherche.
-    Result { rewards: Vec<LootItem> },
+    Result { rewards: Vec<Loot> },
     /// Le joueur est mort.
     Dead { end_time: DateTime<Utc> },
 }

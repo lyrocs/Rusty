@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::models::context::LootItem;
+use crate::models::item::LootItem;
+use crate::models::item::Equipment;
 
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -18,6 +19,16 @@ pub struct Skill {
     pub description: String,
 }
 
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum InventoryItem {
+    // Pour les objets uniques comme les armes, armures...
+    Equipment(Equipment),
+
+    // Pour les objets qui s'empilent (potions, matériaux de craft...)
+    Stackable(LootItem),
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Personnage {
     pub nom: String,
@@ -32,6 +43,9 @@ pub struct Personnage {
     pub max_hp: u32,
     pub mp: u32,
     pub max_mp: u32,
-    pub inventaire: Vec<LootItem>,
+    pub inventaire: Vec<InventoryItem>,
     pub skills: Vec<Skill>,
+    pub weapon: Option<Equipment>,
+    pub armor: Option<Equipment>,
+    pub accessory: Option<Equipment>,
 }

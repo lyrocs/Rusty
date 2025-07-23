@@ -1,3 +1,4 @@
+use crate::models::hero::InventoryItem;
 use crate::rendering::primitives;
 use crate::models::hero::Skill;
 use crate::models::context::Context;
@@ -117,6 +118,22 @@ pub fn draw_ctas(display: &mut Display2in13, context: &Context) {
         if cta.action == Action::Skill {
             let skill = context.hero.skills.iter().find(|skill| skill.id == cta.id.unwrap() as u32).unwrap();
             draw_spell(display, skill, cta.y);
+        } else if cta.action == Action::Equip {
+            let item = context.hero.inventaire.iter().find_map(|item| {
+                match item {
+                    InventoryItem::Equipment(item) => {
+                        if item.id == cta.id.unwrap() as u32 {
+                            Some(item)  
+                        } else {
+                            None
+                        }
+                    },
+                    _ => None,
+                }
+            });
+            let item = item.unwrap();
+            primitives::draw_image(display, &item.icon, 5, cta.y+2);
+            primitives::draw_text_center_by_width(display, cta.label.as_str(), text_y, cta.x+15, cta.width);
         } else {
             primitives::draw_text_center_by_width(display, cta.label.as_str(), text_y, cta.x, cta.width);
         }

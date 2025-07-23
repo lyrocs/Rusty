@@ -54,6 +54,9 @@ pub fn init_db_data(db: &Database) -> Result<()> {
                 mp_cost: 10,
                 description: "ATK 110%".to_string(),
             }],
+            weapon: None,
+            armor: None,
+            accessory: None,
         },
         battle: Battle {
             turn: "".to_string(),

@@ -5,6 +5,7 @@ use crate::models::context::Activity;
 use crate::models::context::ManualCombatState;
 use crate::models::context::CTA;
 use crate::models::context::Action;
+use crate::models::hero::InventoryItem;
 
 const SCREEN_WIDTH: i32 = 122;
 const HALF_SCREEN_WIDTH: i32 = SCREEN_WIDTH / 2;
@@ -93,6 +94,35 @@ pub fn generate_cta(context: &Context) -> Vec<CTA> {
                 width: HALF_SCREEN_WIDTH,
                 height: CTA_HEIGHT,
             });
+        }
+        Activity::Inventory => {
+            cta.push(CTA {
+                label: "Back".to_string(),
+                action: Action::HeroOverview,
+                id: None,
+                x: 0,
+                y: CTA_ZONE_1,
+                width: SCREEN_WIDTH,
+                height: CTA_HEIGHT,
+            });
+            let mut y = CTA_ZONE_2;
+            for item in context.hero.inventaire.iter() {
+                match item {
+                    InventoryItem::Equipment(item) => {
+                        cta.push(CTA {
+                            label: item.name.clone(),
+                            action: Action::Equip,
+                            id: Some(item.id.clone() as i32),
+                            x: 0,
+                            y: y,
+                            width: SCREEN_WIDTH,
+                            height: CTA_HEIGHT,
+                        });
+                        y -= CTA_HEIGHT;
+                    },
+                    _ => {}
+                }
+            }
         }
         Activity::ManualCombat(ManualCombatState::Overview) => {
             if context.battle.turn == "hero" {

@@ -58,6 +58,9 @@ pub fn render(
         Activity::AutoCombat(AutoCombatState::Dead { end_time }) => {
             screens::auto_battle::draw_dead(&mut eink.display, &context);
         }
+        Activity::Inventory => {
+            screens::inventory::draw_inventory(&mut eink.display, &context);
+        }
         _ => {
             println!("Activity no found");
         }

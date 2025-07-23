@@ -1,6 +1,5 @@
 use crate::models::context::Context;
-use crate::models::context::Action;
-use crate::models::context::LootItem;
+use crate::models::enemy::Loot;
 use crate::rendering::components;
 use crate::rendering::primitives;
 use embedded_graphics::{
@@ -55,12 +54,21 @@ pub fn draw_selecting_skill(display: &mut Display2in13, context: &Context) {
     components::draw_ctas(display, context);
 }
 
-pub fn draw_result(display: &mut Display2in13, context: &Context, rewards: &Vec<LootItem>) {
+pub fn draw_result(display: &mut Display2in13, context: &Context, rewards: &Vec<Loot>) {
     components::draw_modal(display, "Fight result");
     let mut y = 75;
     for reward in rewards.iter() {
-        let item_format = format!("{} x {}", reward.name, reward.quantity);
-        primitives::draw_text(display, &item_format, 5, y);
+        match reward {
+            Loot::Item { id, name, quantity } => {
+                let item_format = format!("{} x {}", name, quantity);
+                primitives::draw_text(display, &item_format, 5, y);
+            },
+            Loot::Equipment { id, name } => {
+                let item_format = format!("{}", name);
+                primitives::draw_text(display, &item_format, 5, y);
+            },
+            _ => {}
+        }
         y += 30;
     }
     components::draw_ctas(display, context);

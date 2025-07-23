@@ -3,11 +3,13 @@ use crate::models::context::ManualCombatState;
 use crate::models::context::Activity;
 use crate::models::battle::Battle;
 use crate::models::enemy::Enemy;
+use crate::models::enemy::Loot;
+use crate::models::hero::InventoryItem;
+use crate::models::item::LootItem;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use crate::models::context::AutoCombatState;
 use crate::models::context::EnemyShort;
-use crate::models::context::LootItem;
 use crate::models::context::Action;
 use crate::models::context::CTA;
 use chrono::prelude::*;
@@ -56,6 +58,29 @@ pub fn handle_action(cta: CTA,
             Action::Skill => {
                 apply_damage(context, 1.2);
             },
+            Action::Inventory => {
+                context.activity = Activity::Inventory;
+            },
+            Action::Equip => {
+                let item = context.hero.inventaire.iter().find_map(|item| {
+                    match item {
+                        InventoryItem::Equipment(item) => {
+                            if item.id == cta.id.unwrap() as u32 {
+                                Some(item)  
+                            } else {
+                                None
+                            }
+                        },
+                        _ => None,
+                    }
+                });
+                let item = item.unwrap();
+                if context.hero.weapon.is_some() {
+                    context.hero.weapon = None;
+                } else {
+                    context.hero.weapon = Some(item.clone());
+                }
+            },
             _ => println!("Action non trouvée"),
         }
 }
@@ -73,7 +98,10 @@ pub fn handle_touch(x: i32, y: i32, context: &mut Context) -> Result<CTA> {
 
 
 fn apply_damage(context: &mut Context, modifier: f32) {
-    let (hero_atk, hero_def) = calculate_hero_stats(context);
+    let (mut hero_atk, hero_def) = calculate_hero_stats(context);
+    if context.hero.weapon.is_some() {
+        hero_atk += context.hero.weapon.as_ref().unwrap().attack as f32;
+    }
     let damage = calculate_damage(context.hero.base_level as i32, hero_atk as i32, context.enemy.level as i32, context.enemy.defense as i32);
     let damage = (damage as f32 * modifier).round() as u32;
     if context.enemy.hp > damage as u32 {
@@ -125,32 +153,48 @@ pub fn handle_victory(
         // get reward based on drop rate
         let random_number = rand::thread_rng().gen_range(0..1000);
         if random_number < (drop.chance as u32 * 10) {
-            rewards.push(LootItem {
-                id: drop.id,
-                name: drop.item.clone(),
-                quantity: 1,
-            });
-        }  
-    }
-    for reward in rewards.iter() {
-        // check if item already exists in inventory
-        let mut item_exists = false;
-        for item in context.hero.inventaire.iter_mut() {
-            if item.id == reward.id {
-                item_exists = true;
-                item.quantity += reward.quantity;
-                break;
+            rewards.push(drop.drop.clone());
+            match &drop.drop {
+                Loot::Item { id, name, quantity } => {
+                    let mut item_exists = false;
+                    for item in context.hero.inventaire.iter_mut() {
+                        match item {
+                            InventoryItem::Stackable(item) => {
+                                if &item.id == id {
+                                    item_exists = true;
+                                    item.quantity += quantity;
+                                    break;
+                                }
+                            },
+                            _ => {}
+                        }
+                    }
+                    if !item_exists {
+                        context.hero.inventaire.push(InventoryItem::Stackable ( 
+                            LootItem { id: *id, name: name.clone(), quantity: *quantity }
+                        ));
+                    }
+                },
+                Loot::Equipment { id, name } => {
+                        let equipements = game_data::get_equipements().unwrap();
+                        let equipment = equipements.iter().find(|equipment| equipment.id == *id).unwrap();
+                        context.hero.inventaire.push(InventoryItem::Equipment ( 
+                            equipment.clone()
+                        ));
+                },
+                _ => {}
             }
-        }
-        if !item_exists {
-            context.hero.inventaire.push(reward.clone());
-        }
+        }  
     }
     if matches!(context.activity, Activity::ManualCombat(_)) { 
         context.activity = Activity::ManualCombat(ManualCombatState::Result { rewards });
     } else if matches!(context.activity, Activity::AutoCombat(_)) { 
         context.activity = Activity::AutoCombat(AutoCombatState::Searching { end_time:  Utc::now() + Duration::seconds(5) });
     }
+
+    // Heal Hero
+    context.hero.hp = context.hero.max_hp;
+    context.hero.mp = context.hero.max_mp;
 
     context.hero.base_exp += context.enemy.base_exp;
     if context.hero.base_exp >= context.hero.base_exp_next {
