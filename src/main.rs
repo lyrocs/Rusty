@@ -22,6 +22,7 @@ use chrono::prelude::*;
 use redb::Database;
 mod rendering;
 mod ui;
+mod combat;
 
 
 fn main() -> Result<()> {
