@@ -57,6 +57,36 @@ use embedded_hal_bus::util::AtomicCell;
 
 use ft3x68_rs::{DriverError, Ft3x68Driver, PowerMode, ResetInterface, FT3168_DEVICE_ADDRESS};
 
+// Type aliases pour simplifier
+static I2C_CELL: StaticCell<AtomicCell<RefCellDevice<'static, I2c<'static, Blocking>>>> = StaticCell::new();
+
+type I2cBus = RefCellDevice<'static, I2c<'static, Blocking>>;
+type I2cDevice = i2c::AtomicDevice<'static, I2cBus>;
+type TouchDriver = Ft3x68Driver<I2cDevice, Delay, ResetTouchDriver<I2cDevice>>;
+
+
+// #[derive(Resource)]
+struct TouchResource {
+    touch: TouchDriver,
+}
+
+// impl TouchResource {
+//     fn new(
+//         i2c_device: I2cDevice,
+//         reset: ResetTouchDriver<I2cDevice>,
+//         delay: Delay,
+//     ) -> Self {
+//         let touch = Ft3x68Driver::new(
+//             i2c_device,
+//             FT3168_DEVICE_ADDRESS,
+//             reset,
+//             delay,
+//         );
+        
+//         Self { touch }
+//     }
+// }
+
 
 pub struct ResetTouchDriver<I2C> {
     i2c: I2C,
@@ -378,9 +408,23 @@ fn update_game_of_life_system(
 
 fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
+    mut touch_res: NonSendMut<TouchResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
+
+    touch_res
+    .touch
+            .touch1()
+            .map(|touch| println!("Touch 1: {:?}", touch))
+            .unwrap_or_else(|e| println!("Error reading touch 1: {:?}", e));
+        // Read Detected Gesture (if any)
+    touch_res
+    .touch
+            .read_gesture()
+            .map(|gesture| println!("Gesture: {:?}", gesture))
+            .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
+    
     // Clear the framebuffer
     fb_res.frame_buf.clear(Rgb888::BLACK).unwrap();
 
@@ -644,21 +688,18 @@ fn main() -> ! {
     let i2c_bus = I2C_BUS.init(RefCell::new(i2c));
     // let i2c_bus = RefCell::new(i2c);
     let i2c_device = RefCellDevice::new(i2c_bus);
-    
-    let reset = ResetDriver::new(i2c_device);
-
-    let i2c_touch = RefCellDevice::new(i2c_bus);
-    let i2c_cell = AtomicCell::new(i2c_touch);
-   
-    // let reset = ResetDriver::new( i2c::AtomicDevice::new(&i2c_cell));
-
     // Initialize display driver for the Waveshare 1.8" AMOLED display
     let ws_driver = Ws18AmoledDriver::new(lcd_spi);
+    let reset = ResetDriver::new(i2c_device);
 
-      let reset_touch = ResetTouchDriver::new(i2c::AtomicDevice::new(&i2c_cell));
 
+    let i2c_touch = RefCellDevice::new(i2c_bus);
+    // let i2c_cell = AtomicCell::new(i2c_touch);
+    let i2c_cell = I2C_CELL.init(AtomicCell::new(i2c_touch));
+
+    let reset_touch = ResetTouchDriver::new(i2c::AtomicDevice::new(i2c_cell));
      let mut touch = Ft3x68Driver::new(
-        i2c::AtomicDevice::new(&i2c_cell),
+        i2c::AtomicDevice::new(i2c_cell),
         FT3168_DEVICE_ADDRESS,
         reset_touch,
         delay,
@@ -720,7 +761,7 @@ fn main() -> ! {
 
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
-
+    world.insert_non_send_resource(TouchResource { touch });
     // Create schedule and add systems
     let mut schedule = Schedule::default();
     // schedule.add_systems(update_game_of_life_system);
@@ -733,15 +774,15 @@ fn main() -> ! {
 
     loop {
         schedule.run(&mut world);
-          touch
-            .touch1()
-            .map(|touch| println!("Touch 1: {:?}", touch))
-            .unwrap_or_else(|e| println!("Error reading touch 1: {:?}", e));
-        // Read Detected Gesture (if any)
-        touch
-            .read_gesture()
-            .map(|gesture| println!("Gesture: {:?}", gesture))
-            .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
+        //   touch
+        //     .touch1()
+        //     .map(|touch| println!("Touch 1: {:?}", touch))
+        //     .unwrap_or_else(|e| println!("Error reading touch 1: {:?}", e));
+        // // Read Detected Gesture (if any)
+        // touch
+        //     .read_gesture()
+        //     .map(|gesture| println!("Gesture: {:?}", gesture))
+        //     .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
         loop_delay.delay_millis(500);
     }
 }
