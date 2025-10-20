@@ -55,7 +55,7 @@ use static_cell::StaticCell;
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::util::AtomicCell;
 
-use ft3x68_rs::{DriverError, Ft3x68Driver, PowerMode, ResetInterface, FT3168_DEVICE_ADDRESS};
+use ft3x68_rs::{DriverError, Ft3x68Driver, PowerMode, ResetInterface, FT3168_DEVICE_ADDRESS, TouchState, TouchPoint};
 
 // Type aliases pour simplifier
 static I2C_CELL: StaticCell<AtomicCell<RefCellDevice<'static, I2c<'static, Blocking>>>> = StaticCell::new();
@@ -70,22 +70,11 @@ struct TouchResource {
     touch: TouchDriver,
 }
 
-// impl TouchResource {
-//     fn new(
-//         i2c_device: I2cDevice,
-//         reset: ResetTouchDriver<I2cDevice>,
-//         delay: Delay,
-//     ) -> Self {
-//         let touch = Ft3x68Driver::new(
-//             i2c_device,
-//             FT3168_DEVICE_ADDRESS,
-//             reset,
-//             delay,
-//         );
-        
-//         Self { touch }
-//     }
-// }
+#[derive(Resource)]
+struct ImageResource {
+    bmp: Bmp<'static, Rgb888>,
+}
+
 
 
 pub struct ResetTouchDriver<I2C> {
@@ -409,93 +398,94 @@ fn update_game_of_life_system(
 fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
     mut touch_res: NonSendMut<TouchResource>,
+    image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
 
-    touch_res
+    let mut touching : TouchState = touch_res
     .touch
             .touch1()
-            .map(|touch| println!("Touch 1: {:?}", touch))
-            .unwrap_or_else(|e| println!("Error reading touch 1: {:?}", e));
+            .unwrap_or_else(|e| TouchState::Released);
+
+    let mut position = Point::new(0, 0);
+    match touching {
+        TouchState::Pressed(TouchPoint { x, y }) => {
+            // ex: dessiner un point à l’endroit touché
+            position = Point::new(x as i32, y as i32);
+        }
+        TouchState::Released => {}
+    }
+
         // Read Detected Gesture (if any)
-    touch_res
-    .touch
-            .read_gesture()
-            .map(|gesture| println!("Gesture: {:?}", gesture))
-            .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
+    // touch_res
+    // .touch
+    //         .read_gesture()
+    //         .map(|gesture| println!("Gesture: {:?}", gesture))
+    //         .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
     
     // Clear the framebuffer
-    fb_res.frame_buf.clear(Rgb888::BLACK).unwrap();
+    // fb_res.frame_buf.clear(Rgb888::BLACK).unwrap();
+    // use display directly
+    display_res.display.clear(Rgb888::BLACK).ok();
 
     // Draw the game grid
     // draw_grid(&mut fb_res.frame_buf, &game.grid).unwrap();
-    write_generation(&mut fb_res.frame_buf, game.generation).unwrap();
+   
 
-    // Add centered text overlay
-    let line1 = "Updated!";
-    let line2 = "Bevy ECS 0.16 no_std";
-    let line3 = "AMOLED Display";
+    // // Add centered text overlay
+    // let line1 = "Updated!";
+    // let line2 = "Bevy ECS 0.16 no_std";
+    // let line3 = "AMOLED Display";
 
-    // Calculate text positioning - FONT_10X20 is 10 pixels wide
-    let line1_width = line1.len() as i32 * 10;
-    let line2_width = line2.len() as i32 * 10;
-    let line3_width = line3.len() as i32 * 10;
+    // // Calculate text positioning - FONT_10X20 is 10 pixels wide
+    // let line1_width = line1.len() as i32 * 10;
+    // let line2_width = line2.len() as i32 * 10;
+    // let line3_width = line3.len() as i32 * 10;
 
-    let x1 = (LCD_H_RES as i32 - line1_width) / 2;
-    let x2 = (LCD_H_RES as i32 - line2_width) / 2;
-    let x3 = (LCD_H_RES as i32 - line3_width) / 2;
+    // let x1 = (LCD_H_RES as i32 - line1_width) / 2;
+    // let x2 = (LCD_H_RES as i32 - line2_width) / 2;
+    // let x3 = (LCD_H_RES as i32 - line3_width) / 2;
 
-    let y_center = (LCD_V_RES as i32 - 60) / 2; // Updated for 20px font height
+    // let y_center = (LCD_V_RES as i32 - 60) / 2; // Updated for 20px font height
 
-    Text::new(
-        line1,
-        Point::new(x1, y_center),
-        MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
-    )
-    .draw(&mut fb_res.frame_buf)
-    .unwrap();
+    // Text::new(
+    //     line1,
+    //     Point::new(x1, y_center),
+    //     MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
+    // )
+    // .draw(&mut fb_res.frame_buf)
+    // .unwrap();
 
-    Text::new(
-        line2,
-        Point::new(x2, y_center + 20),
-        MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
-    )
-    .draw(&mut fb_res.frame_buf)
-    .unwrap();
+    // Text::new(
+    //     line2,
+    //     Point::new(x2, y_center + 20),
+    //     MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
+    // )
+    // .draw(&mut fb_res.frame_buf)
+    // .unwrap();
 
-    Text::new(
-        line3,
-        Point::new(x3, y_center + 40),
-        MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
-    )
-    .draw(&mut fb_res.frame_buf)
-    .unwrap();
+    // Text::new(
+    //     line3,
+    //     Point::new(x3, y_center + 40),
+    //     MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
+    // )
+    // .draw(&mut fb_res.frame_buf)
+    // .unwrap();
 
 
-    let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
-    // let image_raw = bmp.as_raw();
-    // let size = bmp.bounding_box().size;
-    let position = Point::new(0, 0);
-
-    // for Pixel(point, color) in bmp.pixels() {
-    //     // Ignorer les pixels noirs
-    //     if color != Rgb888::WHITE {
-    //         Pixel(position + point, color)
-    //             .draw(&mut fb_res.frame_buf)
-    //             .unwrap();
-    //     }
-    // }
-    Image::new(&bmp, position)
-        .draw(&mut fb_res.frame_buf)
-        .unwrap();
-
+    // let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
+    // let bmp = unsafe { BMP_IMAGE.get_unchecked() };
+ 
+    // let position = Point::new(0, 0);
+    // Image::new(&image_res.bmp, position)
+    //     .draw(&mut display_res.display)
+    //     .unwrap();
+    
 
 
     let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
-    // D'abord, compter le nombre total de frames
     let total_frames = gif.frames().count();
-    // Calculer quelle frame afficher (avec le bon modulo)
     let target_index = game.generation % total_frames;
     let mut current_index = 0;
     let mut target_frame = None;
@@ -508,41 +498,20 @@ fn render_system(
     }
     // Dessiner la frame trouvée
     if let Some(frame) = target_frame {
-        let position = Point::new(80, 20);
-
+        // let position = Point::new(80, 20);
         //  frame.draw(&mut fb_res.frame_buf).unwrap();
           Image::new(&frame, position)
-            .draw(&mut fb_res.frame_buf)
+            .draw(&mut display_res.display)
             .unwrap()
     }
     
 
 
 
+    write_generation(&mut display_res.display, game.generation).unwrap();
 
 
-
-    
-    
-    // let mut index = false;
-    // // Récupérer toutes les frames
-    // for frame in gif.frames() {
-
-    //     if show == false {
-    //         show = true;
-    //         frame.draw(&mut fb_res.frame_buf).unwrap();
-    //         continue;
-    //     }
-
-      
-
-    //     // Or, draw at given offset
-    //     // use embedded_graphics::prelude::DrawTargetExt;
-    //     // frame.draw(&mut display.translated(Point::new(30, 50))).unwrap();
-    // }
-
-
-       game.generation += 1;
+    game.generation += 1;
 
     if game.generation >= RESET_AFTER_GENERATIONS {
         game.generation = 0;
@@ -550,36 +519,18 @@ fn render_system(
 
 
 
-
-
-    // let image_raw: ImageRaw<Rgb888> = bmp.as_raw();
-    // let transparent = ImageTransparent::new(image_raw, Rgb888::new(255, 255, 255)); // Magenta
-    // let image = Image::new(&transparent,  Point::new(80, 20));
-   
-
-    // let tga: Tga<Rgb888> = Tga::from_slice(IMAGE_DATA).expect("Failed to parse TGA image");
-    // let image = Image::new(&tga, Point::new(50, 50));
-
-    // const image: Sprite<Rgb888> = Sprite::new(Point::new(0, 0), &IMAGE);
-
-    // image
-    // .draw(&mut fb_res.frame_buf)
-    // .unwrap();
-
-    // Draw the framebuffer content directly to the display
-    // Clear the display first
     // display_res.display.clear(Rgb888::BLACK).ok();
 
-    display_res.display.draw_iter(
-    fb_res.frame_buf.data
-        .iter()
-        .enumerate()
-        .map(|(i, &color)| {
-            let x = (i % LCD_H_RES) as i32;
-            let y = (i / LCD_H_RES) as i32;
-            Pixel(Point::new(x, y), color)
-        })
-).ok();
+    // display_res.display.draw_iter(
+    // fb_res.frame_buf.data
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(i, &color)| {
+    //         let x = (i % LCD_H_RES) as i32;
+    //         let y = (i / LCD_H_RES) as i32;
+    //         Pixel(Point::new(x, y), color)
+    //     })
+    // ).ok();
 
     // // Draw each pixel from the framebuffer as a 1x1 rectangle
     // for (y, row) in fb_res.frame_buf.data.chunks_exact(LCD_H_RES).enumerate() {
@@ -598,38 +549,7 @@ fn render_system(
     display_res.display.flush().ok();
 }
 
-// fn draw_bmp_skip_black(
-//     display: &mut impl DrawTarget<Color = Rgb888>,
-//     bmp_data: &[u8],
-//     position: Point,
-// ) -> Result<(), impl DrawTarget::Error> {
-//     // Charger le BMP
-//     let bmp = Bmp::<Rgb888>::from_slice(bmp_data).expect("Failed to parse BMP");
-    
-//     // Obtenir les dimensions
-//     let size = bmp.bounding_box().size;
-    
-//     // Parcourir chaque pixel
-//     for y in 0..size.height {
-//         for x in 0..size.width {
-//             let pixel_pos = Point::new(x as i32, y as i32);
-            
-//             // Obtenir la couleur du pixel dans l'image BMP
-//             if let Some(color) = bmp.pixel(bmp.bounding_box().top_left + pixel_pos) {
-//                 // Ne dessiner que si le pixel n'est pas noir
-//                 if color != Rgb888::BLACK {
-//                     Pixel(position + pixel_pos, color).draw(display)?;
-//                 }
-//             }
-//         }
-//     }
-    
-//     Ok(())
-// }
-// static I2C_CELL: StaticCell<AtomicCell<I2c<'static, Blocking>>> = StaticCell::new();
 static I2C_BUS: StaticCell<RefCell<I2c<'static, Blocking>>> = StaticCell::new();
-
-
 
 #[main]
 fn main() -> ! {
@@ -686,15 +606,12 @@ fn main() -> ! {
 
 
     let i2c_bus = I2C_BUS.init(RefCell::new(i2c));
-    // let i2c_bus = RefCell::new(i2c);
     let i2c_device = RefCellDevice::new(i2c_bus);
-    // Initialize display driver for the Waveshare 1.8" AMOLED display
     let ws_driver = Ws18AmoledDriver::new(lcd_spi);
     let reset = ResetDriver::new(i2c_device);
 
 
     let i2c_touch = RefCellDevice::new(i2c_bus);
-    // let i2c_cell = AtomicCell::new(i2c_touch);
     let i2c_cell = I2C_CELL.init(AtomicCell::new(i2c_touch));
 
     let reset_touch = ResetTouchDriver::new(i2c::AtomicDevice::new(i2c_cell));
@@ -735,6 +652,8 @@ fn main() -> ! {
         }
     };
 
+    let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
+
     // Initialize RNG
     let mut rng = Rng::new(peripherals.RNG);
 
@@ -742,13 +661,6 @@ fn main() -> ! {
     let mut game = GameOfLifeResource::default();
     // randomize_grid(&mut rng, &mut game.grid);
 
-    // Add a glider pattern
-    // let glider = [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
-    // for (x, y) in glider.iter() {
-    //     if *x < GRID_WIDTH && *y < GRID_HEIGHT {
-    //         game.grid[*y][*x] = 1;
-    //     }
-    // }
 
     // Create framebuffer resource
     let fb_res = FrameBufferResource::new();
@@ -758,6 +670,8 @@ fn main() -> ! {
     world.insert_resource(game);
     // world.insert_resource(RngResource(rng));
     world.insert_resource(fb_res);
+    world.insert_resource(ImageResource { bmp });
+
 
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
@@ -774,15 +688,5 @@ fn main() -> ! {
 
     loop {
         schedule.run(&mut world);
-        //   touch
-        //     .touch1()
-        //     .map(|touch| println!("Touch 1: {:?}", touch))
-        //     .unwrap_or_else(|e| println!("Error reading touch 1: {:?}", e));
-        // // Read Detected Gesture (if any)
-        // touch
-        //     .read_gesture()
-        //     .map(|gesture| println!("Gesture: {:?}", gesture))
-        //     .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
-        loop_delay.delay_millis(500);
     }
 }
