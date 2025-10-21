@@ -52,6 +52,8 @@ use core::cell::RefCell;
 use embedded_hal_bus::i2c::RefCellDevice;
 use static_cell::StaticCell;
 
+use time::{Date, Month, PrimitiveDateTime, Time};
+
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::util::AtomicCell;
 
@@ -76,6 +78,97 @@ struct TouchResource {
 #[derive(Resource)]
 struct ImageResource {
     bmp: Bmp<'static, Rgb888>,
+}
+
+// --- PCF85063 RTC Driver ---
+
+/// Simple blocking driver for PCF85063 RTC
+pub struct Pcf85063<I2C> {
+    i2c: I2C,
+    address: u8,
+}
+
+impl<I2C> Pcf85063<I2C>
+where
+    I2C: embedded_hal::i2c::I2c,
+{
+    const DEFAULT_ADDRESS: u8 = 0x51;
+
+    // Register addresses
+    const REG_SECONDS: u8 = 0x04;
+    const REG_MINUTES: u8 = 0x05;
+    const REG_HOURS: u8 = 0x06;
+    const REG_DAYS: u8 = 0x07;
+    const REG_MONTHS: u8 = 0x09;
+    const REG_YEARS: u8 = 0x0A;
+
+    pub fn new(i2c: I2C) -> Self {
+        Self {
+            i2c,
+            address: Self::DEFAULT_ADDRESS,
+        }
+    }
+
+    /// Read current date and time from RTC
+    pub fn get_datetime(&mut self) -> Result<PrimitiveDateTime, I2C::Error> {
+        let mut buf = [0u8; 7];
+        self.i2c.write_read(self.address, &[Self::REG_SECONDS], &mut buf)?;
+
+        let seconds = bcd_to_decimal(buf[0] & 0x7F);
+        let minutes = bcd_to_decimal(buf[1] & 0x7F);
+        let hours = bcd_to_decimal(buf[2] & 0x3F);
+        let days = bcd_to_decimal(buf[3] & 0x3F);
+        let months = bcd_to_decimal(buf[5] & 0x1F);
+        let years = 2000 + bcd_to_decimal(buf[6]) as i32;
+
+        let month = match months {
+            1 => Month::January,
+            2 => Month::February,
+            3 => Month::March,
+            4 => Month::April,
+            5 => Month::May,
+            6 => Month::June,
+            7 => Month::July,
+            8 => Month::August,
+            9 => Month::September,
+            10 => Month::October,
+            11 => Month::November,
+            12 => Month::December,
+            _ => Month::January,
+        };
+
+        let date = Date::from_calendar_date(years, month, days).unwrap_or_else(|_| {
+            Date::from_calendar_date(2024, Month::January, 1).unwrap()
+        });
+        let time = Time::from_hms(hours, minutes, seconds).unwrap_or(Time::MIDNIGHT);
+
+        Ok(PrimitiveDateTime::new(date, time))
+    }
+
+    /// Set date and time on RTC
+    pub fn set_datetime(&mut self, dt: &PrimitiveDateTime) -> Result<(), I2C::Error> {
+        let buf = [
+            Self::REG_SECONDS,
+            decimal_to_bcd(dt.time().second()),
+            decimal_to_bcd(dt.time().minute()),
+            decimal_to_bcd(dt.time().hour()),
+            decimal_to_bcd(dt.date().day()),
+            0, // weekday (not used)
+            decimal_to_bcd(dt.date().month() as u8),
+            decimal_to_bcd((dt.date().year() - 2000) as u8),
+        ];
+        self.i2c.write(self.address, &buf)
+    }
+}
+
+/// Convert BCD (Binary-Coded Decimal) to normal decimal
+fn bcd_to_decimal(bcd: u8) -> u8 {
+    (bcd >> 4) * 10 + (bcd & 0x0F)
+}
+
+/// Convert normal decimal to BCD
+fn decimal_to_bcd(decimal: u8) -> u8 {
+    ((decimal / 10) << 4) | (decimal % 10)
 }
 
 pub struct ResetTouchDriver<I2C> {
@@ -485,6 +578,15 @@ struct DisplayResource {
         Sh8601Driver<Ws18AmoledDriver, ResetDriver<RefCellDevice<'static, I2c<'static, Blocking>>>>,
 }
 
+// RTC resource - NonSend because it contains non-thread-safe I2C device
+// Combines RTC (for absolute timestamps) with cycle counting (for precise frame timing)
+struct RtcResource {
+    rtc: Pcf85063<I2cDevice>,
+    last_timestamp: Option<PrimitiveDateTime>, // Absolute time from RTC
+    last_cycles: u32,                           // CPU cycles at last frame
+    cpu_freq_mhz: u64,                          // CPU frequency for cycle->time conversion
+}
+
 // --- Bevy ECS Systems ---
 
 const RESET_AFTER_GENERATIONS: usize = 300;
@@ -655,11 +757,39 @@ fn update_generation(game: &mut GameOfLifeResource) {
 fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
     mut touch_res: NonSendMut<TouchResource>,
+    mut rtc_res: NonSendMut<RtcResource>,
     image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut gif_res: ResMut<GifResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
+    // 0. Measure frame timing with hybrid approach
+    let current_cycles = esp_hal::xtensa_lx::timer::get_cycle_count();
+
+    // Calculate frame time using CPU cycles (precise for short intervals)
+    let elapsed_cycles = current_cycles.wrapping_sub(rtc_res.last_cycles);
+    let frame_time_us = (elapsed_cycles as u64 * 1_000_000) / (rtc_res.cpu_freq_mhz * 1_000_000);
+
+    // Update last cycle count
+    rtc_res.last_cycles = current_cycles;
+
+    // Read RTC timestamp every 100 frames for absolute time tracking
+    if game.generation % 100 == 0 {
+        if let Ok(current_time) = rtc_res.rtc.get_datetime() {
+            println!(
+                "Gen {}: Frame={}us, RTC timestamp: {:02}:{:02}:{:02}",
+                game.generation,
+                frame_time_us,
+                current_time.time().hour(),
+                current_time.time().minute(),
+                current_time.time().second()
+            );
+            rtc_res.last_timestamp = Some(current_time);
+        } else {
+            println!("Gen {}: Frame={}us", game.generation, frame_time_us);
+        }
+    }
+
     // 1. Handle touch input
     handle_touch_input(&mut touch_res, &mut gif_res);
 
@@ -784,6 +914,24 @@ fn main() -> ! {
         .set_gesture_mode(true)
         .expect("Failed to set gesture mode");
 
+    // Initialize RTC (PCF85063)
+    println!("Initializing PCF85063 RTC...");
+    let i2c_rtc = i2c::AtomicDevice::new(i2c_cell);
+    let mut rtc = Pcf85063::new(i2c_rtc);
+
+    // Optional: Set initial time if needed (commented out for now)
+    // let initial_time = PrimitiveDateTime::new(
+    //     Date::from_calendar_date(2025, Month::October, 21).unwrap(),
+    //     Time::from_hms(12, 0, 0).unwrap(),
+    // );
+    // rtc.set_datetime(&initial_time).ok();
+
+    // Read current time from RTC
+    match rtc.get_datetime() {
+        Ok(dt) => println!("RTC initialized. Current time: {:?}", dt),
+        Err(_) => println!("Warning: Could not read RTC time"),
+    }
+
     // Instantiate and Initialize Display
     println!("Initializing SH8601 Display...");
     let display_res = Sh8601Driver::new_heap::<_, FB_SIZE>(
@@ -828,6 +976,16 @@ fn main() -> ! {
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
     world.insert_non_send_resource(TouchResource { touch });
+    // Get initial cycle count and CPU frequency
+    let initial_cycles = esp_hal::xtensa_lx::timer::get_cycle_count();
+    let cpu_freq_mhz = 240; // ESP32-S3 at max frequency
+
+    world.insert_non_send_resource(RtcResource {
+        rtc,
+        last_timestamp: None,
+        last_cycles: initial_cycles,
+        cpu_freq_mhz,
+    });
     // Create schedule and add systems
     let mut schedule = Schedule::default();
     // schedule.add_systems(update_game_of_life_system);

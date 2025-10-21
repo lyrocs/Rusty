@@ -31,6 +31,7 @@ tinybmp = "0.6.0"
 tinygif = "0.0.4"
 embedded-hal = "1.0.0"
 static_cell = "2.1.1"
+time = { version = "0.3", default-features = false }
 
 
 [profile.dev]
