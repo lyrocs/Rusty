@@ -27,13 +27,13 @@ use esp_hal::Blocking;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
-use esp_hal::{dma_buffers, dma_descriptors};
 use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
 use esp_hal::i2c::master::{Config as I2cConfig, Error as I2cError, I2c};
 use esp_hal::main;
 use esp_hal::spi::Mode;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Rate;
+use esp_hal::{dma_buffers, dma_descriptors};
 
 use log::info;
 
@@ -57,8 +57,8 @@ use time::{Date, Month, PrimitiveDateTime, Time};
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::util::AtomicCell;
 
-use embedded_sdmmc::{Mode as SdMode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::{Mode as SdMode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 
 use axp2101::core::Axp2101;
 
@@ -83,6 +83,106 @@ struct TouchResource {
 #[derive(Resource)]
 struct ImageResource {
     bmp: Bmp<'static, Rgb888>,
+}
+
+// --- TCA9554PWR GPIO Expander Driver ---
+
+/// Simple driver for TCA9554PWR GPIO expander
+pub struct Tca9554Driver<I2C> {
+    i2c: I2C,
+    address: u8,
+}
+
+impl<I2C> Tca9554Driver<I2C>
+where
+    I2C: embedded_hal::i2c::I2c,
+{
+    const DEFAULT_ADDRESS: u8 = 0x20;
+
+    // Register addresses
+    const REG_INPUT_PORT: u8 = 0x00;
+    const REG_OUTPUT_PORT: u8 = 0x01;
+    const REG_POLARITY_INVERSION: u8 = 0x02;
+    const REG_CONFIGURATION: u8 = 0x03;
+
+    pub fn new(i2c: I2C) -> Self {
+        Self {
+            i2c,
+            address: Self::DEFAULT_ADDRESS,
+        }
+    }
+
+    /// Read input port (all 8 pins)
+    pub fn read_input_port(&mut self) -> Result<u8, I2C::Error> {
+        let mut data = [0u8];
+        self.i2c
+            .write_read(self.address, &[Self::REG_INPUT_PORT], &mut data)?;
+        Ok(data[0])
+    }
+
+    /// Read specific pin (0-7)
+    pub fn read_pin(&mut self, pin: u8) -> Result<bool, I2C::Error> {
+        if pin > 7 {
+            // Return a generic error for invalid pin
+            return self.read_input_port().map(|_| false);
+        }
+        let port_value = self.read_input_port()?;
+        Ok((port_value & (1 << pin)) != 0)
+    }
+
+    /// Write output port (all 8 pins)
+    pub fn write_output_port(&mut self, value: u8) -> Result<(), I2C::Error> {
+        self.i2c
+            .write(self.address, &[Self::REG_OUTPUT_PORT, value])
+    }
+
+    /// Write specific pin (0-7)
+    pub fn write_pin(&mut self, pin: u8, value: bool) -> Result<(), I2C::Error> {
+        if pin > 7 {
+            return Ok(()); // Ignore invalid pin
+        }
+        // Read current output port value
+        let mut current = [0u8];
+        self.i2c
+            .write_read(self.address, &[Self::REG_OUTPUT_PORT], &mut current)?;
+
+        // Modify the specific bit
+        let new_value = if value {
+            current[0] | (1 << pin)
+        } else {
+            current[0] & !(1 << pin)
+        };
+
+        self.write_output_port(new_value)
+    }
+
+    /// Configure pin direction (0=input, 1=output)
+    pub fn configure_pin(&mut self, pin: u8, as_output: bool) -> Result<(), I2C::Error> {
+        if pin > 7 {
+            return Ok(()); // Ignore invalid pin
+        }
+
+        // Read current configuration
+        let mut current = [0u8];
+        self.i2c
+            .write_read(self.address, &[Self::REG_CONFIGURATION], &mut current)?;
+
+        // Modify the specific bit
+        let new_config = if as_output {
+            current[0] & !(1 << pin) // Clear bit for output
+        } else {
+            current[0] | (1 << pin) // Set bit for input
+        };
+
+        self.i2c
+            .write(self.address, &[Self::REG_CONFIGURATION, new_config])
+    }
+
+    /// Configure all pins at once
+    pub fn configure_all_pins(&mut self, config: u8) -> Result<(), I2C::Error> {
+        self.i2c
+            .write(self.address, &[Self::REG_CONFIGURATION, config])
+    }
 }
 
 // --- PCF85063 RTC Driver ---
@@ -117,7 +217,8 @@ where
     /// Read current date and time from RTC
     pub fn get_datetime(&mut self) -> Result<PrimitiveDateTime, I2C::Error> {
         let mut buf = [0u8; 7];
-        self.i2c.write_read(self.address, &[Self::REG_SECONDS], &mut buf)?;
+        self.i2c
+            .write_read(self.address, &[Self::REG_SECONDS], &mut buf)?;
 
         let seconds = bcd_to_decimal(buf[0] & 0x7F);
         let minutes = bcd_to_decimal(buf[1] & 0x7F);
@@ -142,9 +243,8 @@ where
             _ => Month::January,
         };
 
-        let date = Date::from_calendar_date(years, month, days).unwrap_or_else(|_| {
-            Date::from_calendar_date(2024, Month::January, 1).unwrap()
-        });
+        let date = Date::from_calendar_date(years, month, days)
+            .unwrap_or_else(|_| Date::from_calendar_date(2024, Month::January, 1).unwrap());
         let time = Time::from_hms(hours, minutes, seconds).unwrap_or(Time::MIDNIGHT);
 
         Ok(PrimitiveDateTime::new(date, time))
@@ -185,9 +285,9 @@ pub struct DummyTimeSource;
 impl TimeSource for DummyTimeSource {
     fn get_timestamp(&self) -> Timestamp {
         Timestamp {
-            year_since_1970: 55, // 2025
+            year_since_1970: 55,   // 2025
             zero_indexed_month: 9, // October (0-indexed)
-            zero_indexed_day: 20, // 21st (0-indexed)
+            zero_indexed_day: 20,  // 21st (0-indexed)
             hours: 12,
             minutes: 0,
             seconds: 0,
@@ -583,6 +683,38 @@ fn write_battery<D: DrawTarget<Color = Rgb888>>(
     Ok(())
 }
 
+/// Display PWR button state on screen with debug info
+fn write_pwr_button<D: DrawTarget<Color = Rgb888>>(
+    display: &mut D,
+    pwr_pressed: bool,
+    pwr_low: bool,
+    pwr_high: bool,
+) -> Result<(), D::Error> {
+    let mut pwr_str = String::<40>::new();
+    write!(
+        pwr_str,
+        "PWR: {} (L:{}, H:{})",
+        if pwr_pressed { "ON" } else { "OFF" },
+        if pwr_low { "1" } else { "0" },
+        if pwr_high { "1" } else { "0" }
+    )
+    .unwrap();
+
+    let color = if pwr_pressed {
+        Rgb888::GREEN
+    } else {
+        Rgb888::RED
+    };
+
+    Text::new(
+        pwr_str.as_str(),
+        Point::new(200, 420),
+        MonoTextStyle::new(&FONT_10X20, color),
+    )
+    .draw(display)?;
+    Ok(())
+}
+
 /// Renders a GIF animation with optimized background restoration
 ///
 /// # Parameters
@@ -747,8 +879,8 @@ struct DisplayResource {
 struct RtcResource {
     rtc: Pcf85063<I2cDevice>,
     last_timestamp: Option<PrimitiveDateTime>, // Absolute time from RTC
-    last_cycles: u32,                           // CPU cycles at last frame
-    cpu_freq_mhz: u64,                          // CPU frequency for cycle->time conversion
+    last_cycles: u32,                          // CPU cycles at last frame
+    cpu_freq_mhz: u64,                         // CPU frequency for cycle->time conversion
 }
 
 // Battery resource for tracking battery voltage and percentage
@@ -765,12 +897,16 @@ struct Axp2101Resource {
     pmic: Axp2101<i2c::AtomicDevice<'static, RefCellDevice<'static, I2c<'static, Blocking>>>>,
 }
 
-// Button resource for tracking button state and debouncing
+// Button resource for tracking button states and debouncing
 // GPIO0 is the boot button with pull-up (active low)
+// EXIO4 is the PWR button via TCA9554PWR GPIO expander
 struct ButtonResource {
-    button: Input<'static>,
-    last_state: bool,      // Last debounced state (true = pressed)
-    debounce_counter: u8,  // Counter for debouncing
+    boot_button: Input<'static>,             // GPIO0 - BOOT button
+    gpio_expander: Tca9554Driver<I2cDevice>, // TCA9554PWR for EXIO4 (PWR button)
+    boot_last_state: bool,                   // Last debounced state of BOOT (true = pressed)
+    pwr_last_state: bool,                    // Last debounced state of PWR (true = pressed)
+    boot_debounce_counter: u8,               // Counter for debouncing BOOT
+    pwr_debounce_counter: u8,                // Counter for debouncing PWR
 }
 
 // --- Bevy ECS Systems ---
@@ -779,41 +915,93 @@ const RESET_AFTER_GENERATIONS: usize = 300;
 const DEBOUNCE_THRESHOLD: u8 = 3; // Number of consecutive readings needed to confirm button press
 
 // Button system to handle display on/off toggle
+// Supports both BOOT (GPIO0) and PWR (GPIO10) buttons
 fn button_system(
     mut button_res: NonSendMut<ButtonResource>,
     mut display_res: NonSendMut<DisplayResource>,
     mut game: ResMut<GameOfLifeResource>,
 ) {
-    // Read current button state (active low, so is_low() = pressed)
-    let button_pressed = button_res.button.is_low();
+    // --- BOOT Button (GPIO0) - Active Low ---
+    let boot_pressed = button_res.boot_button.is_low();
 
-    // Debouncing logic
-    if button_pressed {
-        if button_res.debounce_counter < DEBOUNCE_THRESHOLD {
-            button_res.debounce_counter += 1;
+    // Debouncing logic for BOOT
+    if boot_pressed {
+        if button_res.boot_debounce_counter < DEBOUNCE_THRESHOLD {
+            button_res.boot_debounce_counter += 1;
         }
     } else {
-        button_res.debounce_counter = 0;
+        button_res.boot_debounce_counter = 0;
     }
 
     // Detect rising edge (button release after being pressed)
-    // Toggle display on button release to avoid multiple toggles
-    if button_res.last_state && !button_pressed && button_res.debounce_counter == 0 {
-        // Toggle display state
-        game.display_on = !game.display_on;
-
-        // Apply the change to the display
-        if game.display_on {
-            println!("Button: Turning display ON");
-            display_res.display.display_on().ok();
-        } else {
-            println!("Button: Turning display OFF");
-            display_res.display.display_off().ok();
-        }
+    if button_res.boot_last_state && !boot_pressed && button_res.boot_debounce_counter == 0 {
+        toggle_display(&mut display_res, &mut game, "BOOT");
     }
 
-    // Update last state (true when debounce threshold is met)
-    button_res.last_state = button_res.debounce_counter >= DEBOUNCE_THRESHOLD;
+    // Update BOOT last state
+    button_res.boot_last_state = button_res.boot_debounce_counter >= DEBOUNCE_THRESHOLD;
+
+    // --- PWR Button (EXIO4 via TCA9554PWR) - Active Low (button pressed = LOW) ---
+    let pwr_pin_state = button_res.gpio_expander.read_pin(4).unwrap_or(false); // EXIO4 = pin 4
+    let pwr_low = !pwr_pin_state; // Active low: pressed = false (LOW), released = true (HIGH)
+    let pwr_high = pwr_pin_state; // Inverted logic for display
+
+    // PWR button is Active Low: pressed = LOW, released = HIGH
+    let pwr_pressed = pwr_low;
+
+    // Debouncing logic for PWR
+    if pwr_pressed {
+        if button_res.pwr_debounce_counter < DEBOUNCE_THRESHOLD {
+            button_res.pwr_debounce_counter += 1;
+        }
+    } else {
+        button_res.pwr_debounce_counter = 0;
+    }
+
+    // Detect rising edge for PWR button
+    if button_res.pwr_last_state && !pwr_pressed && button_res.pwr_debounce_counter == 0 {
+        toggle_display(&mut display_res, &mut game, "PWR");
+    }
+
+    // Update PWR last state
+    button_res.pwr_last_state = button_res.pwr_debounce_counter >= DEBOUNCE_THRESHOLD;
+
+    // Debug: Print PWR button state every 10 frames for more frequent monitoring
+    if game.generation % 10 == 0 {
+        println!("=== BUTTON DEBUG ===");
+        println!(
+            "PWR Button (GPIO10): {} (LOW: {}, HIGH: {})",
+            if pwr_pressed { "PRESSED" } else { "RELEASED" },
+            pwr_low,
+            pwr_high
+        );
+        println!(
+            "BOOT Button (GPIO0): {} (LOW: {}, HIGH: {})",
+            if boot_pressed { "PRESSED" } else { "RELEASED" },
+            button_res.boot_button.is_low(),
+            button_res.boot_button.is_high()
+        );
+        println!("===================");
+    }
+}
+
+// Helper function to toggle display state
+fn toggle_display(
+    display_res: &mut NonSendMut<DisplayResource>,
+    game: &mut ResMut<GameOfLifeResource>,
+    button_name: &str,
+) {
+    // Toggle display state
+    game.display_on = !game.display_on;
+
+    // Apply the change to the display
+    if game.display_on {
+        println!("{} Button: Turning display ON", button_name);
+        display_res.display.display_on().ok();
+    } else {
+        println!("{} Button: Turning display OFF", button_name);
+        display_res.display.display_off().ok();
+    }
 }
 
 fn update_game_of_life_system(
@@ -861,6 +1049,7 @@ fn render_initial_background<D>(
     fps: usize,
     battery_mv: u16,
     battery_pct: u8,
+    pwr_pressed: bool,
 ) where
     D: DrawTarget<Color = Rgb888>,
 {
@@ -870,7 +1059,9 @@ fn render_initial_background<D>(
     // Draw initial GIF frame
     let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
     if let Some(first_frame) = gif.frames().next() {
-        Image::new(&first_frame, gif_res.position).draw(display).ok();
+        Image::new(&first_frame, gif_res.position)
+            .draw(display)
+            .ok();
     }
     gif_res.first_render = false;
     gif_res.frame_index = 0;
@@ -879,9 +1070,11 @@ fn render_initial_background<D>(
     write_generation(display, generation).ok();
     write_fps(display, fps).ok();
     write_battery(display, battery_mv, battery_pct).ok();
+    // For initial render, we don't have the raw values yet, so use defaults
+    write_pwr_button(display, pwr_pressed, false, false).ok();
 }
 
-/// Restores background and renders updated text (generation + FPS + battery)
+/// Restores background and renders updated text (generation + FPS + battery + PWR button)
 fn render_text_overlay<D, I>(
     display: &mut D,
     background: &I,
@@ -889,6 +1082,9 @@ fn render_text_overlay<D, I>(
     fps: usize,
     battery_mv: u16,
     battery_pct: u8,
+    pwr_pressed: bool,
+    pwr_low: bool,
+    pwr_high: bool,
 ) where
     D: DrawTarget<Color = Rgb888>,
     I: GetPixel<Color = Rgb888>,
@@ -907,6 +1103,7 @@ fn render_text_overlay<D, I>(
     write_generation(display, generation).ok();
     write_fps(display, fps).ok();
     write_battery(display, battery_mv, battery_pct).ok();
+    write_pwr_button(display, pwr_pressed, pwr_low, pwr_high).ok();
 }
 
 /// Renders the animated GIF at current generation frame
@@ -991,6 +1188,7 @@ fn render_system(
     mut touch_res: NonSendMut<TouchResource>,
     mut rtc_res: NonSendMut<RtcResource>,
     mut axp_res: NonSendMut<Axp2101Resource>,
+    mut button_res: NonSendMut<ButtonResource>,
     image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut gif_res: ResMut<GifResource>,
@@ -1040,6 +1238,8 @@ fn render_system(
 
     // 2. Render initial background (one-time setup)
     if !game.background_drawn {
+        let pwr_pin_state = button_res.gpio_expander.read_pin(4).unwrap_or(false); // EXIO4 = pin 4
+        let pwr_pressed = !pwr_pin_state; // Active low: pressed = false (LOW), released = true (HIGH)
         render_initial_background(
             &mut display_res.display,
             &image_res.bmp,
@@ -1048,13 +1248,19 @@ fn render_system(
             game.fps,
             battery_res.voltage_mv,
             battery_res.percent,
+            pwr_pressed,
         );
         game.background_drawn = true;
         display_res.display.flush().ok();
         return;
     }
 
-    // 3. Render text overlay (generation + FPS + Battery)
+    // 3. Render text overlay (generation + FPS + Battery + PWR button)
+    let pwr_pin_state = button_res.gpio_expander.read_pin(4).unwrap_or(false); // EXIO4 = pin 4
+    let pwr_low = !pwr_pin_state; // Active low: pressed = false (LOW), released = true (HIGH)
+    let pwr_high = pwr_pin_state; // Inverted logic for display
+    let pwr_pressed = pwr_low; // PWR button is Active Low
+
     render_text_overlay(
         &mut display_res.display,
         &image_res.bmp,
@@ -1062,6 +1268,9 @@ fn render_system(
         game.fps,
         battery_res.voltage_mv,
         battery_res.percent,
+        pwr_pressed,
+        pwr_low,
+        pwr_high,
     );
 
     // 4. Render GIF animation
@@ -1073,11 +1282,7 @@ fn render_system(
     );
 
     // 5. Flush updated display regions
-    flush_display_regions(
-        &mut display_res.display,
-        gif_needs_render,
-        gif_res.position,
-    );
+    flush_display_regions(&mut display_res.display, gif_needs_render, gif_res.position);
 
     // 6. Update generation counter
     update_generation(&mut game);
@@ -1181,6 +1386,11 @@ fn main() -> ! {
         Err(_) => println!("Warning: Could not read RTC time"),
     }
 
+    // NOTE: SD Card initialization temporarily disabled to free GPIO10 for PWR button testing
+    // GPIO10 was previously used as SD card CS, but is needed for PWR button
+    // To re-enable SD card, use EXIO7 via GPIO expander for CS instead
+
+    /*
     // Initialize SD Card (TF Card) via SPI3
     println!("Initializing SD Card...");
 
@@ -1245,6 +1455,7 @@ fn main() -> ! {
             println!("Continuing without SD card support...");
         }
     }
+    */
 
     // Instantiate and Initialize Display
     println!("Initializing SH8601 Display...");
@@ -1316,15 +1527,37 @@ fn main() -> ! {
     // Insert AXP2101 PMIC resource
     world.insert_non_send_resource(Axp2101Resource { pmic });
 
-    // Initialize button (GPIO0 - Boot button with pull-up, active low)
-    let button = peripherals.GPIO0;
-    let config = InputConfig::default().with_pull(Pull::Up);
-    let button = Input::new(button, config);
+    // Initialize buttons (GPIO0 - Boot button, EXIO4 - PWR button via TCA9554PWR)
+    let boot_button = peripherals.GPIO0;
+    let boot_config = InputConfig::default().with_pull(Pull::Up);
+    let boot_button = Input::new(boot_button, boot_config);
+
+    // Initialize TCA9554PWR GPIO expander for EXIO4 (PWR button)
+    println!("Initializing TCA9554PWR GPIO expander for PWR button...");
+    let i2c_gpio_expander = i2c::AtomicDevice::new(i2c_cell);
+    let mut gpio_expander = Tca9554Driver::new(i2c_gpio_expander);
+
+    // Configure EXIO4 (pin 4) as input for PWR button
+    gpio_expander.configure_pin(4, false).unwrap_or_else(|e| {
+        println!("Warning: Could not configure EXIO4 as input: {:?}", e);
+    });
+
+    // Read initial state
+    match gpio_expander.read_pin(4) {
+        Ok(state) => println!(
+            "EXIO4 (PWR button) initial state: {}",
+            if state { "HIGH" } else { "LOW" }
+        ),
+        Err(e) => println!("Warning: Could not read EXIO4 initial state: {:?}", e),
+    }
 
     world.insert_non_send_resource(ButtonResource {
-        button,
-        last_state: false,
-        debounce_counter: 0,
+        boot_button,
+        gpio_expander,
+        boot_last_state: false,
+        pwr_last_state: false,
+        boot_debounce_counter: 0,
+        pwr_debounce_counter: 0,
     });
 
     // Get initial cycle count and CPU frequency
@@ -1355,7 +1588,6 @@ fn main() -> ! {
     let cpu_freq_mhz = 240; // ESP32-S3 running at 240 MHz
 
     loop {
-
         // Measure CPU cycles before schedule.run()
         let start = esp_hal::xtensa_lx::timer::get_cycle_count();
         schedule.run(&mut world);
