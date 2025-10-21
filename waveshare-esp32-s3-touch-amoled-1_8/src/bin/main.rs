@@ -395,7 +395,7 @@ fn update_game_of_life_system(
 fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
     mut touch_res: NonSendMut<TouchResource>,
-    // image_res: Res<ImageResource>,
+    image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
@@ -476,33 +476,46 @@ fn render_system(
     //         .draw(&mut display_res.display)
     //         .unwrap();
     // }
-    let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
-    Image::new(&bmp, Point::new(0, 0))
+
+    // let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
+    Image::new(&image_res.bmp, Point::new(0, 0))
         .draw(&mut display_res.display)
         .unwrap();
+    if game.generation == 0 {
+        display_res.display.flush().ok();
+    }
 
-    let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
-    let total_frames = gif.frames().count();
-    let target_index = game.generation % total_frames;
-    let mut current_index = 0;
-    let mut target_frame = None;
-    for frame in gif.frames() {
-        if current_index == target_index {
-            target_frame = Some(frame);
-            break; // Optimisation : pas besoin de continuer
-        }
-        current_index += 1;
-    }
-    // Dessiner la frame trouvée
-    if let Some(frame) = target_frame {
-        // let position = Point::new(80, 20);
-        //  frame.draw(&mut fb_res.frame_buf).unwrap();
-        Image::new(&frame, position)
-            .draw(&mut display_res.display)
-            .unwrap()
-    }
+    // let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
+    // let total_frames = gif.frames().count();
+    // let target_index = game.generation % total_frames;
+    // let mut current_index = 0;
+    // let mut target_frame = None;
+    // for frame in gif.frames() {
+    //     if current_index == target_index {
+    //         target_frame = Some(frame);
+    //         break; // Optimisation : pas besoin de continuer
+    //     }
+    //     current_index += 1;
+    // }
+    // // Dessiner la frame trouvée
+    // if let Some(frame) = target_frame {
+    //     // let position = Point::new(80, 20);
+    //     //  frame.draw(&mut fb_res.frame_buf).unwrap();
+    //     Image::new(&frame, position)
+    //         .draw(&mut display_res.display)
+    //         .unwrap()
+    // }
 
     write_generation(&mut display_res.display, game.generation).unwrap();
+    // display_res
+    //     .display
+    //     .partial_flush(0, 150, 0, 150, ColorMode::Rgb888)
+    //     .ok();
+
+    display_res
+        .display
+        .partial_flush(0, 85, 380, 420, ColorMode::Rgb888)
+        .ok();
 
     game.generation += 1;
 
@@ -537,7 +550,7 @@ fn render_system(
     // }
 
     // Flush the display
-    display_res.display.flush().ok();
+    // display_res.display.flush().ok();
 }
 
 static I2C_BUS: StaticCell<RefCell<I2c<'static, Blocking>>> = StaticCell::new();
@@ -641,7 +654,7 @@ fn main() -> ! {
         }
     };
 
-    // let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
+    let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
 
     // Initialize RNG
     let mut rng = Rng::new(peripherals.RNG);
@@ -658,7 +671,7 @@ fn main() -> ! {
     world.insert_resource(game);
     // world.insert_resource(RngResource(rng));
     world.insert_resource(fb_res);
-    // world.insert_resource(ImageResource { bmp });
+    world.insert_resource(ImageResource { bmp });
 
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
@@ -680,10 +693,51 @@ fn main() -> ! {
 
     info!("Entering Bevy ECS main loop...");
 
+    // Variables for timing statistics
+    let mut total_cycles: u64 = 0;
+    let mut frame_count: u64 = 0;
+    let mut max_cycles: u32 = 0;
+    let mut min_cycles: u32 = u32::MAX;
+
+    // Get CPU frequency for time calculations
+    let cpu_freq_mhz = 240; // ESP32-S3 running at 240 MHz
+
     loop {
         if button.is_low() {
             println!("Bouton APPUYÉ !");
         }
+
+        // Measure CPU cycles before schedule.run()
+        let start = esp_hal::xtensa_lx::timer::get_cycle_count();
         schedule.run(&mut world);
+        let end = esp_hal::xtensa_lx::timer::get_cycle_count();
+
+        // Calculate elapsed cycles (handle wraparound)
+        let elapsed_cycles = end.wrapping_sub(start);
+
+        // Update statistics
+        total_cycles += elapsed_cycles as u64;
+        frame_count += 1;
+        if elapsed_cycles > max_cycles {
+            max_cycles = elapsed_cycles;
+        }
+        if elapsed_cycles < min_cycles {
+            min_cycles = elapsed_cycles;
+        }
+
+        // Print timing every 100 frames
+        if frame_count % 100 == 0 {
+            let avg_cycles = total_cycles / frame_count;
+            let avg_time_us = avg_cycles / cpu_freq_mhz;
+            let fps = 1_000_000 / avg_time_us;
+            let last_time_us = elapsed_cycles as u64 / cpu_freq_mhz;
+            let min_time_us = min_cycles as u64 / cpu_freq_mhz;
+            let max_time_us = max_cycles as u64 / cpu_freq_mhz;
+
+            println!(
+                "Frame {}: Avg={}us ({}fps), Min={}us, Max={}us, Last={}us",
+                frame_count, avg_time_us, fps, min_time_us, max_time_us, last_time_us
+            );
+        }
     }
 }
