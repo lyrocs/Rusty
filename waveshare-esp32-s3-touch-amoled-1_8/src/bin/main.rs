@@ -316,6 +316,18 @@ fn write_generation<D: DrawTarget<Color = Rgb888>>(
     Ok(())
 }
 
+fn write_fps<D: DrawTarget<Color = Rgb888>>(display: &mut D, fps: usize) -> Result<(), D::Error> {
+    let mut num_str = String::<20>::new();
+    write!(num_str, "FPS: {fps}").unwrap();
+    Text::new(
+        num_str.as_str(),
+        Point::new(250, 400),
+        MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
+    )
+    .draw(display)?;
+    Ok(())
+}
+
 /// Renders a GIF animation with optimized background restoration
 ///
 /// # Parameters
@@ -353,16 +365,12 @@ where
 
     // Step 1: Clear the old GIF position by restoring background (only if position changed)
     if position_changed {
-        let old_gif_area = Rectangle::new(
-            gif_res.previous_position,
-            Size::new(gif_width, gif_height),
-        );
+        let old_gif_area =
+            Rectangle::new(gif_res.previous_position, Size::new(gif_width, gif_height));
 
         for pixel in old_gif_area.points() {
             if let Some(color) = background.pixel(pixel) {
-                embedded_graphics::Pixel(pixel, color)
-                    .draw(display)
-                    .ok();
+                embedded_graphics::Pixel(pixel, color).draw(display).ok();
             }
         }
 
@@ -371,9 +379,7 @@ where
 
         for pixel in new_gif_area.points() {
             if let Some(color) = background.pixel(pixel) {
-                embedded_graphics::Pixel(pixel, color)
-                    .draw(display)
-                    .ok();
+                embedded_graphics::Pixel(pixel, color).draw(display).ok();
             }
         }
     } else if frame_changed {
@@ -382,9 +388,7 @@ where
 
         for pixel in gif_area.points() {
             if let Some(color) = background.pixel(pixel) {
-                embedded_graphics::Pixel(pixel, color)
-                    .draw(display)
-                    .ok();
+                embedded_graphics::Pixel(pixel, color).draw(display).ok();
             }
         }
     }
@@ -394,9 +398,7 @@ where
     let mut current_index = 0;
     for frame in gif.frames() {
         if current_index == target_frame_index {
-            Image::new(&frame, gif_res.position)
-                .draw(display)
-                .ok();
+            Image::new(&frame, gif_res.position).draw(display).ok();
             break;
         }
         current_index += 1;
@@ -438,6 +440,7 @@ struct GameOfLifeResource {
     grid: [[u8; GRID_WIDTH]; GRID_HEIGHT],
     next_grid: [[u8; GRID_WIDTH]; GRID_HEIGHT],
     generation: usize,
+    fps: usize,
     background_drawn: bool, // Track if background has been drawn
 }
 
@@ -447,6 +450,7 @@ impl Default for GameOfLifeResource {
             grid: [[0; GRID_WIDTH]; GRID_HEIGHT],
             next_grid: [[0; GRID_WIDTH]; GRID_HEIGHT],
             generation: 0,
+            fps: 0,
             background_drawn: false,
         }
     }
@@ -554,6 +558,7 @@ fn render_system(
 
         // Draw initial generation text
         write_generation(&mut display_res.display, game.generation).unwrap();
+        write_fps(&mut display_res.display, game.generation).unwrap();
 
         game.background_drawn = true;
         display_res.display.flush().ok();
@@ -606,7 +611,7 @@ fn render_system(
     // Before drawing the new generation text, restore the background in that area
     // Text area is at (8, 400) with approximate size 85x40 pixels
     // We can manually copy pixels from the BMP to restore the background
-    let text_area = Rectangle::new(Point::new(0, 380), Size::new(85, 40));
+    let text_area = Rectangle::new(Point::new(0, 380), Size::new(380, 40));
 
     for pixel in text_area.points() {
         if let Some(color) = image_res.bmp.pixel(pixel) {
@@ -618,6 +623,7 @@ fn render_system(
 
     // Draw the generation counter over the background
     write_generation(&mut display_res.display, game.generation).unwrap();
+    write_fps(&mut display_res.display, game.fps).unwrap();
 
     // === GIF RENDERING WITH OPTIMIZATION ===
     // GIF dimensions - adjust based on your actual GIF size
@@ -643,7 +649,7 @@ fn render_system(
     // Partial flush for generation text area
     display_res
         .display
-        .partial_flush(0, 85, 380, 420, ColorMode::Rgb888)
+        .partial_flush(0, 350, 380, 420, ColorMode::Rgb888)
         .ok();
 
     // Partial flush for GIF area if it was rendered
@@ -883,6 +889,10 @@ fn main() -> ! {
             let min_time_us = min_cycles as u64 / cpu_freq_mhz;
             let max_time_us = max_cycles as u64 / cpu_freq_mhz;
 
+            // Access game resource through the world
+            if let Some(mut game) = world.get_resource_mut::<GameOfLifeResource>() {
+                game.fps = fps as usize;
+            }
             println!(
                 "Frame {}: Avg={}us ({}fps), Min={}us, Max={}us, Last={}us",
                 frame_count, avg_time_us, fps, min_time_us, max_time_us, last_time_us
