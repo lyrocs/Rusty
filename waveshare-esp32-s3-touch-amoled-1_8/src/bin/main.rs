@@ -27,8 +27,8 @@ use esp_hal::Blocking;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
-use esp_hal::dma_buffers;
-use esp_hal::gpio::{Input, InputConfig, Io, Pull};
+use esp_hal::{dma_buffers, dma_descriptors};
+use esp_hal::gpio::{Input, InputConfig, Io, Level, Output, OutputConfig, Pull};
 use esp_hal::i2c::master::{Config as I2cConfig, Error as I2cError, I2c};
 use esp_hal::main;
 use esp_hal::spi::Mode;
@@ -56,6 +56,9 @@ use time::{Date, Month, PrimitiveDateTime, Time};
 
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::util::AtomicCell;
+
+use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeManager};
+use embedded_hal_bus::spi::ExclusiveDevice;
 
 use ft3x68_rs::{
     DriverError, FT3168_DEVICE_ADDRESS, Ft3x68Driver, PowerMode, ResetInterface, TouchPoint,
@@ -169,6 +172,25 @@ fn bcd_to_decimal(bcd: u8) -> u8 {
 /// Convert normal decimal to BCD
 fn decimal_to_bcd(decimal: u8) -> u8 {
     ((decimal / 10) << 4) | (decimal % 10)
+}
+
+// --- SD Card TimeSource Implementation ---
+
+/// Simple TimeSource implementation for SD card file timestamps
+/// Returns a fixed timestamp for now (can be enhanced with RTC later)
+pub struct DummyTimeSource;
+
+impl TimeSource for DummyTimeSource {
+    fn get_timestamp(&self) -> Timestamp {
+        Timestamp {
+            year_since_1970: 55, // 2025
+            zero_indexed_month: 9, // October (0-indexed)
+            zero_indexed_day: 20, // 21st (0-indexed)
+            hours: 12,
+            minutes: 0,
+            seconds: 0,
+        }
+    }
 }
 
 pub struct ResetTouchDriver<I2C> {
@@ -930,6 +952,50 @@ fn main() -> ! {
     match rtc.get_datetime() {
         Ok(dt) => println!("RTC initialized. Current time: {:?}", dt),
         Err(_) => println!("Warning: Could not read RTC time"),
+    }
+
+    // Initialize SD Card (TF Card) via SPI3
+    println!("Initializing SD Card...");
+
+    // SD Card uses its own SPI bus with these pins:
+    // SCLK: GPIO2, MOSI: GPIO1, MISO: GPIO3, CS: EXIO7 (via GPIO expander)
+    // For now, we'll use a simpler approach with a dedicated GPIO for CS
+
+    // Create DMA buffers for SD card SPI
+    let (sd_rx_buffer, sd_rx_descriptors, sd_tx_buffer, sd_tx_descriptors) = dma_buffers!(8192);
+    let sd_dma_rx_buf = DmaRxBuf::new(sd_rx_descriptors, sd_rx_buffer).unwrap();
+    let sd_dma_tx_buf = DmaTxBuf::new(sd_tx_descriptors, sd_tx_buffer).unwrap();
+
+    let sd_spi = Spi::new(
+        peripherals.SPI3,
+        SpiConfig::default()
+            .with_frequency(Rate::from_khz(400)) // Start slow for initialization
+            .with_mode(Mode::_0),
+    )
+    .unwrap()
+    .with_sck(peripherals.GPIO2)
+    .with_mosi(peripherals.GPIO1)
+    .with_miso(peripherals.GPIO3)
+    .with_dma(peripherals.DMA_CH1)
+    .with_buffers(sd_dma_rx_buf, sd_dma_tx_buf);
+
+    // For CS, we need to control GPIO via I2C expander (EXIO7)
+    // This is complex, so for POC we'll use GPIO10 as temporary CS for testing
+    let sd_cs = peripherals.GPIO10;
+    let sd_cs_output = Output::new(sd_cs, Level::High, OutputConfig::default());
+
+    let sd_device = ExclusiveDevice::new(sd_spi, sd_cs_output, Delay::new()).unwrap();
+    let sdcard = SdCard::new(sd_device, Delay::new());
+
+    match sdcard.num_bytes() {
+        Ok(size) => {
+            let size_mb = size / (1024 * 1024);
+            println!("SD Card detected! Size: {} MB", size_mb);
+        }
+        Err(e) => {
+            println!("SD Card initialization failed or not inserted: {:?}", e);
+            println!("Continuing without SD card support...");
+        }
     }
 
     // Instantiate and Initialize Display
