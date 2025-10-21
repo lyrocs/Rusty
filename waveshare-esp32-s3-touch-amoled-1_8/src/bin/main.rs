@@ -12,7 +12,7 @@ use core::fmt::Write;
 //ImageTransparent
 use embedded_graphics::{
     Drawable,
-    image::{Image, ImageRaw},
+    image::{GetPixel, Image, ImageRaw},
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Rgb888,
     prelude::*,
@@ -476,14 +476,20 @@ fn render_system(
     // Background is now drawn only once in the check above
     // No need to redraw it every frame!
 
-    // Clear only the generation text area before redrawing (prevent ghosting)
-    // Text area is at (8, 400) with size roughly 200x20
-    Rectangle::new(Point::new(0, 380), Size::new(85, 40))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::BLACK))
-        .draw(&mut display_res.display)
-        .ok();
+    // Before drawing the new generation text, restore the background in that area
+    // Text area is at (8, 400) with approximate size 85x40 pixels
+    // We can manually copy pixels from the BMP to restore the background
+    let text_area = Rectangle::new(Point::new(0, 380), Size::new(85, 40));
 
-    // Draw the generation counter
+    for pixel in text_area.points() {
+        if let Some(color) = image_res.bmp.pixel(pixel) {
+            embedded_graphics::Pixel(pixel, color)
+                .draw(&mut display_res.display)
+                .ok();
+        }
+    }
+
+    // Draw the generation counter over the background
     write_generation(&mut display_res.display, game.generation).unwrap();
     // display_res
     //     .display
