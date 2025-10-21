@@ -316,6 +316,99 @@ fn write_generation<D: DrawTarget<Color = Rgb888>>(
     Ok(())
 }
 
+/// Renders a GIF animation with optimized background restoration
+///
+/// # Parameters
+/// - `display`: The display target to draw on
+/// - `background`: The background image to restore when clearing frames
+/// - `gif_data`: The GIF data bytes
+/// - `gif_res`: Resource tracking GIF position and frame state
+/// - `target_frame_index`: The frame to display (typically generation % total_frames)
+/// - `gif_width`: Width of the GIF in pixels
+/// - `gif_height`: Height of the GIF in pixels
+///
+/// # Returns
+/// - `true` if rendering occurred, `false` if no rendering was needed
+fn render_gif_optimized<D, I>(
+    display: &mut D,
+    background: &I,
+    gif_data: &[u8],
+    gif_res: &mut GifResource,
+    target_frame_index: usize,
+    gif_width: u32,
+    gif_height: u32,
+) -> bool
+where
+    D: DrawTarget<Color = Rgb888>,
+    I: GetPixel<Color = Rgb888>,
+{
+    // Check if position or frame changed or if it's the first render
+    let position_changed = gif_res.position != gif_res.previous_position;
+    let frame_changed = gif_res.frame_index != target_frame_index;
+    let needs_render = position_changed || frame_changed || gif_res.first_render;
+
+    if !needs_render {
+        return false;
+    }
+
+    // Step 1: Clear the old GIF position by restoring background (only if position changed)
+    if position_changed {
+        let old_gif_area = Rectangle::new(
+            gif_res.previous_position,
+            Size::new(gif_width, gif_height),
+        );
+
+        for pixel in old_gif_area.points() {
+            if let Some(color) = background.pixel(pixel) {
+                embedded_graphics::Pixel(pixel, color)
+                    .draw(display)
+                    .ok();
+            }
+        }
+
+        // Also restore background at new position when moving
+        let new_gif_area = Rectangle::new(gif_res.position, Size::new(gif_width, gif_height));
+
+        for pixel in new_gif_area.points() {
+            if let Some(color) = background.pixel(pixel) {
+                embedded_graphics::Pixel(pixel, color)
+                    .draw(display)
+                    .ok();
+            }
+        }
+    } else if frame_changed {
+        // Step 2: For frame changes only, restore background to clear previous frame
+        let gif_area = Rectangle::new(gif_res.position, Size::new(gif_width, gif_height));
+
+        for pixel in gif_area.points() {
+            if let Some(color) = background.pixel(pixel) {
+                embedded_graphics::Pixel(pixel, color)
+                    .draw(display)
+                    .ok();
+            }
+        }
+    }
+
+    // Step 3: Draw the target GIF frame at the current position
+    let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
+    let mut current_index = 0;
+    for frame in gif.frames() {
+        if current_index == target_frame_index {
+            Image::new(&frame, gif_res.position)
+                .draw(display)
+                .ok();
+            break;
+        }
+        current_index += 1;
+    }
+
+    // Update the GIF state
+    gif_res.frame_index = target_frame_index;
+    gif_res.first_render = false;
+
+    true
+}
+
 // --- Bevy ECS Resources ---
 
 // Framebuffer resource for double buffering
@@ -527,97 +620,25 @@ fn render_system(
     write_generation(&mut display_res.display, game.generation).unwrap();
 
     // === GIF RENDERING WITH OPTIMIZATION ===
-    // Parse the GIF data
+    // GIF dimensions - adjust based on your actual GIF size
+    const GIF_WIDTH: u32 = 153;
+    const GIF_HEIGHT: u32 = 141;
+
+    // Parse the GIF data and calculate target frame
     let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
     let total_frames = gif.frames().count();
-
-    // Calculate current frame based on generation
     let target_frame_index = game.generation % total_frames;
 
-    // Check if position or frame changed or if it's the first render
-    let position_changed = gif_res.position != gif_res.previous_position;
-    let frame_changed = gif_res.frame_index != target_frame_index;
-    let needs_render = position_changed || frame_changed || gif_res.first_render;
-
-    // Debug output every 10 frames
-    // if game.generation % 10 == 0 {
-    //     println!(
-    //         "Gen {}: target_frame={}, current_frame={}, frames={}, changed={}, needs_render={}",
-    //         game.generation,
-    //         target_frame_index,
-    //         gif_res.frame_index,
-    //         total_frames,
-    //         frame_changed,
-    //         needs_render
-    //     );
-    // }
-
-    // Also print when we actually update the frame
-    // if needs_render && frame_changed {
-    //     println!(
-    //         "  -> Updating: gen={}, drawing frame {}, setting frame_index to {}",
-    //         game.generation, target_frame_index, target_frame_index
-    //     );
-    // }
-
-    if needs_render {
-        // GIF size - adjust based on your actual GIF dimensions 153 × 141
-        const GIF_WIDTH: u32 = 153;
-        const GIF_HEIGHT: u32 = 141;
-
-        // Step 1: Clear the old GIF position by restoring background (only if position changed)
-        if position_changed {
-            let old_gif_area =
-                Rectangle::new(gif_res.previous_position, Size::new(GIF_WIDTH, GIF_HEIGHT));
-
-            for pixel in old_gif_area.points() {
-                if let Some(color) = image_res.bmp.pixel(pixel) {
-                    embedded_graphics::Pixel(pixel, color)
-                        .draw(&mut display_res.display)
-                        .ok();
-                }
-            }
-
-            // Also restore background at new position when moving
-            let new_gif_area = Rectangle::new(gif_res.position, Size::new(GIF_WIDTH, GIF_HEIGHT));
-
-            for pixel in new_gif_area.points() {
-                if let Some(color) = image_res.bmp.pixel(pixel) {
-                    embedded_graphics::Pixel(pixel, color)
-                        .draw(&mut display_res.display)
-                        .ok();
-                }
-            }
-        } else if frame_changed {
-            // Step 2: For frame changes only, restore background to clear previous frame
-            let gif_area = Rectangle::new(gif_res.position, Size::new(GIF_WIDTH, GIF_HEIGHT));
-
-            for pixel in gif_area.points() {
-                if let Some(color) = image_res.bmp.pixel(pixel) {
-                    embedded_graphics::Pixel(pixel, color)
-                        .draw(&mut display_res.display)
-                        .ok();
-                }
-            }
-        }
-
-        // Step 3: Draw the GIF frame at the new position
-        let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
-        let mut current_index = 0;
-        for frame in gif.frames() {
-            if current_index == target_frame_index {
-                Image::new(&frame, gif_res.position)
-                    .draw(&mut display_res.display)
-                    .unwrap();
-                break;
-            }
-            current_index += 1;
-        }
-
-        // Update the GIF state
-        gif_res.frame_index = target_frame_index;
-        gif_res.first_render = false;
-    }
+    // Render GIF using the optimized function
+    let needs_render = render_gif_optimized(
+        &mut display_res.display,
+        &image_res.bmp,
+        GIF_DATA,
+        &mut gif_res,
+        target_frame_index,
+        GIF_WIDTH,
+        GIF_HEIGHT,
+    );
 
     // Partial flush for generation text area
     display_res
@@ -625,12 +646,12 @@ fn render_system(
         .partial_flush(0, 85, 380, 420, ColorMode::Rgb888)
         .ok();
 
-    // Partial flush for GIF area if it changed
+    // Partial flush for GIF area if it was rendered
     if needs_render {
         let flush_x_start = gif_res.position.x.max(0) as u16;
         let flush_y_start = gif_res.position.y.max(0) as u16;
-        let flush_x_end = (flush_x_start + 153).min(368);
-        let flush_y_end = (flush_y_start + 141).min(448);
+        let flush_x_end = (flush_x_start + GIF_WIDTH as u16).min(368);
+        let flush_y_end = (flush_y_start + GIF_HEIGHT as u16).min(448);
 
         display_res
             .display
