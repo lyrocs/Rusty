@@ -42,11 +42,11 @@ use esp_println::logger::init_logger_from_env;
 use esp_println::println;
 
 use tinybmp::Bmp; // Parseur BMP
+use tinygif::Gif;
 // use tinytga::Tga;
 // use embedded_sprites::{image::Image, include_image};
 // use embedded_sprites::sprite::Sprite;
 // use embedded_graphics::pixelcolor::Bgr565;
-use tinygif::Gif;
 
 use core::cell::RefCell;
 use embedded_hal_bus::i2c::RefCellDevice;
@@ -362,6 +362,25 @@ impl Default for GameOfLifeResource {
 #[derive(Resource)]
 struct RngResource(Rng);
 
+#[derive(Resource)]
+struct GifResource {
+    position: Point,          // Current GIF position
+    previous_position: Point, // Previous position for cleanup
+    frame_index: usize,       // Current frame index
+    first_render: bool,       // Track if GIF has been rendered at least once
+}
+
+impl Default for GifResource {
+    fn default() -> Self {
+        Self {
+            position: Point::new(160, 200), // Center of screen roughly
+            previous_position: Point::new(160, 200),
+            frame_index: 0,
+            first_render: true, // Force initial render
+        }
+    }
+}
+
 // Display resource - NonSend because it contains non-thread-safe components
 // #[derive(Resource)]
 struct DisplayResource {
@@ -399,18 +418,19 @@ fn render_system(
     mut touch_res: NonSendMut<TouchResource>,
     image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
+    mut gif_res: ResMut<GifResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
-    let mut touching: TouchState = touch_res
+    let touching: TouchState = touch_res
         .touch
         .touch1()
-        .unwrap_or_else(|e| TouchState::Released);
+        .unwrap_or_else(|_e| TouchState::Released);
 
-    let mut position = Point::new(0, 0);
+    // Update GIF position based on touch
     match touching {
         TouchState::Pressed(TouchPoint { x, y }) => {
-            // ex: dessiner un point à l'endroit touché
-            position = Point::new(x as i32, y as i32);
+            gif_res.previous_position = gif_res.position;
+            gif_res.position = Point::new(x as i32, y as i32);
         }
         TouchState::Released => {}
     }
@@ -428,6 +448,20 @@ fn render_system(
         Image::new(&image_res.bmp, Point::new(0, 0))
             .draw(&mut display_res.display)
             .unwrap();
+
+        // Draw initial GIF frame on first render
+        let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
+        if let Some(first_frame) = gif.frames().next() {
+            Image::new(&first_frame, gif_res.position)
+                .draw(&mut display_res.display)
+                .unwrap();
+        }
+        gif_res.first_render = false; // Mark as rendered
+        gif_res.frame_index = 0; // Initialize frame index to match first frame drawn
+
+        // Draw initial generation text
+        write_generation(&mut display_res.display, game.generation).unwrap();
+
         game.background_drawn = true;
         display_res.display.flush().ok();
         return; // Exit early after first background draw
@@ -491,15 +525,124 @@ fn render_system(
 
     // Draw the generation counter over the background
     write_generation(&mut display_res.display, game.generation).unwrap();
-    // display_res
-    //     .display
-    //     .partial_flush(0, 150, 0, 150, ColorMode::Rgb888)
-    //     .ok();
 
+    // === GIF RENDERING WITH OPTIMIZATION ===
+    // Parse the GIF data
+    let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
+    let total_frames = gif.frames().count();
+
+    // Calculate current frame based on generation
+    let target_frame_index = game.generation % total_frames;
+
+    // Check if position or frame changed or if it's the first render
+    let position_changed = gif_res.position != gif_res.previous_position;
+    let frame_changed = gif_res.frame_index != target_frame_index;
+    let needs_render = position_changed || frame_changed || gif_res.first_render;
+
+    // Debug output every 10 frames
+    // if game.generation % 10 == 0 {
+    //     println!(
+    //         "Gen {}: target_frame={}, current_frame={}, frames={}, changed={}, needs_render={}",
+    //         game.generation,
+    //         target_frame_index,
+    //         gif_res.frame_index,
+    //         total_frames,
+    //         frame_changed,
+    //         needs_render
+    //     );
+    // }
+
+    // Also print when we actually update the frame
+    // if needs_render && frame_changed {
+    //     println!(
+    //         "  -> Updating: gen={}, drawing frame {}, setting frame_index to {}",
+    //         game.generation, target_frame_index, target_frame_index
+    //     );
+    // }
+
+    if needs_render {
+        // GIF size - adjust based on your actual GIF dimensions 153 × 141
+        const GIF_WIDTH: u32 = 153;
+        const GIF_HEIGHT: u32 = 141;
+
+        // Step 1: Clear the old GIF position by restoring background (only if position changed)
+        if position_changed {
+            let old_gif_area =
+                Rectangle::new(gif_res.previous_position, Size::new(GIF_WIDTH, GIF_HEIGHT));
+
+            for pixel in old_gif_area.points() {
+                if let Some(color) = image_res.bmp.pixel(pixel) {
+                    embedded_graphics::Pixel(pixel, color)
+                        .draw(&mut display_res.display)
+                        .ok();
+                }
+            }
+
+            // Also restore background at new position when moving
+            let new_gif_area = Rectangle::new(gif_res.position, Size::new(GIF_WIDTH, GIF_HEIGHT));
+
+            for pixel in new_gif_area.points() {
+                if let Some(color) = image_res.bmp.pixel(pixel) {
+                    embedded_graphics::Pixel(pixel, color)
+                        .draw(&mut display_res.display)
+                        .ok();
+                }
+            }
+        } else if frame_changed {
+            // Step 2: For frame changes only, restore background to clear previous frame
+            let gif_area = Rectangle::new(gif_res.position, Size::new(GIF_WIDTH, GIF_HEIGHT));
+
+            for pixel in gif_area.points() {
+                if let Some(color) = image_res.bmp.pixel(pixel) {
+                    embedded_graphics::Pixel(pixel, color)
+                        .draw(&mut display_res.display)
+                        .ok();
+                }
+            }
+        }
+
+        // Step 3: Draw the GIF frame at the new position
+        let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
+        let mut current_index = 0;
+        for frame in gif.frames() {
+            if current_index == target_frame_index {
+                Image::new(&frame, gif_res.position)
+                    .draw(&mut display_res.display)
+                    .unwrap();
+                break;
+            }
+            current_index += 1;
+        }
+
+        // Update the GIF state
+        gif_res.frame_index = target_frame_index;
+        gif_res.first_render = false;
+    }
+
+    // Partial flush for generation text area
     display_res
         .display
         .partial_flush(0, 85, 380, 420, ColorMode::Rgb888)
         .ok();
+
+    // Partial flush for GIF area if it changed
+    if needs_render {
+        let flush_x_start = gif_res.position.x.max(0) as u16;
+        let flush_y_start = gif_res.position.y.max(0) as u16;
+        let flush_x_end = (flush_x_start + 153).min(368);
+        let flush_y_end = (flush_y_start + 141).min(448);
+
+        display_res
+            .display
+            .partial_flush(
+                flush_x_start,
+                flush_x_end,
+                flush_y_start,
+                flush_y_end,
+                ColorMode::Rgb888,
+            )
+            .ok();
+    }
 
     game.generation += 1;
 
@@ -656,6 +799,7 @@ fn main() -> ! {
     // world.insert_resource(RngResource(rng));
     world.insert_resource(fb_res);
     world.insert_resource(ImageResource { bmp });
+    world.insert_resource(GifResource::default());
 
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
