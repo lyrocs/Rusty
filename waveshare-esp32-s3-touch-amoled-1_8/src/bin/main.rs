@@ -510,157 +510,127 @@ fn update_game_of_life_system(
     }
 }
 
-fn render_system(
-    mut display_res: NonSendMut<DisplayResource>,
-    mut touch_res: NonSendMut<TouchResource>,
-    image_res: Res<ImageResource>,
-    mut game: ResMut<GameOfLifeResource>,
-    mut gif_res: ResMut<GifResource>,
-    mut fb_res: ResMut<FrameBufferResource>,
-) {
-    let touching: TouchState = touch_res
+// --- Render System Helper Functions ---
+
+/// Handles touch input and updates GIF position
+fn handle_touch_input(touch_res: &mut TouchResource, gif_res: &mut GifResource) {
+    let touching = touch_res
         .touch
         .touch1()
         .unwrap_or_else(|_e| TouchState::Released);
 
-    // Update GIF position based on touch
-    match touching {
-        TouchState::Pressed(TouchPoint { x, y }) => {
-            gif_res.previous_position = gif_res.position;
-            gif_res.position = Point::new(x as i32, y as i32);
-        }
-        TouchState::Released => {}
+    if let TouchState::Pressed(TouchPoint { x, y }) = touching {
+        gif_res.previous_position = gif_res.position;
+        gif_res.position = Point::new(x as i32, y as i32);
     }
+}
 
-    // Read Detected Gesture (if any)
-    // touch_res
-    // .touch
-    //         .read_gesture()
-    //         .map(|gesture| println!("Gesture: {:?}", gesture))
-    //         .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
+/// Renders the initial background with BMP image and first GIF frame
+fn render_initial_background<D>(
+    display: &mut D,
+    background: &Bmp<Rgb888>,
+    gif_res: &mut GifResource,
+    generation: usize,
+    fps: usize,
+) where
+    D: DrawTarget<Color = Rgb888>,
+{
+    display.clear(Rgb888::BLACK).ok();
+    Image::new(background, Point::new(0, 0)).draw(display).ok();
 
-    // Only draw background once at startup or when resetting
-    if !game.background_drawn {
-        display_res.display.clear(Rgb888::BLACK).ok();
-        Image::new(&image_res.bmp, Point::new(0, 0))
-            .draw(&mut display_res.display)
-            .unwrap();
-
-        // Draw initial GIF frame on first render
-        let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
-        if let Some(first_frame) = gif.frames().next() {
-            Image::new(&first_frame, gif_res.position)
-                .draw(&mut display_res.display)
-                .unwrap();
-        }
-        gif_res.first_render = false; // Mark as rendered
-        gif_res.frame_index = 0; // Initialize frame index to match first frame drawn
-
-        // Draw initial generation text
-        write_generation(&mut display_res.display, game.generation).unwrap();
-        write_fps(&mut display_res.display, game.generation).unwrap();
-
-        game.background_drawn = true;
-        display_res.display.flush().ok();
-        return; // Exit early after first background draw
+    // Draw initial GIF frame
+    let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
+    if let Some(first_frame) = gif.frames().next() {
+        Image::new(&first_frame, gif_res.position).draw(display).ok();
     }
+    gif_res.first_render = false;
+    gif_res.frame_index = 0;
 
-    // // Add centered text overlay
-    // let line1 = "Updated!";
-    // let line2 = "Bevy ECS 0.16 no_std";
-    // let line3 = "AMOLED Display";
+    // Draw initial text overlays
+    write_generation(display, generation).ok();
+    write_fps(display, fps).ok();
+}
 
-    // // Calculate text positioning - FONT_10X20 is 10 pixels wide
-    // let line1_width = line1.len() as i32 * 10;
-    // let line2_width = line2.len() as i32 * 10;
-    // let line3_width = line3.len() as i32 * 10;
-
-    // let x1 = (LCD_H_RES as i32 - line1_width) / 2;
-    // let x2 = (LCD_H_RES as i32 - line2_width) / 2;
-    // let x3 = (LCD_H_RES as i32 - line3_width) / 2;
-
-    // let y_center = (LCD_V_RES as i32 - 60) / 2; // Updated for 20px font height
-
-    // Text::new(
-    //     line1,
-    //     Point::new(x1, y_center),
-    //     MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
-    // )
-    // .draw(&mut fb_res.frame_buf)
-    // .unwrap();
-
-    // Text::new(
-    //     line2,
-    //     Point::new(x2, y_center + 20),
-    //     MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
-    // )
-    // .draw(&mut fb_res.frame_buf)
-    // .unwrap();
-
-    // Text::new(
-    //     line3,
-    //     Point::new(x3, y_center + 40),
-    //     MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE),
-    // )
-    // .draw(&mut fb_res.frame_buf)
-    // .unwrap();
-
-    // Background is now drawn only once in the check above
-    // No need to redraw it every frame!
-
-    // Before drawing the new generation text, restore the background in that area
-    // Text area is at (8, 400) with approximate size 85x40 pixels
-    // We can manually copy pixels from the BMP to restore the background
+/// Restores background and renders updated text (generation + FPS)
+fn render_text_overlay<D, I>(
+    display: &mut D,
+    background: &I,
+    generation: usize,
+    fps: usize,
+) where
+    D: DrawTarget<Color = Rgb888>,
+    I: GetPixel<Color = Rgb888>,
+{
+    // Restore background in text area before drawing new text
     let text_area = Rectangle::new(Point::new(0, 380), Size::new(380, 40));
 
     for pixel in text_area.points() {
-        if let Some(color) = image_res.bmp.pixel(pixel) {
-            embedded_graphics::Pixel(pixel, color)
-                .draw(&mut display_res.display)
-                .ok();
+        if let Some(color) = background.pixel(pixel) {
+            embedded_graphics::Pixel(pixel, color).draw(display).ok();
         }
     }
 
-    // Draw the generation counter over the background
-    write_generation(&mut display_res.display, game.generation).unwrap();
-    write_fps(&mut display_res.display, game.fps).unwrap();
+    // Draw updated text
+    write_generation(display, generation).ok();
+    write_fps(display, fps).ok();
+}
 
-    // === GIF RENDERING WITH OPTIMIZATION ===
-    // GIF dimensions - adjust based on your actual GIF size
+/// Renders the animated GIF at current generation frame
+fn render_gif_animation<D, I>(
+    display: &mut D,
+    background: &I,
+    gif_res: &mut GifResource,
+    generation: usize,
+) -> bool
+where
+    D: DrawTarget<Color = Rgb888>,
+    I: GetPixel<Color = Rgb888>,
+{
     const GIF_WIDTH: u32 = 153;
     const GIF_HEIGHT: u32 = 141;
 
-    // Parse the GIF data and calculate target frame
+    // Calculate target frame based on generation
     let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
     let total_frames = gif.frames().count();
-    let target_frame_index = game.generation % total_frames;
+    let target_frame_index = generation % total_frames;
 
-    // Render GIF using the optimized function
-    let needs_render = render_gif_optimized(
-        &mut display_res.display,
-        &image_res.bmp,
+    // Render using optimized function
+    render_gif_optimized(
+        display,
+        background,
         GIF_DATA,
-        &mut gif_res,
+        gif_res,
         target_frame_index,
         GIF_WIDTH,
         GIF_HEIGHT,
-    );
+    )
+}
 
-    // Partial flush for generation text area
-    display_res
-        .display
+/// Flushes updated display regions (text area and GIF area if needed)
+fn flush_display_regions(
+    display: &mut Sh8601Driver<
+        Ws18AmoledDriver,
+        ResetDriver<RefCellDevice<'static, I2c<'static, Blocking>>>,
+    >,
+    gif_needs_render: bool,
+    gif_position: Point,
+) {
+    const GIF_WIDTH: u32 = 153;
+    const GIF_HEIGHT: u32 = 141;
+
+    // Flush text area
+    display
         .partial_flush(0, 350, 380, 420, ColorMode::Rgb888)
         .ok();
 
-    // Partial flush for GIF area if it was rendered
-    if needs_render {
-        let flush_x_start = gif_res.position.x.max(0) as u16;
-        let flush_y_start = gif_res.position.y.max(0) as u16;
+    // Flush GIF area if it was rendered
+    if gif_needs_render {
+        let flush_x_start = gif_position.x.max(0) as u16;
+        let flush_y_start = gif_position.y.max(0) as u16;
         let flush_x_end = (flush_x_start + GIF_WIDTH as u16).min(368);
         let flush_y_end = (flush_y_start + GIF_HEIGHT as u16).min(448);
 
-        display_res
-            .display
+        display
             .partial_flush(
                 flush_x_start,
                 flush_x_end,
@@ -670,41 +640,68 @@ fn render_system(
             )
             .ok();
     }
+}
 
+/// Updates the generation counter with wraparound
+fn update_generation(game: &mut GameOfLifeResource) {
     game.generation += 1;
-
     if game.generation >= RESET_AFTER_GENERATIONS {
         game.generation = 0;
     }
+}
 
-    // display_res.display.clear(Rgb888::BLACK).ok();
+// --- Main Render System ---
 
-    // display_res.display.draw_iter(
-    // fb_res.frame_buf.data
-    //     .iter()
-    //     .enumerate()
-    //     .map(|(i, &color)| {
-    //         let x = (i % LCD_H_RES) as i32;
-    //         let y = (i / LCD_H_RES) as i32;
-    //         Pixel(Point::new(x, y), color)
-    //     })
-    // ).ok();
+fn render_system(
+    mut display_res: NonSendMut<DisplayResource>,
+    mut touch_res: NonSendMut<TouchResource>,
+    image_res: Res<ImageResource>,
+    mut game: ResMut<GameOfLifeResource>,
+    mut gif_res: ResMut<GifResource>,
+    mut fb_res: ResMut<FrameBufferResource>,
+) {
+    // 1. Handle touch input
+    handle_touch_input(&mut touch_res, &mut gif_res);
 
-    // // Draw each pixel from the framebuffer as a 1x1 rectangle
-    // for (y, row) in fb_res.frame_buf.data.chunks_exact(LCD_H_RES).enumerate() {
-    //     for (x, &pixel) in row.iter().enumerate() {
-    //         if pixel != Rgb888::BLACK {
-    //             let point = Point::new(x as i32, y as i32);
-    //             Rectangle::new(point, Size::new(1, 1))
-    //                 .into_styled(PrimitiveStyle::with_fill(pixel))
-    //                 .draw(&mut display_res.display)
-    //                 .ok();
-    //         }
-    //     }
-    // }
+    // 2. Render initial background (one-time setup)
+    if !game.background_drawn {
+        render_initial_background(
+            &mut display_res.display,
+            &image_res.bmp,
+            &mut gif_res,
+            game.generation,
+            game.fps,
+        );
+        game.background_drawn = true;
+        display_res.display.flush().ok();
+        return;
+    }
 
-    // Flush the display
-    // display_res.display.flush().ok();
+    // 3. Render text overlay (generation + FPS)
+    render_text_overlay(
+        &mut display_res.display,
+        &image_res.bmp,
+        game.generation,
+        game.fps,
+    );
+
+    // 4. Render GIF animation
+    let gif_needs_render = render_gif_animation(
+        &mut display_res.display,
+        &image_res.bmp,
+        &mut gif_res,
+        game.generation,
+    );
+
+    // 5. Flush updated display regions
+    flush_display_regions(
+        &mut display_res.display,
+        gif_needs_render,
+        gif_res.position,
+    );
+
+    // 6. Update generation counter
+    update_generation(&mut game);
 }
 
 static I2C_BUS: StaticCell<RefCell<I2c<'static, Blocking>>> = StaticCell::new();
