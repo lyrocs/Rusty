@@ -697,6 +697,7 @@ struct GameOfLifeResource {
     generation: usize,
     fps: usize,
     background_drawn: bool, // Track if background has been drawn
+    display_on: bool,       // Track display on/off state
 }
 
 impl Default for GameOfLifeResource {
@@ -707,6 +708,7 @@ impl Default for GameOfLifeResource {
             generation: 0,
             fps: 0,
             background_drawn: false,
+            display_on: true, // Display starts ON
         }
     }
 }
@@ -763,9 +765,56 @@ struct Axp2101Resource {
     pmic: Axp2101<i2c::AtomicDevice<'static, RefCellDevice<'static, I2c<'static, Blocking>>>>,
 }
 
+// Button resource for tracking button state and debouncing
+// GPIO0 is the boot button with pull-up (active low)
+struct ButtonResource {
+    button: Input<'static>,
+    last_state: bool,      // Last debounced state (true = pressed)
+    debounce_counter: u8,  // Counter for debouncing
+}
+
 // --- Bevy ECS Systems ---
 
 const RESET_AFTER_GENERATIONS: usize = 300;
+const DEBOUNCE_THRESHOLD: u8 = 3; // Number of consecutive readings needed to confirm button press
+
+// Button system to handle display on/off toggle
+fn button_system(
+    mut button_res: NonSendMut<ButtonResource>,
+    mut display_res: NonSendMut<DisplayResource>,
+    mut game: ResMut<GameOfLifeResource>,
+) {
+    // Read current button state (active low, so is_low() = pressed)
+    let button_pressed = button_res.button.is_low();
+
+    // Debouncing logic
+    if button_pressed {
+        if button_res.debounce_counter < DEBOUNCE_THRESHOLD {
+            button_res.debounce_counter += 1;
+        }
+    } else {
+        button_res.debounce_counter = 0;
+    }
+
+    // Detect rising edge (button release after being pressed)
+    // Toggle display on button release to avoid multiple toggles
+    if button_res.last_state && !button_pressed && button_res.debounce_counter == 0 {
+        // Toggle display state
+        game.display_on = !game.display_on;
+
+        // Apply the change to the display
+        if game.display_on {
+            println!("Button: Turning display ON");
+            display_res.display.display_on().ok();
+        } else {
+            println!("Button: Turning display OFF");
+            display_res.display.display_off().ok();
+        }
+    }
+
+    // Update last state (true when debounce threshold is met)
+    button_res.last_state = button_res.debounce_counter >= DEBOUNCE_THRESHOLD;
+}
 
 fn update_game_of_life_system(
     mut game: ResMut<GameOfLifeResource>,
@@ -1267,6 +1316,17 @@ fn main() -> ! {
     // Insert AXP2101 PMIC resource
     world.insert_non_send_resource(Axp2101Resource { pmic });
 
+    // Initialize button (GPIO0 - Boot button with pull-up, active low)
+    let button = peripherals.GPIO0;
+    let config = InputConfig::default().with_pull(Pull::Up);
+    let button = Input::new(button, config);
+
+    world.insert_non_send_resource(ButtonResource {
+        button,
+        last_state: false,
+        debounce_counter: 0,
+    });
+
     // Get initial cycle count and CPU frequency
     let initial_cycles = esp_hal::xtensa_lx::timer::get_cycle_count();
     let cpu_freq_mhz = 240; // ESP32-S3 at max frequency
@@ -1280,17 +1340,8 @@ fn main() -> ! {
     // Create schedule and add systems
     let mut schedule = Schedule::default();
     // schedule.add_systems(update_game_of_life_system);
+    schedule.add_systems(button_system);
     schedule.add_systems(render_system);
-
-    let loop_delay = Delay::new();
-
-    const BOOT_BUTTON_PIN: u8 = 0; // GPIO0
-    const POWER_BUTTON_PIN: u8 = 14;
-
-    let mut io = Io::new(peripherals.IO_MUX);
-    let button = peripherals.GPIO0;
-    let config = InputConfig::default().with_pull(Pull::Up);
-    let mut button = Input::new(button, config);
 
     info!("Entering Bevy ECS main loop...");
 
@@ -1304,9 +1355,6 @@ fn main() -> ! {
     let cpu_freq_mhz = 240; // ESP32-S3 running at 240 MHz
 
     loop {
-        if button.is_low() {
-            println!("Bouton APPUYÉ !");
-        }
 
         // Measure CPU cycles before schedule.run()
         let start = esp_hal::xtensa_lx::timer::get_cycle_count();
