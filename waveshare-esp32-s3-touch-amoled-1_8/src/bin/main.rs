@@ -345,6 +345,7 @@ struct GameOfLifeResource {
     grid: [[u8; GRID_WIDTH]; GRID_HEIGHT],
     next_grid: [[u8; GRID_WIDTH]; GRID_HEIGHT],
     generation: usize,
+    background_drawn: bool, // Track if background has been drawn
 }
 
 impl Default for GameOfLifeResource {
@@ -353,6 +354,7 @@ impl Default for GameOfLifeResource {
             grid: [[0; GRID_WIDTH]; GRID_HEIGHT],
             next_grid: [[0; GRID_WIDTH]; GRID_HEIGHT],
             generation: 0,
+            background_drawn: false,
         }
     }
 }
@@ -407,7 +409,7 @@ fn render_system(
     let mut position = Point::new(0, 0);
     match touching {
         TouchState::Pressed(TouchPoint { x, y }) => {
-            // ex: dessiner un point à l’endroit touché
+            // ex: dessiner un point à l'endroit touché
             position = Point::new(x as i32, y as i32);
         }
         TouchState::Released => {}
@@ -420,13 +422,16 @@ fn render_system(
     //         .map(|gesture| println!("Gesture: {:?}", gesture))
     //         .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
 
-    // Clear the framebuffer
-    // fb_res.frame_buf.clear(Rgb888::BLACK).unwrap();
-    // use display directly
-    display_res.display.clear(Rgb888::BLACK).ok();
-
-    // Draw the game grid
-    // draw_grid(&mut fb_res.frame_buf, &game.grid).unwrap();
+    // Only draw background once at startup or when resetting
+    if !game.background_drawn {
+        display_res.display.clear(Rgb888::BLACK).ok();
+        Image::new(&image_res.bmp, Point::new(0, 0))
+            .draw(&mut display_res.display)
+            .unwrap();
+        game.background_drawn = true;
+        display_res.display.flush().ok();
+        return; // Exit early after first background draw
+    }
 
     // // Add centered text overlay
     // let line1 = "Updated!";
@@ -468,44 +473,17 @@ fn render_system(
     // .draw(&mut fb_res.frame_buf)
     // .unwrap();
 
-    // let bmp = unsafe { BMP_IMAGE.get_unchecked() };
+    // Background is now drawn only once in the check above
+    // No need to redraw it every frame!
 
-    // let bg_gif = Gif::<Rgb888>::from_slice(GIF_BACKGROUND).expect("Failed to parse GIF");
-    // for bg_frame in bg_gif.frames() {
-    //     Image::new(&bg_frame, Point::new(0, 0))
-    //         .draw(&mut display_res.display)
-    //         .unwrap();
-    // }
-
-    // let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
-    Image::new(&image_res.bmp, Point::new(0, 0))
+    // Clear only the generation text area before redrawing (prevent ghosting)
+    // Text area is at (8, 400) with size roughly 200x20
+    Rectangle::new(Point::new(0, 380), Size::new(85, 40))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::BLACK))
         .draw(&mut display_res.display)
-        .unwrap();
-    if game.generation == 0 {
-        display_res.display.flush().ok();
-    }
+        .ok();
 
-    // let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
-    // let total_frames = gif.frames().count();
-    // let target_index = game.generation % total_frames;
-    // let mut current_index = 0;
-    // let mut target_frame = None;
-    // for frame in gif.frames() {
-    //     if current_index == target_index {
-    //         target_frame = Some(frame);
-    //         break; // Optimisation : pas besoin de continuer
-    //     }
-    //     current_index += 1;
-    // }
-    // // Dessiner la frame trouvée
-    // if let Some(frame) = target_frame {
-    //     // let position = Point::new(80, 20);
-    //     //  frame.draw(&mut fb_res.frame_buf).unwrap();
-    //     Image::new(&frame, position)
-    //         .draw(&mut display_res.display)
-    //         .unwrap()
-    // }
-
+    // Draw the generation counter
     write_generation(&mut display_res.display, game.generation).unwrap();
     // display_res
     //     .display
