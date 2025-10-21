@@ -11,8 +11,8 @@ use bevy_ecs::prelude::*;
 use core::fmt::Write;
 //ImageTransparent
 use embedded_graphics::{
-    image::{Image, ImageRaw },
     Drawable,
+    image::{Image, ImageRaw},
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Rgb888,
     prelude::*,
@@ -28,7 +28,8 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
 use esp_hal::dma_buffers;
-use esp_hal::i2c::master::{Config as I2cConfig, I2c, Error as I2cError};
+use esp_hal::gpio::{Input, InputConfig, Io, Pull};
+use esp_hal::i2c::master::{Config as I2cConfig, Error as I2cError, I2c};
 use esp_hal::main;
 use esp_hal::spi::Mode;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
@@ -47,23 +48,25 @@ use tinybmp::Bmp; // Parseur BMP
 // use embedded_graphics::pixelcolor::Bgr565;
 use tinygif::Gif;
 
-use embedded_hal_bus::i2c::RefCellDevice;
 use core::cell::RefCell;
+use embedded_hal_bus::i2c::RefCellDevice;
 use static_cell::StaticCell;
-
 
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::util::AtomicCell;
 
-use ft3x68_rs::{DriverError, Ft3x68Driver, PowerMode, ResetInterface, FT3168_DEVICE_ADDRESS, TouchState, TouchPoint};
+use ft3x68_rs::{
+    DriverError, FT3168_DEVICE_ADDRESS, Ft3x68Driver, PowerMode, ResetInterface, TouchPoint,
+    TouchState,
+};
 
 // Type aliases pour simplifier
-static I2C_CELL: StaticCell<AtomicCell<RefCellDevice<'static, I2c<'static, Blocking>>>> = StaticCell::new();
+static I2C_CELL: StaticCell<AtomicCell<RefCellDevice<'static, I2c<'static, Blocking>>>> =
+    StaticCell::new();
 
 type I2cBus = RefCellDevice<'static, I2c<'static, Blocking>>;
 type I2cDevice = i2c::AtomicDevice<'static, I2cBus>;
 type TouchDriver = Ft3x68Driver<I2cDevice, Delay, ResetTouchDriver<I2cDevice>>;
-
 
 // #[derive(Resource)]
 struct TouchResource {
@@ -74,8 +77,6 @@ struct TouchResource {
 struct ImageResource {
     bmp: Bmp<'static, Rgb888>,
 }
-
-
 
 pub struct ResetTouchDriver<I2C> {
     i2c: I2C,
@@ -105,14 +106,12 @@ where
     }
 }
 
-
 const IMAGE_DATA: &[u8] = include_bytes!("./background.bmp");
 const GIF_DATA: &[u8] = include_bytes!("./knight.gif");
 
 // const IMAGE_DATA: &[u8] = include_bytes!("./rng.tga");
 // #[include_image]
 // const IMAGE: Image<Rgb888> = "./src/bin/rng.png";
-
 
 // Custom panic handler for better debugging
 #[panic_handler]
@@ -364,10 +363,8 @@ struct RngResource(Rng);
 // Display resource - NonSend because it contains non-thread-safe components
 // #[derive(Resource)]
 struct DisplayResource {
-    display: Sh8601Driver<
-        Ws18AmoledDriver, 
-        ResetDriver<RefCellDevice<'static, I2c<'static, Blocking>>>
-    >,
+    display:
+        Sh8601Driver<Ws18AmoledDriver, ResetDriver<RefCellDevice<'static, I2c<'static, Blocking>>>>,
 }
 
 // --- Bevy ECS Systems ---
@@ -398,15 +395,14 @@ fn update_game_of_life_system(
 fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
     mut touch_res: NonSendMut<TouchResource>,
-    image_res: Res<ImageResource>,
+    // image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
-
-    let mut touching : TouchState = touch_res
-    .touch
-            .touch1()
-            .unwrap_or_else(|e| TouchState::Released);
+    let mut touching: TouchState = touch_res
+        .touch
+        .touch1()
+        .unwrap_or_else(|e| TouchState::Released);
 
     let mut position = Point::new(0, 0);
     match touching {
@@ -417,13 +413,13 @@ fn render_system(
         TouchState::Released => {}
     }
 
-        // Read Detected Gesture (if any)
+    // Read Detected Gesture (if any)
     // touch_res
     // .touch
     //         .read_gesture()
     //         .map(|gesture| println!("Gesture: {:?}", gesture))
     //         .unwrap_or_else(|e| println!("Error reading gesture: {:?}", e));
-    
+
     // Clear the framebuffer
     // fb_res.frame_buf.clear(Rgb888::BLACK).unwrap();
     // use display directly
@@ -431,7 +427,6 @@ fn render_system(
 
     // Draw the game grid
     // draw_grid(&mut fb_res.frame_buf, &game.grid).unwrap();
-   
 
     // // Add centered text overlay
     // let line1 = "Updated!";
@@ -473,16 +468,18 @@ fn render_system(
     // .draw(&mut fb_res.frame_buf)
     // .unwrap();
 
-
-    // let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
     // let bmp = unsafe { BMP_IMAGE.get_unchecked() };
- 
-    // let position = Point::new(0, 0);
-    // Image::new(&image_res.bmp, position)
-    //     .draw(&mut display_res.display)
-    //     .unwrap();
-    
 
+    // let bg_gif = Gif::<Rgb888>::from_slice(GIF_BACKGROUND).expect("Failed to parse GIF");
+    // for bg_frame in bg_gif.frames() {
+    //     Image::new(&bg_frame, Point::new(0, 0))
+    //         .draw(&mut display_res.display)
+    //         .unwrap();
+    // }
+    let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
+    Image::new(&bmp, Point::new(0, 0))
+        .draw(&mut display_res.display)
+        .unwrap();
 
     let gif = Gif::<Rgb888>::from_slice(GIF_DATA).expect("Failed to parse GIF");
     let total_frames = gif.frames().count();
@@ -500,24 +497,18 @@ fn render_system(
     if let Some(frame) = target_frame {
         // let position = Point::new(80, 20);
         //  frame.draw(&mut fb_res.frame_buf).unwrap();
-          Image::new(&frame, position)
+        Image::new(&frame, position)
             .draw(&mut display_res.display)
             .unwrap()
     }
-    
-
-
 
     write_generation(&mut display_res.display, game.generation).unwrap();
-
 
     game.generation += 1;
 
     if game.generation >= RESET_AFTER_GENERATIONS {
         game.generation = 0;
     }
-
-
 
     // display_res.display.clear(Rgb888::BLACK).ok();
 
@@ -604,18 +595,16 @@ fn main() -> ! {
     .with_sda(peripherals.GPIO15)
     .with_scl(peripherals.GPIO14);
 
-
     let i2c_bus = I2C_BUS.init(RefCell::new(i2c));
     let i2c_device = RefCellDevice::new(i2c_bus);
     let ws_driver = Ws18AmoledDriver::new(lcd_spi);
     let reset = ResetDriver::new(i2c_device);
 
-
     let i2c_touch = RefCellDevice::new(i2c_bus);
     let i2c_cell = I2C_CELL.init(AtomicCell::new(i2c_touch));
 
     let reset_touch = ResetTouchDriver::new(i2c::AtomicDevice::new(i2c_cell));
-     let mut touch = Ft3x68Driver::new(
+    let mut touch = Ft3x68Driver::new(
         i2c::AtomicDevice::new(i2c_cell),
         FT3168_DEVICE_ADDRESS,
         reset_touch,
@@ -652,7 +641,7 @@ fn main() -> ! {
         }
     };
 
-    let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
+    // let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
 
     // Initialize RNG
     let mut rng = Rng::new(peripherals.RNG);
@@ -660,7 +649,6 @@ fn main() -> ! {
     // Initialize game resources
     let mut game = GameOfLifeResource::default();
     // randomize_grid(&mut rng, &mut game.grid);
-
 
     // Create framebuffer resource
     let fb_res = FrameBufferResource::new();
@@ -670,8 +658,7 @@ fn main() -> ! {
     world.insert_resource(game);
     // world.insert_resource(RngResource(rng));
     world.insert_resource(fb_res);
-    world.insert_resource(ImageResource { bmp });
-
+    // world.insert_resource(ImageResource { bmp });
 
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
@@ -682,11 +669,21 @@ fn main() -> ! {
     schedule.add_systems(render_system);
 
     let loop_delay = Delay::new();
-  
+
+    const BOOT_BUTTON_PIN: u8 = 0; // GPIO0
+    const POWER_BUTTON_PIN: u8 = 14;
+
+    let mut io = Io::new(peripherals.IO_MUX);
+    let button = peripherals.GPIO0;
+    let config = InputConfig::default().with_pull(Pull::Up);
+    let mut button = Input::new(button, config);
 
     info!("Entering Bevy ECS main loop...");
 
     loop {
+        if button.is_low() {
+            println!("Bouton APPUYÉ !");
+        }
         schedule.run(&mut world);
     }
 }
