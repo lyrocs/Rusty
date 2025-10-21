@@ -57,7 +57,7 @@ use time::{Date, Month, PrimitiveDateTime, Time};
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::util::AtomicCell;
 
-use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeManager};
+use embedded_sdmmc::{Mode as SdMode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use embedded_hal_bus::spi::ExclusiveDevice;
 
 use ft3x68_rs::{
@@ -191,6 +191,103 @@ impl TimeSource for DummyTimeSource {
             seconds: 0,
         }
     }
+}
+
+// --- SD Card File Operations ---
+
+/// List all files in the root directory of the SD card
+fn list_sd_card_files<D, T>(
+    volume_mgr: &mut VolumeManager<D, T, 4, 4, 1>,
+) -> Result<(), embedded_sdmmc::Error<D::Error>>
+where
+    D: embedded_sdmmc::BlockDevice,
+    T: TimeSource,
+    D::Error: core::fmt::Debug,
+{
+    println!("\n=== SD Card Directory Listing ===");
+
+    // Open first volume (partition)
+    let mut volume = volume_mgr.open_volume(VolumeIdx(0))?;
+    println!("Volume opened successfully");
+
+    // Open root directory
+    let mut root_dir = volume.open_root_dir()?;
+    println!("Root directory opened\n");
+
+    // Iterate through directory entries
+    root_dir.iterate_dir(|entry| {
+        let is_dir = entry.attributes.is_directory();
+        let size = entry.size;
+        // ShortFileName can be formatted with {:?} or we can access base_name/extension
+        let name = core::format_args!("{}", entry.name);
+
+        if is_dir {
+            println!("  [DIR]  {:?}", entry.name);
+        } else {
+            println!("  [FILE] {:?} ({} bytes)", entry.name, size);
+        }
+    })?;
+
+    println!("=== End of Directory ===\n");
+    Ok(())
+}
+
+/// Read and display contents of a text file from SD card
+fn read_sd_card_file<D, T>(
+    volume_mgr: &mut VolumeManager<D, T, 4, 4, 1>,
+    filename: &str,
+) -> Result<(), embedded_sdmmc::Error<D::Error>>
+where
+    D: embedded_sdmmc::BlockDevice,
+    T: TimeSource,
+    D::Error: core::fmt::Debug,
+{
+    println!("\n=== Reading file: {} ===", filename);
+
+    // Open volume and root directory
+    let mut volume = volume_mgr.open_volume(VolumeIdx(0))?;
+    let mut root_dir = volume.open_root_dir()?;
+
+    // Try to open the file
+    let mut file = root_dir.open_file_in_dir(filename, SdMode::ReadOnly)?;
+
+    // Read file in chunks
+    let mut buffer = [0u8; 512];
+    let mut total_read = 0;
+
+    loop {
+        match file.read(&mut buffer) {
+            Ok(bytes_read) if bytes_read > 0 => {
+                total_read += bytes_read;
+
+                // Count printable vs non-printable characters
+                let text_slice = &buffer[..bytes_read];
+                let printable_count = text_slice
+                    .iter()
+                    .filter(|&&b| b >= 0x20 && b <= 0x7E || b == b'\n' || b == b'\r')
+                    .count();
+
+                println!(
+                    "Read {} bytes ({} printable chars)",
+                    bytes_read, printable_count
+                );
+
+                if bytes_read < buffer.len() {
+                    break; // End of file
+                }
+            }
+            Ok(_) => break, // End of file (0 bytes read)
+            Err(e) => {
+                println!("\nError reading file: {:?}", e);
+                break;
+            }
+        }
+    }
+
+    println!("\n\nTotal bytes read: {}", total_read);
+    println!("=== End of file ===\n");
+
+    Ok(())
 }
 
 pub struct ResetTouchDriver<I2C> {
@@ -987,10 +1084,31 @@ fn main() -> ! {
     let sd_device = ExclusiveDevice::new(sd_spi, sd_cs_output, Delay::new()).unwrap();
     let sdcard = SdCard::new(sd_device, Delay::new());
 
+    // POC: Test SD card file operations
     match sdcard.num_bytes() {
         Ok(size) => {
             let size_mb = size / (1024 * 1024);
             println!("SD Card detected! Size: {} MB", size_mb);
+
+            // Create VolumeManager to access files
+            let time_source = DummyTimeSource;
+            let mut volume_mgr = VolumeManager::new(sdcard, time_source);
+
+            // POC: List all files in root directory
+            println!("\n--- POC: Listing SD card contents ---");
+            match list_sd_card_files(&mut volume_mgr) {
+                Ok(_) => println!("Directory listing successful!"),
+                Err(e) => println!("Error listing directory: {:?}", e),
+            }
+
+            // POC: Try to read a test file (if it exists)
+            println!("\n--- POC: Attempting to read test.txt ---");
+            match read_sd_card_file(&mut volume_mgr, "test.txt") {
+                Ok(_) => println!("File read successful!"),
+                Err(e) => println!("Note: Could not read test.txt: {:?}", e),
+            }
+
+            println!("\n--- SD Card POC Complete ---\n");
         }
         Err(e) => {
             println!("SD Card initialization failed or not inserted: {:?}", e);
