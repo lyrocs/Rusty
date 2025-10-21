@@ -60,6 +60,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "axp2101"
+version = "0.3.0-rc1"
+source = "git+https://github.com/hyx0329/axp2101-rs?branch=dev#b27455c73cbb4668891968de7aa73d190568e1ed"
+dependencies = [
+ "bit_field",
+ "embedded-hal 1.0.0",
+ "num_enum",
+]
+
+[[package]]
 name = "az"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,6 +181,12 @@ dependencies = [
  "bevy_platform",
  "disqualified",
 ]
+
+[[package]]
+name = "bit_field"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e4b40c7323adcfc0a41c4b88143ed58346ff65a288fc144329c5c45e05d70c6"
 
 [[package]]
 name = "bitfield"
@@ -891,6 +907,7 @@ dependencies = [
 name = "esp32-conways-game-of-life-rs"
 version = "0.7.0"
 dependencies = [
+ "axp2101",
  "bevy_ecs",
  "embedded-graphics",
  "embedded-graphics-framebuf",
@@ -904,6 +921,7 @@ dependencies = [
  "ft3x68-rs",
  "heapless 0.8.0",
  "log",
+ "nb 1.1.0",
  "sh8601-rs",
  "static_cell",
  "time",
@@ -1316,6 +1334,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_enum"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1207a7e20ad57b847bbddc6776b968420d38292bbfe2089accff5e19e82454c"
+dependencies = [
+ "num_enum_derive",
+ "rustversion",
+]
+
+[[package]]
+name = "num_enum_derive"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1515,6 +1554,12 @@ checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
 ]
+
+[[package]]
+name = "rustversion"
+version = "1.0.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "ryu"

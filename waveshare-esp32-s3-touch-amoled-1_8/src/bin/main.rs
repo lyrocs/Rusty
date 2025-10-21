@@ -60,6 +60,8 @@ use embedded_hal_bus::util::AtomicCell;
 use embedded_sdmmc::{Mode as SdMode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use embedded_hal_bus::spi::ExclusiveDevice;
 
+use axp2101::core::Axp2101;
+
 use ft3x68_rs::{
     DriverError, FT3168_DEVICE_ADDRESS, Ft3x68Driver, PowerMode, ResetInterface, TouchPoint,
     TouchState,
@@ -540,6 +542,47 @@ fn write_fps<D: DrawTarget<Color = Rgb888>>(display: &mut D, fps: usize) -> Resu
     Ok(())
 }
 
+/// Convert battery voltage (in millivolts) to percentage
+/// LiPo voltage range: 4.2V (100%) to 3.0V (0%)
+fn voltage_to_battery_percent(voltage_mv: u16) -> u8 {
+    if voltage_mv >= 4200 {
+        100
+    } else if voltage_mv <= 3000 {
+        0
+    } else {
+        let range = 4200 - 3000;
+        let offset = voltage_mv.saturating_sub(3000);
+        ((offset as u32 * 100) / range as u32).min(100) as u8
+    }
+}
+
+/// Display battery voltage and percentage on screen
+/// Color changes based on charge level: green (>50%), yellow (20-50%), red (<20%)
+fn write_battery<D: DrawTarget<Color = Rgb888>>(
+    display: &mut D,
+    voltage_mv: u16,
+    percent: u8,
+) -> Result<(), D::Error> {
+    let mut bat_str = String::<32>::new();
+    write!(bat_str, "Bat: {}% {}mV", percent, voltage_mv).unwrap();
+
+    let color = if percent >= 50 {
+        Rgb888::GREEN
+    } else if percent >= 20 {
+        Rgb888::YELLOW
+    } else {
+        Rgb888::RED
+    };
+
+    Text::new(
+        bat_str.as_str(),
+        Point::new(8, 420),
+        MonoTextStyle::new(&FONT_10X20, color),
+    )
+    .draw(display)?;
+    Ok(())
+}
+
 /// Renders a GIF animation with optimized background restoration
 ///
 /// # Parameters
@@ -706,6 +749,20 @@ struct RtcResource {
     cpu_freq_mhz: u64,                          // CPU frequency for cycle->time conversion
 }
 
+// Battery resource for tracking battery voltage and percentage
+#[derive(Resource)]
+struct BatteryResource {
+    voltage_mv: u16,
+    percent: u8,
+    last_update_generation: usize,
+}
+
+// AXP2101 PMIC resource for battery management
+// I2C address: 0x34
+struct Axp2101Resource {
+    pmic: Axp2101<i2c::AtomicDevice<'static, RefCellDevice<'static, I2c<'static, Blocking>>>>,
+}
+
 // --- Bevy ECS Systems ---
 
 const RESET_AFTER_GENERATIONS: usize = 300;
@@ -753,6 +810,8 @@ fn render_initial_background<D>(
     gif_res: &mut GifResource,
     generation: usize,
     fps: usize,
+    battery_mv: u16,
+    battery_pct: u8,
 ) where
     D: DrawTarget<Color = Rgb888>,
 {
@@ -770,20 +829,24 @@ fn render_initial_background<D>(
     // Draw initial text overlays
     write_generation(display, generation).ok();
     write_fps(display, fps).ok();
+    write_battery(display, battery_mv, battery_pct).ok();
 }
 
-/// Restores background and renders updated text (generation + FPS)
+/// Restores background and renders updated text (generation + FPS + battery)
 fn render_text_overlay<D, I>(
     display: &mut D,
     background: &I,
     generation: usize,
     fps: usize,
+    battery_mv: u16,
+    battery_pct: u8,
 ) where
     D: DrawTarget<Color = Rgb888>,
     I: GetPixel<Color = Rgb888>,
 {
     // Restore background in text area before drawing new text
-    let text_area = Rectangle::new(Point::new(0, 380), Size::new(380, 40));
+    // Expanded area to include battery display at y=420
+    let text_area = Rectangle::new(Point::new(0, 380), Size::new(380, 60));
 
     for pixel in text_area.points() {
         if let Some(color) = background.pixel(pixel) {
@@ -794,6 +857,7 @@ fn render_text_overlay<D, I>(
     // Draw updated text
     write_generation(display, generation).ok();
     write_fps(display, fps).ok();
+    write_battery(display, battery_mv, battery_pct).ok();
 }
 
 /// Renders the animated GIF at current generation frame
@@ -877,9 +941,11 @@ fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
     mut touch_res: NonSendMut<TouchResource>,
     mut rtc_res: NonSendMut<RtcResource>,
+    mut axp_res: NonSendMut<Axp2101Resource>,
     image_res: Res<ImageResource>,
     mut game: ResMut<GameOfLifeResource>,
     mut gif_res: ResMut<GifResource>,
+    mut battery_res: ResMut<BatteryResource>,
     mut fb_res: ResMut<FrameBufferResource>,
 ) {
     // 0. Measure frame timing with hybrid approach
@@ -892,20 +958,31 @@ fn render_system(
     // Update last cycle count
     rtc_res.last_cycles = current_cycles;
 
-    // Read RTC timestamp every 100 frames for absolute time tracking
+    // Read RTC timestamp and battery every 100 frames
     if game.generation % 100 == 0 {
+        // Update battery reading from AXP2101 PMIC
+        if let Ok(battery_voltage_mv) = axp_res.pmic.battery_voltage() {
+            let battery_percent = voltage_to_battery_percent(battery_voltage_mv);
+
+            battery_res.voltage_mv = battery_voltage_mv;
+            battery_res.percent = battery_percent;
+            battery_res.last_update_generation = game.generation;
+
+            println!(
+                "Gen {}: Frame={}us, Battery={}mV ({}%)",
+                game.generation, frame_time_us, battery_voltage_mv, battery_percent
+            );
+        }
+
+        // Read RTC timestamp
         if let Ok(current_time) = rtc_res.rtc.get_datetime() {
             println!(
-                "Gen {}: Frame={}us, RTC timestamp: {:02}:{:02}:{:02}",
-                game.generation,
-                frame_time_us,
+                "RTC timestamp: {:02}:{:02}:{:02}",
                 current_time.time().hour(),
                 current_time.time().minute(),
                 current_time.time().second()
             );
             rtc_res.last_timestamp = Some(current_time);
-        } else {
-            println!("Gen {}: Frame={}us", game.generation, frame_time_us);
         }
     }
 
@@ -920,18 +997,22 @@ fn render_system(
             &mut gif_res,
             game.generation,
             game.fps,
+            battery_res.voltage_mv,
+            battery_res.percent,
         );
         game.background_drawn = true;
         display_res.display.flush().ok();
         return;
     }
 
-    // 3. Render text overlay (generation + FPS)
+    // 3. Render text overlay (generation + FPS + Battery)
     render_text_overlay(
         &mut display_res.display,
         &image_res.bmp,
         game.generation,
         game.fps,
+        battery_res.voltage_mv,
+        battery_res.percent,
     );
 
     // 4. Render GIF animation
@@ -1139,6 +1220,21 @@ fn main() -> ! {
 
     let bmp = Bmp::<Rgb888>::from_slice(IMAGE_DATA).expect("Failed to parse BMP image");
 
+    // Initialize AXP2101 PMIC for battery monitoring
+    // I2C address: 0x34
+    println!("Initializing AXP2101 PMIC for battery monitoring...");
+    let i2c_pmic = i2c::AtomicDevice::new(i2c_cell);
+    let mut pmic = Axp2101::new(i2c_pmic);
+
+    // Read initial battery voltage from AXP2101
+    let battery_voltage_mv = pmic.battery_voltage().unwrap_or(0);
+    let battery_percent = voltage_to_battery_percent(battery_voltage_mv);
+
+    println!(
+        "Battery (AXP2101): {}mV ({}%)",
+        battery_voltage_mv, battery_percent
+    );
+
     // Initialize RNG
     let mut rng = Rng::new(peripherals.RNG);
 
@@ -1157,9 +1253,20 @@ fn main() -> ! {
     world.insert_resource(ImageResource { bmp });
     world.insert_resource(GifResource::default());
 
+    // Insert battery resource
+    world.insert_resource(BatteryResource {
+        voltage_mv: battery_voltage_mv,
+        percent: battery_percent,
+        last_update_generation: 0,
+    });
+
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
     world.insert_non_send_resource(TouchResource { touch });
+
+    // Insert AXP2101 PMIC resource
+    world.insert_non_send_resource(Axp2101Resource { pmic });
+
     // Get initial cycle count and CPU frequency
     let initial_cycles = esp_hal::xtensa_lx::timer::get_cycle_count();
     let cpu_freq_mhz = 240; // ESP32-S3 at max frequency
