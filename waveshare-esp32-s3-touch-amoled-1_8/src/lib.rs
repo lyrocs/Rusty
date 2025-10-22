@@ -8,3 +8,4 @@ pub mod game;
 pub mod ui;
 pub mod ecs;
 pub mod utils;
+pub mod tamagotchi;
