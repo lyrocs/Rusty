@@ -498,6 +498,15 @@ impl GameState {
 
         self.battle_elapsed += delta_ms;
 
+        // Check if enemy is defeated
+        if let Some(enemy) = &self.battle_enemy {
+            if enemy.hp == 0 {
+                esp_println::println!("[BATTLE] Enemy defeated! Ending battle early.");
+                self.complete_battle();
+                return;
+            }
+        }
+
         // Check if battle time is up
         if self.battle_elapsed >= self.battle_duration {
             self.complete_battle();
@@ -532,9 +541,11 @@ impl GameState {
                     }
                     *circle = None;
 
-                    // Check for defeat
+                    // Check for defeat (hero HP reaches 0)
                     if self.hero.hp == 0 {
+                        esp_println::println!("[BATTLE] Hero defeated! HP = 0");
                         self.battle_state = BattleState::Defeat;
+                        return;
                     }
                 }
             }
@@ -543,6 +554,8 @@ impl GameState {
 
     /// Handle circle click at position
     pub fn click_battle_circle(&mut self, x: i32, y: i32) -> bool {
+        let mut enemy_defeated = false;
+
         for circle in &mut self.battle_circles {
             if let Some(c) = circle {
                 if c.contains_point(x, y) {
@@ -553,7 +566,13 @@ impl GameState {
                             if let Some(enemy) = &mut self.battle_enemy {
                                 let damage = 5 + self.hero.level;
                                 enemy.hp = enemy.hp.saturating_sub(damage);
-                                esp_println::println!("[BATTLE] Hit green! Dealt {} damage", damage);
+                                esp_println::println!("[BATTLE] Hit green! Dealt {} damage. Enemy HP: {}", damage, enemy.hp);
+
+                                // Check if enemy is defeated
+                                if enemy.hp == 0 {
+                                    esp_println::println!("[BATTLE] Enemy HP reached 0! Victory!");
+                                    enemy_defeated = true;
+                                }
                             }
                         }
                         CircleType::BadTarget => {
@@ -563,6 +582,11 @@ impl GameState {
                         }
                     }
                     *circle = None;
+
+                    // Complete battle after modifying circles
+                    if enemy_defeated {
+                        self.complete_battle();
+                    }
                     return true;
                 }
             }
