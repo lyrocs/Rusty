@@ -8,6 +8,7 @@ pub enum GamePage {
     Overview,
     Farm,
     Rest,
+    Battle,  // Whac-A-Mole mini-game
     Menu,
 }
 
@@ -145,26 +146,38 @@ impl Hero {
 
     /// Deserialize hero data from a CSV-like string
     pub fn from_save_string(data: &str) -> Option<Self> {
-        let parts: heapless::Vec<&str, 9> = data.split(',').collect();
-        if parts.len() != 9 {
-            return None;
-        }
+        // Trim whitespace and newlines first
+        let data = data.trim();
+
+        // Use splitn to limit splits and avoid overflow
+        let mut parts = data.split(',');
+
+        // Parse each field manually to avoid Vec overflow
+        let level: u16 = parts.next()?.parse().ok()?;
+        let exp: u32 = parts.next()?.parse().ok()?;
+        let exp_to_next_level: u32 = parts.next()?.parse().ok()?;
+        let job_str = parts.next()?;
+        let hp: u16 = parts.next()?.parse().ok()?;
+        let max_hp: u16 = parts.next()?.parse().ok()?;
+        let sp: u16 = parts.next()?.parse().ok()?;
+        let max_sp: u16 = parts.next()?.parse().ok()?;
+        let zeny: u32 = parts.next()?.parse().ok()?;
 
         // Parse job to a static string
-        let job: &'static str = if parts[3] == "Novice" { "Novice" } else { "Swordsman" };
-        let name: &'static str = if parts[3] == "Novice" { "Novice" } else { "Swordsman" };
+        let job: &'static str = if job_str == "Novice" { "Novice" } else { "Swordsman" };
+        let name: &'static str = if job_str == "Novice" { "Novice" } else { "Swordsman" };
 
         Some(Hero {
             name,
-            level: parts[0].parse().ok()?,
-            exp: parts[1].parse().ok()?,
-            exp_to_next_level: parts[2].parse().ok()?,
+            level,
+            exp,
+            exp_to_next_level,
             job,
-            hp: parts[4].parse().ok()?,
-            max_hp: parts[5].parse().ok()?,
-            sp: parts[6].parse().ok()?,
-            max_sp: parts[7].parse().ok()?,
-            zeny: parts[8].parse().ok()?,
+            hp,
+            max_hp,
+            sp,
+            max_sp,
+            zeny,
         })
     }
 }
@@ -249,6 +262,56 @@ pub enum RestState {
     FullSP,
 }
 
+/// Battle state for Whac-A-Mole mini-game
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BattleState {
+    Idle,      // Waiting to start
+    Playing,   // Active gameplay
+    Victory,   // Won the game
+    Defeat,    // Lost the game
+}
+
+/// Circle type for Whac-A-Mole game
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CircleType {
+    GoodTarget,   // Click to hit enemy (green) - gain score
+    BadTarget,    // Enemy attack (red) - must click to block, else take damage
+}
+
+/// Active circle in the Whac-A-Mole game
+#[derive(Debug, Clone, Copy)]
+pub struct Circle {
+    pub x: i32,
+    pub y: i32,
+    pub radius: u32,
+    pub circle_type: CircleType,
+    pub spawn_time: u32,     // When it spawned
+    pub lifetime_ms: u32,    // How long it lasts (1500ms)
+}
+
+impl Circle {
+    pub fn new(x: i32, y: i32, circle_type: CircleType, spawn_time: u32) -> Self {
+        Self {
+            x,
+            y,
+            radius: 25,  // Fixed radius
+            circle_type,
+            spawn_time,
+            lifetime_ms: 1500,  // 1.5 seconds to click
+        }
+    }
+
+    pub fn is_expired(&self, current_time: u32) -> bool {
+        current_time >= self.spawn_time + self.lifetime_ms
+    }
+
+    pub fn contains_point(&self, px: i32, py: i32) -> bool {
+        let dx = self.x - px;
+        let dy = self.y - py;
+        (dx * dx + dy * dy) <= (self.radius as i32 * self.radius as i32)
+    }
+}
+
 /// Main game state resource
 #[derive(Resource)]
 pub struct GameState {
@@ -262,7 +325,19 @@ pub struct GameState {
     pub rest_state: RestState,
     pub rest_progress: u32,      // Progress in milliseconds
     pub sp_regen_rate: u16,      // SP per second while resting
-    pub menu_selection: u8,      // 0 = Overview, 1 = Farm, 2 = Rest, 3 = Save
+    pub menu_selection: u8,      // 0 = Overview, 1 = Farm, 2 = Rest, 3 = Battle, 4 = Save
+    pub battle_state: BattleState, // Current battle state
+    pub battle_enemy: Option<Enemy>, // Enemy being fought
+    pub battle_circles: [Option<Circle>; 4], // Up to 4 active circles
+    pub battle_score: u16,       // Hits made in current battle
+    pub battle_missed: u16,      // Circles missed or bad targets hit
+    pub battle_next_spawn: u32,  // When next circle spawns
+    pub battle_spawn_interval: u32, // Time between spawns (800ms)
+    pub battle_duration: u32,    // Total battle time (30 seconds)
+    pub battle_elapsed: u32,     // Time elapsed in battle
+    pub battle_last_touch_x: i32, // Last touch X position for debug display
+    pub battle_last_touch_y: i32, // Last touch Y position for debug display
+    pub battle_last_touch_time: u32, // When last touch occurred (for fade out)
     pub last_update_ms: u32,     // Last update time for progress tracking
     pub save_requested: bool,    // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -287,6 +362,18 @@ impl Default for GameState {
             rest_progress: 0,
             sp_regen_rate: 5, // 5 SP per second
             menu_selection: 0,
+            battle_state: BattleState::Idle,
+            battle_enemy: None,
+            battle_circles: [None, None, None, None],
+            battle_score: 0,
+            battle_missed: 0,
+            battle_next_spawn: 0,
+            battle_spawn_interval: 800,  // 800ms between spawns
+            battle_duration: 30000,      // 30 seconds
+            battle_elapsed: 0,
+            battle_last_touch_x: 0,
+            battle_last_touch_y: 0,
+            battle_last_touch_time: 0,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,
@@ -361,5 +448,147 @@ impl GameState {
     /// Get farm progress percentage
     pub fn farm_progress_percent(&self) -> u8 {
         ((self.farm_progress as u64 * 100) / self.farm_duration_ms as u64) as u8
+    }
+
+    /// Start Whac-A-Mole battle
+    pub fn start_battle(&mut self, enemy: Enemy) {
+        self.battle_enemy = Some(enemy);
+        self.battle_state = BattleState::Playing;
+        self.battle_circles = [None, None, None, None];
+        self.battle_score = 0;
+        self.battle_missed = 0;
+        self.battle_elapsed = 0;
+        self.battle_next_spawn = self.last_update_ms + 500; // First spawn in 500ms
+    }
+
+    /// Spawn a new circle in the battle
+    pub fn spawn_battle_circle(&mut self, rng_value: u8) {
+        // Find empty slot
+        for slot in &mut self.battle_circles {
+            if slot.is_none() {
+                // Random position in play area (avoid edges)
+                let x = 40 + ((rng_value as i32 * 7) % 280);
+                let y = 100 + ((rng_value as i32 * 13) % 220);
+
+                // 70% chance for GoodTarget, 30% for BadTarget
+                let circle_type = if rng_value % 10 < 7 {
+                    CircleType::GoodTarget
+                } else {
+                    CircleType::BadTarget
+                };
+
+                *slot = Some(Circle::new(x, y, circle_type, self.last_update_ms));
+                break;
+            }
+        }
+    }
+
+    /// Update battle state
+    pub fn update_battle(&mut self, delta_ms: u32) {
+        if self.battle_state != BattleState::Playing {
+            return;
+        }
+
+        self.battle_elapsed += delta_ms;
+
+        // Check if battle time is up
+        if self.battle_elapsed >= self.battle_duration {
+            self.complete_battle();
+            return;
+        }
+
+        // Spawn new circles
+        if self.last_update_ms >= self.battle_next_spawn {
+            let rng = (self.last_update_ms % 255) as u8;
+            self.spawn_battle_circle(rng);
+            self.battle_next_spawn = self.last_update_ms + self.battle_spawn_interval;
+        }
+
+        // Check for expired circles
+        for circle in &mut self.battle_circles {
+            if let Some(c) = circle {
+                if c.is_expired(self.last_update_ms) {
+                    // Circle expired - if it was a BadTarget (enemy attack), hero takes damage
+                    if c.circle_type == CircleType::BadTarget {
+                        // Simple damage calculation: 10 base damage + level
+                        let damage = if let Some(enemy) = &self.battle_enemy {
+                            10 + enemy.level
+                        } else {
+                            10
+                        };
+                        self.hero.hp = self.hero.hp.saturating_sub(damage);
+                        esp_println::println!("[BATTLE] Missed red circle! Took {} damage", damage);
+                        self.battle_missed += 1;
+                    } else {
+                        // Missed green circle - counts as miss
+                        self.battle_missed += 1;
+                    }
+                    *circle = None;
+
+                    // Check for defeat
+                    if self.hero.hp == 0 {
+                        self.battle_state = BattleState::Defeat;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handle circle click at position
+    pub fn click_battle_circle(&mut self, x: i32, y: i32) -> bool {
+        for circle in &mut self.battle_circles {
+            if let Some(c) = circle {
+                if c.contains_point(x, y) {
+                    match c.circle_type {
+                        CircleType::GoodTarget => {
+                            // Hit enemy! Simple damage: 5 + hero level
+                            self.battle_score += 1;
+                            if let Some(enemy) = &mut self.battle_enemy {
+                                let damage = 5 + self.hero.level;
+                                enemy.hp = enemy.hp.saturating_sub(damage);
+                                esp_println::println!("[BATTLE] Hit green! Dealt {} damage", damage);
+                            }
+                        }
+                        CircleType::BadTarget => {
+                            // Blocked enemy attack!
+                            self.battle_score += 1;
+                            esp_println::println!("[BATTLE] Blocked red attack!");
+                        }
+                    }
+                    *circle = None;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Complete battle and calculate rewards
+    fn complete_battle(&mut self) {
+        if let Some(enemy) = &self.battle_enemy {
+            // Win if enemy HP is 0 or we have more hits than misses
+            if enemy.hp == 0 || self.battle_score > self.battle_missed * 2 {
+                self.battle_state = BattleState::Victory;
+                // Award rewards based on score
+                let exp_mult = (self.battle_score as u32).max(1);
+                self.hero.add_exp(enemy.exp_reward * exp_mult / 5);
+                self.hero.add_zeny(enemy.zeny_reward * exp_mult / 5);
+            } else {
+                self.battle_state = BattleState::Defeat;
+            }
+        }
+    }
+
+    /// Reset battle state
+    pub fn reset_battle(&mut self) {
+        self.battle_enemy = None;
+        self.battle_state = BattleState::Idle;
+        self.battle_circles = [None, None, None, None];
+        self.battle_score = 0;
+        self.battle_missed = 0;
+        self.battle_elapsed = 0;
+        self.battle_last_touch_x = 0;
+        self.battle_last_touch_y = 0;
+        self.battle_last_touch_time = 0;
     }
 }

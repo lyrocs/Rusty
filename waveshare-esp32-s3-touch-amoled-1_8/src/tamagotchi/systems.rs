@@ -2,8 +2,8 @@ use bevy_ecs::prelude::*;
 use ft3x68_rs::{TouchState, TouchPoint};
 
 use crate::ecs::resources::{TouchResource, ButtonResource, DisplayResource, BatteryResource, RtcResource, SdCardResource};
-use crate::tamagotchi::models::{GameState, GamePage, FarmState, RestState, Enemy};
-use crate::tamagotchi::ui::{draw_overview_page, draw_farm_page, draw_rest_page, draw_menu};
+use crate::tamagotchi::models::{GameState, GamePage, FarmState, RestState, BattleState, Enemy};
+use crate::tamagotchi::ui::{draw_overview_page, draw_farm_page, draw_rest_page, draw_battle_page, draw_menu};
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
 
@@ -33,6 +33,7 @@ pub fn tamagotchi_button_system(
                 0 => GamePage::Overview,
                 1 => GamePage::Farm,
                 2 => GamePage::Rest,
+                3 => GamePage::Battle,
                 _ => GamePage::Overview,
             };
         } else {
@@ -86,14 +87,14 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     match game_state.current_page {
         GamePage::Menu => {
             // Menu item selection based on touch Y position
-            // Updated for new larger menu with 55px spacing
-            if x > 40 && x < 328 && y > 130 && y < 350 {
-                let item_index = ((y - 130) / 55) as u8;
-                if item_index < 4 { // Now 4 items: Overview, Farm, Rest, Save
+            // Updated for new menu with 48px spacing (5 items: Overview, Farm, Rest, Battle, Save)
+            if x > 40 && x < 328 && y > 130 && y < 370 {
+                let item_index = ((y - 130) / 48) as u8;
+                if item_index < 5 { // Now 5 items: Overview, Farm, Rest, Battle, Save
                     game_state.menu_selection = item_index;
 
                     // Handle selection
-                    if item_index == 3 {
+                    if item_index == 4 {
                         // Save Game selected
                         game_state.save_requested = true;
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
@@ -103,6 +104,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             0 => GamePage::Overview,
                             1 => GamePage::Farm,
                             2 => GamePage::Rest,
+                            3 => GamePage::Battle,
                             _ => GamePage::Overview,
                         };
                     }
@@ -145,6 +147,41 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 game_state.current_page = GamePage::Overview;
                 game_state.rest_state = RestState::Resting;
                 game_state.rest_progress = 0;
+            }
+        }
+        GamePage::Battle => {
+            match game_state.battle_state {
+                BattleState::Idle => {
+                    // Start battle if hero has enough SP
+                    if game_state.hero.sp >= 20 {
+                        esp_println::println!("[BATTLE] Starting Whac-A-Mole battle");
+                        // Generate a random enemy (using touch position as random seed)
+                        let rng_value = (x.wrapping_add(y)) as u8;
+                        let enemy = Enemy::random_for_level(game_state.hero.level, rng_value);
+                        game_state.start_battle(enemy);
+                    } else {
+                        esp_println::println!("[BATTLE] Not enough SP: {}/20", game_state.hero.sp);
+                    }
+                }
+                BattleState::Playing => {
+                    // Record touch position for debug display
+                    game_state.battle_last_touch_x = x as i32;
+                    game_state.battle_last_touch_y = y as i32;
+                    game_state.battle_last_touch_time = game_state.last_update_ms;
+
+                    // Check if touch hit any circle
+                    let hit = game_state.click_battle_circle(x as i32, y as i32);
+                    if hit {
+                        esp_println::println!("[BATTLE] Circle hit at ({}, {})", x, y);
+                    } else {
+                        esp_println::println!("[BATTLE] Touch miss at ({}, {})", x, y);
+                    }
+                }
+                BattleState::Victory | BattleState::Defeat => {
+                    esp_println::println!("[BATTLE] Resetting battle state from {:?}", game_state.battle_state);
+                    // Reset battle state
+                    game_state.reset_battle();
+                }
             }
         }
         GamePage::Overview => {
@@ -208,6 +245,22 @@ pub fn tamagotchi_update_system(
             game_state.needs_redraw = true;
         }
     }
+
+    // Update battle progress (spawn circles, check expiration, handle damage)
+    if game_state.current_page == GamePage::Battle && game_state.battle_state == BattleState::Playing {
+        let old_score = game_state.battle_score;
+        let old_missed = game_state.battle_missed;
+        let old_state = game_state.battle_state;
+
+        game_state.update_battle(delta_ms);
+
+        // Redraw if score/missed changed or state changed
+        if game_state.battle_score != old_score ||
+           game_state.battle_missed != old_missed ||
+           game_state.battle_state != old_state {
+            game_state.needs_redraw = true;
+        }
+    }
 }
 
 /// System to render the current page
@@ -236,6 +289,9 @@ pub fn tamagotchi_render_system(
         }
         GamePage::Rest => {
             draw_rest_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
+        }
+        GamePage::Battle => {
+            draw_battle_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
         }
         GamePage::Menu => {
             // Draw the previous page first, then overlay menu

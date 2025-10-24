@@ -3,12 +3,12 @@ use embedded_graphics::{
     prelude::*,
     pixelcolor::Rgb888,
     mono_font::{MonoTextStyle, ascii::{FONT_10X20, FONT_9X18_BOLD, FONT_9X15}},
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{PrimitiveStyle, Rectangle, Circle as EgCircle, Line},
     text::Text,
 };
 use heapless::String;
 
-use crate::tamagotchi::models::{Hero, GameState, FarmState, RestState};
+use crate::tamagotchi::models::{Hero, GameState, FarmState, RestState, BattleState, CircleType};
 
 // Color palette inspired by Ragnarok Online
 pub const COLOR_BG: Rgb888 = Rgb888::new(40, 40, 60);
@@ -276,6 +276,181 @@ where
     Ok(())
 }
 
+/// Draw the Battle (Whac-A-Mole) page
+pub fn draw_battle_page<D>(display: &mut D, game_state: &GameState, battery_mv: u16, battery_pct: u8, fps: u32) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    display.clear(COLOR_BG)?;
+
+    match game_state.battle_state {
+        BattleState::Idle => {
+            draw_text(display, "=== BATTLE ===", Point::new(85, 20), &FONT_10X20, COLOR_TEXT)?;
+
+            // SP display
+            let mut sp_str = String::<32>::new();
+            write!(sp_str, "SP: {}/{}", game_state.hero.sp, game_state.hero.max_sp).ok();
+            let sp_color = if game_state.hero.sp >= 20 { COLOR_SP } else { COLOR_HP };
+            draw_text(display, &sp_str, Point::new(20, 60), &FONT_9X18_BOLD, sp_color)?;
+            draw_bar(display, Point::new(20, 78), 328, game_state.hero.sp_percent(), sp_color)?;
+
+            if game_state.hero.sp >= 20 {
+                draw_text(display, "Touch screen to", Point::new(90, 160), &FONT_9X18_BOLD, COLOR_TEXT)?;
+                draw_text(display, "start battle!", Point::new(100, 185), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+                draw_text(display, "Cost: 20 SP", Point::new(110, 230), &FONT_9X15, COLOR_TEXT_DIM)?;
+                draw_text(display, "Duration: 30 seconds", Point::new(75, 250), &FONT_9X15, COLOR_TEXT_DIM)?;
+            } else {
+                draw_text(display, "NOT ENOUGH SP!", Point::new(75, 150), &FONT_10X20, COLOR_HP)?;
+                let mut needed_str = String::<32>::new();
+                write!(needed_str, "Need {} more SP", 20 - game_state.hero.sp).ok();
+                draw_text(display, &needed_str, Point::new(90, 185), &FONT_9X18_BOLD, COLOR_HP)?;
+                draw_text(display, "Go to Rest page to", Point::new(75, 225), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+                draw_text(display, "recover SP", Point::new(115, 248), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+            }
+
+            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
+            draw_fps_info(display, Point::new(230, 360), fps)?;
+            draw_text(display, "Press BOOT for Menu", Point::new(90, 420), &FONT_9X15, COLOR_TEXT_DIM)?;
+        }
+        BattleState::Playing => {
+            if let Some(enemy) = &game_state.battle_enemy {
+                draw_text(display, "=== BATTLE! ===", Point::new(85, 20), &FONT_10X20, COLOR_TEXT)?;
+
+                // Enemy HP bar at top
+                let mut enemy_str = String::<32>::new();
+                write!(enemy_str, "{} Lv.{}", enemy.name, enemy.level).ok();
+                draw_text(display, &enemy_str, Point::new(20, 50), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+                let mut enemy_hp_str = String::<32>::new();
+                write!(enemy_hp_str, "HP: {}/{}", enemy.hp, enemy.max_hp).ok();
+                draw_text(display, &enemy_hp_str, Point::new(20, 70), &FONT_9X15, COLOR_HP)?;
+                draw_bar(display, Point::new(20, 85), 328, enemy.hp_percent(), COLOR_HP)?;
+
+                // Timer
+                let remaining_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
+                let mut time_str = String::<16>::new();
+                write!(time_str, "{}s", remaining_sec).ok();
+                draw_text(display, &time_str, Point::new(315, 50), &FONT_10X20, Rgb888::YELLOW)?;
+
+                // Score
+                let mut score_str = String::<32>::new();
+                write!(score_str, "Hits:{} Missed:{}", game_state.battle_score, game_state.battle_missed).ok();
+                draw_text(display, &score_str, Point::new(20, 110), &FONT_9X15, COLOR_TEXT_DIM)?;
+
+                // Draw all active circles
+                for circle in &game_state.battle_circles {
+                    if let Some(c) = circle {
+                        let color = match c.circle_type {
+                            CircleType::GoodTarget => Rgb888::GREEN,
+                            CircleType::BadTarget => Rgb888::RED,
+                        };
+
+                        // Draw filled circle
+                        EgCircle::new(Point::new(c.x - c.radius as i32, c.y - c.radius as i32), c.radius * 2)
+                            .into_styled(PrimitiveStyle::with_fill(color))
+                            .draw(display)?;
+
+                        // Draw border
+                        EgCircle::new(Point::new(c.x - c.radius as i32, c.y - c.radius as i32), c.radius * 2)
+                            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+                            .draw(display)?;
+                    }
+                }
+
+                // Draw touch indicator cross (shows for 500ms after touch)
+                if game_state.battle_last_touch_time > 0 {
+                    let time_since_touch = game_state.last_update_ms.saturating_sub(game_state.battle_last_touch_time);
+                    if time_since_touch < 500 {
+                        let tx = game_state.battle_last_touch_x;
+                        let ty = game_state.battle_last_touch_y;
+                        let cross_size = 10;
+
+                        // Draw white cross at touch position
+                        Line::new(
+                            Point::new(tx - cross_size, ty),
+                            Point::new(tx + cross_size, ty)
+                        )
+                        .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 3))
+                        .draw(display)?;
+
+                        Line::new(
+                            Point::new(tx, ty - cross_size),
+                            Point::new(tx, ty + cross_size)
+                        )
+                        .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 3))
+                        .draw(display)?;
+
+                        // Draw touch coordinates
+                        let mut coord_str = String::<32>::new();
+                        write!(coord_str, "({},{})", tx, ty).ok();
+                        draw_text(display, &coord_str, Point::new(20, 430), &FONT_9X15, Rgb888::WHITE)?;
+                    }
+                }
+
+                // Instructions at bottom
+                draw_text(display, "Green: Hit enemy", Point::new(20, 390), &FONT_9X15, Rgb888::GREEN)?;
+                draw_text(display, "Red: Block attack", Point::new(20, 410), &FONT_9X15, Rgb888::RED)?;
+
+                draw_fps_info(display, Point::new(230, 360), fps)?;
+            }
+        }
+        BattleState::Victory => {
+            draw_text(display, "=== VICTORY! ===", Point::new(75, 80), &FONT_10X20, COLOR_TEXT)?;
+
+            if let Some(enemy) = &game_state.battle_enemy {
+                let mut enemy_str = String::<32>::new();
+                write!(enemy_str, "Defeated {}", enemy.name).ok();
+                draw_text(display, &enemy_str, Point::new(85, 130), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+                // Score
+                let mut score_str = String::<32>::new();
+                write!(score_str, "Hits: {}", game_state.battle_score).ok();
+                draw_text(display, &score_str, Point::new(110, 165), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+                let mut missed_str = String::<32>::new();
+                write!(missed_str, "Missed: {}", game_state.battle_missed).ok();
+                draw_text(display, &missed_str, Point::new(95, 190), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+
+                draw_text(display, "Rewards:", Point::new(120, 230), &FONT_9X18_BOLD, COLOR_EXP)?;
+
+                let mut exp_str = String::<32>::new();
+                write!(exp_str, "+{} EXP", enemy.exp_reward).ok();
+                draw_text(display, &exp_str, Point::new(105, 260), &FONT_9X18_BOLD, COLOR_EXP)?;
+
+                let mut zeny_str = String::<32>::new();
+                write!(zeny_str, "+{} Zeny", enemy.zeny_reward).ok();
+                draw_text(display, &zeny_str, Point::new(105, 285), &FONT_9X18_BOLD, COLOR_EXP)?;
+            }
+
+            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
+            draw_fps_info(display, Point::new(230, 360), fps)?;
+            draw_text(display, "Touch to continue", Point::new(90, 420), &FONT_9X15, COLOR_TEXT_DIM)?;
+        }
+        BattleState::Defeat => {
+            draw_text(display, "=== DEFEATED ===", Point::new(75, 80), &FONT_10X20, COLOR_HP)?;
+
+            // Score
+            let mut score_str = String::<32>::new();
+            write!(score_str, "Hits: {}", game_state.battle_score).ok();
+            draw_text(display, &score_str, Point::new(110, 165), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+            let mut missed_str = String::<32>::new();
+            write!(missed_str, "Missed: {}", game_state.battle_missed).ok();
+            draw_text(display, &missed_str, Point::new(95, 190), &FONT_9X18_BOLD, COLOR_HP)?;
+
+            draw_text(display, "You were defeated!", Point::new(70, 240), &FONT_9X18_BOLD, COLOR_HP)?;
+            draw_text(display, "No rewards", Point::new(110, 270), &FONT_9X15, COLOR_TEXT_DIM)?;
+
+            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
+            draw_fps_info(display, Point::new(230, 360), fps)?;
+            draw_text(display, "Touch to continue", Point::new(90, 420), &FONT_9X15, COLOR_TEXT_DIM)?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Draw the Menu overlay
 pub fn draw_menu<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
 where
@@ -292,10 +467,10 @@ where
 
     draw_text(display, "=== MENU ===", Point::new(105, 90), &FONT_10X20, COLOR_TEXT)?;
 
-    // Menu items with much more spacing
-    let menu_items = ["Overview", "Auto Farm", "Rest", "Save Game"];
+    // Menu items with much more spacing (now 5 items including Battle)
+    let menu_items = ["Overview", "Auto Farm", "Rest", "Battle", "Save"];
     for (i, item) in menu_items.iter().enumerate() {
-        let y = 130 + i as i32 * 55; // Increased spacing from 40 to 55
+        let y = 130 + i as i32 * 48; // Adjusted spacing for 5 items
         let color = if i as u8 == game_state.menu_selection {
             COLOR_MENU_SELECT
         } else {
