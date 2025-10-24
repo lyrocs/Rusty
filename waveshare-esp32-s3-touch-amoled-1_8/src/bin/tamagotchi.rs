@@ -222,7 +222,10 @@ fn main() -> ! {
 
     // Insert display and touch as NonSend resources
     world.insert_non_send_resource(DisplayResource { display });
-    world.insert_non_send_resource(TouchResource { touch });
+    world.insert_non_send_resource(TouchResource {
+        touch,
+        last_touch_state: false,
+    });
 
     // Insert AXP2101 PMIC resource
     world.insert_non_send_resource(Axp2101Resource { pmic });
@@ -270,13 +273,18 @@ fn main() -> ! {
 fn update_battery_system(
     mut axp_res: NonSendMut<Axp2101Resource>,
     mut battery_res: ResMut<BatteryResource>,
-    game_state: Res<GameState>,
+    mut game_state: ResMut<GameState>,
 ) {
-    // Update battery every 100 generations (~6 seconds at 60fps)
-    if game_state.last_update_ms % 6000 < 100 {
+    // Update battery every 10 seconds (much less frequent)
+    if game_state.last_update_ms % 10000 < 100 {
         if let Ok(voltage_mv) = axp_res.pmic.battery_voltage() {
-            battery_res.voltage_mv = voltage_mv;
-            battery_res.percent = voltage_to_battery_percent(voltage_mv);
+            let new_percent = voltage_to_battery_percent(voltage_mv);
+            // Only update and mark for redraw if values actually changed
+            if battery_res.voltage_mv != voltage_mv || battery_res.percent != new_percent {
+                battery_res.voltage_mv = voltage_mv;
+                battery_res.percent = new_percent;
+                game_state.needs_redraw = true;
+            }
         }
     }
 }

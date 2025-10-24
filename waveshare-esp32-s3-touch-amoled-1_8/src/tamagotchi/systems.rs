@@ -39,6 +39,7 @@ pub fn tamagotchi_button_system(
             // Open menu
             game_state.current_page = GamePage::Menu;
         }
+        game_state.needs_redraw = true; // Mark for redraw on page change
     }
 
     // Update last state
@@ -55,13 +56,33 @@ pub fn tamagotchi_touch_system(
         .touch1()
         .unwrap_or_else(|_e| TouchState::Released);
 
-    if let TouchState::Pressed(TouchPoint { x, y }) = touching {
-        handle_touch_input(&mut game_state, x, y);
+    let is_pressed = matches!(touching, TouchState::Pressed(_));
+
+    // Detect touch on release (rising edge) to prevent accidental double-taps
+    if touch_res.last_touch_state && !is_pressed {
+        // Touch was just released, process it
+        if let TouchState::Released = touching {
+            // Use the last known touch position - we'll need to store it
+            // For now, just mark that a touch happened
+        }
     }
+
+    // Also process immediate touch for responsiveness
+    if let TouchState::Pressed(TouchPoint { x, y }) = touching {
+        // Only process if this is a new touch (wasn't pressed last frame)
+        if !touch_res.last_touch_state {
+            esp_println::println!("[TOUCH] Detected at ({}, {})", x, y);
+            handle_touch_input(&mut game_state, x, y);
+        }
+    }
+
+    // Update last touch state
+    touch_res.last_touch_state = is_pressed;
 }
 
 /// Handle touch input based on current page
 fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
+    game_state.needs_redraw = true; // Mark for redraw on any touch
     match game_state.current_page {
         GamePage::Menu => {
             // Menu item selection based on touch Y position
@@ -91,19 +112,31 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         GamePage::Farm => {
             match game_state.farm_state {
                 FarmState::Idle => {
+                    // Check cooldown first
+                    if game_state.farm_touch_cooldown > 0 {
+                        esp_println::println!("[FARM] Touch cooldown active: {}ms", game_state.farm_touch_cooldown);
+                        return; // Ignore touch during cooldown
+                    }
+
                     // Start farming if hero has enough SP
                     if game_state.hero.sp >= 20 {
+                        esp_println::println!("[FARM] Starting farm with enemy");
                         // Generate a random enemy (using touch position as random seed)
                         let rng_value = (x.wrapping_add(y)) as u8;
                         let enemy = Enemy::random_for_level(game_state.hero.level, rng_value);
                         game_state.start_farming(enemy);
+                    } else {
+                        esp_println::println!("[FARM] Not enough SP: {}/20", game_state.hero.sp);
                     }
                 }
                 FarmState::Victory | FarmState::Defeat => {
+                    esp_println::println!("[FARM] Resetting farming state from {:?}", game_state.farm_state);
                     // Reset farming state
                     game_state.reset_farming();
                 }
-                _ => {}
+                _ => {
+                    esp_println::println!("[FARM] Touch ignored, state: {:?}", game_state.farm_state);
+                }
             }
         }
         GamePage::Rest => {
@@ -139,33 +172,55 @@ pub fn tamagotchi_update_system(
     // Update game time
     game_state.last_update_ms = game_state.last_update_ms.wrapping_add(delta_ms);
 
-    // Update FPS counter
+    // Update farm touch cooldown
+    if game_state.farm_touch_cooldown > 0 {
+        game_state.farm_touch_cooldown = game_state.farm_touch_cooldown.saturating_sub(delta_ms);
+    }
+
+    // Update FPS counter every 2 seconds for less frequent updates
     game_state.frame_count += 1;
     let fps_elapsed = game_state.last_update_ms.wrapping_sub(game_state.last_fps_update_ms);
-    if fps_elapsed >= 1000 {
+    if fps_elapsed >= 2000 {
         // Calculate FPS: frames / seconds
         game_state.fps = (game_state.frame_count * 1000) / fps_elapsed;
         game_state.frame_count = 0;
         game_state.last_fps_update_ms = game_state.last_update_ms;
+        game_state.needs_redraw = true; // Redraw when FPS updates
     }
 
-    // Update farming progress
+    // Update farming progress (only redraw every ~200ms for smoother animation without too much overhead)
     if game_state.current_page == GamePage::Farm && game_state.farm_state == FarmState::Fighting {
+        let old_percent = (game_state.farm_progress * 100) / game_state.farm_duration_ms;
         game_state.update_farm_progress(delta_ms);
+        let new_percent = (game_state.farm_progress * 100) / game_state.farm_duration_ms;
+        // Only redraw if progress bar changes by at least 1%
+        if new_percent != old_percent {
+            game_state.needs_redraw = true;
+        }
     }
 
-    // Update rest progress
+    // Update rest progress (only redraw when SP actually changes)
     if game_state.current_page == GamePage::Rest && game_state.rest_state == RestState::Resting {
+        let old_sp = game_state.hero.sp;
         game_state.update_rest_progress(delta_ms);
+        // Only redraw if SP changed or state changed
+        if game_state.hero.sp != old_sp || game_state.rest_state != RestState::Resting {
+            game_state.needs_redraw = true;
+        }
     }
 }
 
 /// System to render the current page
 pub fn tamagotchi_render_system(
     mut display_res: NonSendMut<DisplayResource>,
-    game_state: Res<GameState>,
+    mut game_state: ResMut<GameState>,
     battery_res: Res<BatteryResource>,
 ) {
+    // Only render if something changed
+    if !game_state.needs_redraw {
+        return;
+    }
+
     // Get battery info
     let battery_mv = battery_res.voltage_mv;
     let battery_pct = battery_res.percent;
@@ -191,6 +246,9 @@ pub fn tamagotchi_render_system(
 
     // Flush the display
     display_res.display.flush().ok();
+
+    // Clear the dirty flag
+    game_state.needs_redraw = false;
 }
 
 /// System to handle save requests with SD card persistence
@@ -225,12 +283,14 @@ pub fn tamagotchi_save_system(
 
         // Show success message for 3 seconds
         game_state.save_status_timeout = game_state.last_update_ms + 3000;
+        game_state.needs_redraw = true; // Redraw to show save message
     }
 
     // Clear save message after timeout
     if game_state.save_status_timeout > 0 && game_state.last_update_ms >= game_state.save_status_timeout {
         game_state.save_status_msg = None;
         game_state.save_status_timeout = 0;
+        game_state.needs_redraw = true; // Redraw to clear message
     }
 }
 

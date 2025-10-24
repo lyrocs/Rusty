@@ -89,6 +89,7 @@ pub struct BatteryResource {
 /// Touch controller resource
 pub struct TouchResource {
     pub touch: TouchDriver,
+    pub last_touch_state: bool, // Track if touch was pressed last frame
 }
 
 /// Display resource - NonSend because it contains non-thread-safe components

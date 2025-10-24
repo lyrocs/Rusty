@@ -258,6 +258,7 @@ pub struct GameState {
     pub farm_state: FarmState,
     pub farm_progress: u32,      // 0-60000 (60 seconds in milliseconds)
     pub farm_duration_ms: u32,   // 60000 ms = 1 minute
+    pub farm_touch_cooldown: u32, // Cooldown in ms to prevent immediate re-touch
     pub rest_state: RestState,
     pub rest_progress: u32,      // Progress in milliseconds
     pub sp_regen_rate: u16,      // SP per second while resting
@@ -269,6 +270,7 @@ pub struct GameState {
     pub fps: u32,                // Current FPS
     pub frame_count: u32,        // Total frames rendered
     pub last_fps_update_ms: u32, // Last time FPS was calculated
+    pub needs_redraw: bool,      // Flag to indicate screen needs redrawing
 }
 
 impl Default for GameState {
@@ -280,6 +282,7 @@ impl Default for GameState {
             farm_state: FarmState::Idle,
             farm_progress: 0,
             farm_duration_ms: 60000, // 1 minute
+            farm_touch_cooldown: 0,
             rest_state: RestState::Resting,
             rest_progress: 0,
             sp_regen_rate: 5, // 5 SP per second
@@ -291,6 +294,7 @@ impl Default for GameState {
             fps: 0,
             frame_count: 0,
             last_fps_update_ms: 0,
+            needs_redraw: true, // Start with needing a redraw
         }
     }
 }
@@ -331,6 +335,8 @@ impl GameState {
         self.current_enemy = None;
         self.farm_state = FarmState::Idle;
         self.farm_progress = 0;
+        // Set cooldown to prevent immediate re-touch (300ms)
+        self.farm_touch_cooldown = 300;
     }
 
     /// Update rest progress

@@ -100,15 +100,36 @@ where
         FarmState::Idle => {
             draw_text(display, "=== AUTO FARM ===", Point::new(70, 20), &FONT_10X20, COLOR_TEXT)?;
 
+            // SP display with color coding
             let mut sp_str = String::<32>::new();
             write!(sp_str, "SP: {}/{}", game_state.hero.sp, game_state.hero.max_sp).ok();
-            draw_text(display, &sp_str, Point::new(20, 60), &FONT_9X18_BOLD, COLOR_SP)?;
+            let sp_color = if game_state.hero.sp >= 20 { COLOR_SP } else { COLOR_HP };
+            draw_text(display, &sp_str, Point::new(20, 60), &FONT_9X18_BOLD, sp_color)?;
 
-            draw_text(display, "Touch screen to", Point::new(90, 180), &FONT_9X18_BOLD, COLOR_TEXT)?;
-            draw_text(display, "start farming", Point::new(95, 205), &FONT_9X18_BOLD, COLOR_TEXT)?;
+            // SP bar
+            draw_bar(display, Point::new(20, 78), 328, game_state.hero.sp_percent(), sp_color)?;
 
-            draw_text(display, "Cost: 20 SP", Point::new(110, 250), &FONT_9X15, COLOR_TEXT_DIM)?;
-            draw_text(display, "Duration: 1 minute", Point::new(90, 270), &FONT_9X15, COLOR_TEXT_DIM)?;
+            // Check if user has enough SP
+            if game_state.hero.sp >= 20 {
+                // Enough SP - show normal instructions
+                draw_text(display, "Touch screen to", Point::new(90, 160), &FONT_9X18_BOLD, COLOR_TEXT)?;
+                draw_text(display, "start farming", Point::new(95, 185), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+                draw_text(display, "Cost: 20 SP", Point::new(110, 230), &FONT_9X15, COLOR_TEXT_DIM)?;
+                draw_text(display, "Duration: 1 minute", Point::new(90, 250), &FONT_9X15, COLOR_TEXT_DIM)?;
+            } else {
+                // Not enough SP - show warning
+                draw_text(display, "NOT ENOUGH SP!", Point::new(75, 150), &FONT_10X20, COLOR_HP)?;
+
+                let mut needed_str = String::<32>::new();
+                write!(needed_str, "Need {} more SP", 20 - game_state.hero.sp).ok();
+                draw_text(display, &needed_str, Point::new(90, 185), &FONT_9X18_BOLD, COLOR_HP)?;
+
+                draw_text(display, "Go to Rest page to", Point::new(75, 225), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+                draw_text(display, "recover SP", Point::new(115, 248), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+
+                draw_text(display, "(Press BOOT > Rest)", Point::new(80, 285), &FONT_9X15, Rgb888::YELLOW)?;
+            }
 
             // Battery info
             draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
