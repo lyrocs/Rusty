@@ -8,7 +8,7 @@ use embedded_graphics::{
 };
 use heapless::String;
 
-use crate::tamagotchi::models::{Hero, GameState, FarmState, RestState, BattleState, CircleType};
+use crate::tamagotchi::models::{Hero, GameState, FarmState, RestState, BattleState, CircleType, LocationType};
 
 // Color palette inspired by Ragnarok Online
 pub const COLOR_BG: Rgb888 = Rgb888::new(40, 40, 60);
@@ -461,6 +461,167 @@ where
     Ok(())
 }
 
+/// Draw the Map/Navigation page
+pub fn draw_map_page<D>(display: &mut D, game_state: &GameState, battery_mv: u16, battery_pct: u8, fps: u32) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    display.clear(COLOR_BG)?;
+
+    let map = game_state.current_location;
+    let location_type = map.location_type();
+
+    // Title with location name
+    let mut title = String::<32>::new();
+    write!(title, "=== {} ===", map.name()).ok();
+    draw_text(display, &title, Point::new(60, 20), &FONT_10X20, COLOR_TEXT)?;
+
+    // Location type indicator
+    let type_str = match location_type {
+        LocationType::City => "[CITY]",
+        LocationType::Field => "[FIELD]",
+    };
+    let type_color = match location_type {
+        LocationType::City => Rgb888::YELLOW,
+        LocationType::Field => Rgb888::RED,
+    };
+    draw_text(display, type_str, Point::new(145, 50), &FONT_9X18_BOLD, type_color)?;
+
+    // Draw directional navigation buttons on screen borders (large buttons)
+    let exits = map.exits();
+    for exit in exits {
+        match exit.direction {
+            "North" => {
+                // Top button - almost full width
+                Rectangle::new(Point::new(10, 0), Size::new(348, 40))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                    .draw(display)?;
+                Rectangle::new(Point::new(10, 0), Size::new(348, 40))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
+                    .draw(display)?;
+                draw_text(display, "NORTH", Point::new(154, 18), &FONT_10X20, COLOR_TEXT)?;
+            }
+            "South" => {
+                // Bottom button - almost full width
+                Rectangle::new(Point::new(10, 408), Size::new(348, 40))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                    .draw(display)?;
+                Rectangle::new(Point::new(10, 408), Size::new(348, 40))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
+                    .draw(display)?;
+                draw_text(display, "SOUTH", Point::new(154, 426), &FONT_10X20, COLOR_TEXT)?;
+            }
+            "West" => {
+                // Left button - almost full height
+                Rectangle::new(Point::new(0, 45), Size::new(50, 358))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                    .draw(display)?;
+                Rectangle::new(Point::new(0, 45), Size::new(50, 358))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
+                    .draw(display)?;
+                // Rotated text effect with vertical letters
+                draw_text(display, "W", Point::new(17, 170), &FONT_10X20, COLOR_TEXT)?;
+                draw_text(display, "E", Point::new(17, 200), &FONT_10X20, COLOR_TEXT)?;
+                draw_text(display, "S", Point::new(17, 230), &FONT_10X20, COLOR_TEXT)?;
+                draw_text(display, "T", Point::new(17, 260), &FONT_10X20, COLOR_TEXT)?;
+            }
+            "East" => {
+                // Right button - almost full height
+                Rectangle::new(Point::new(318, 45), Size::new(50, 358))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                    .draw(display)?;
+                Rectangle::new(Point::new(318, 45), Size::new(50, 358))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
+                    .draw(display)?;
+                // Rotated text effect with vertical letters
+                draw_text(display, "E", Point::new(335, 170), &FONT_10X20, COLOR_TEXT)?;
+                draw_text(display, "A", Point::new(335, 200), &FONT_10X20, COLOR_TEXT)?;
+                draw_text(display, "S", Point::new(335, 230), &FONT_10X20, COLOR_TEXT)?;
+                draw_text(display, "T", Point::new(335, 260), &FONT_10X20, COLOR_TEXT)?;
+            }
+            _ => {}
+        }
+    }
+
+    // Center area for info and actions
+    match location_type {
+        LocationType::City => {
+            // Show NPC actions as buttons (similar to menu)
+            if let Some(npcs) = map.city_npcs() {
+                for (i, npc) in npcs.iter().enumerate() {
+                    let row = i / 2;
+                    let col = i % 2;
+                    let x = 59 + col as i32 * 130; // Centered buttons
+                    let y = 100 + row as i32 * 75;
+
+                    // Draw action button
+                    Rectangle::new(Point::new(x, y), Size::new(120, 60))
+                        .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                        .draw(display)?;
+                    Rectangle::new(Point::new(x, y), Size::new(120, 60))
+                        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+                        .draw(display)?;
+
+                    // Text (word wrap for long names)
+                    if npc.len() > 10 {
+                        // Split long text
+                        if let Some(space_idx) = npc.find(' ') {
+                            let (first, second) = npc.split_at(space_idx);
+                            draw_text(display, first, Point::new(x + 10, y + 20), &FONT_9X15, COLOR_TEXT)?;
+                            draw_text(display, second.trim(), Point::new(x + 10, y + 38), &FONT_9X15, COLOR_TEXT_DIM)?;
+                        } else {
+                            draw_text(display, npc, Point::new(x + 10, y + 25), &FONT_9X15, COLOR_TEXT)?;
+                        }
+                    } else {
+                        draw_text(display, npc, Point::new(x + 10, y + 25), &FONT_9X15, COLOR_TEXT)?;
+                    }
+                }
+            }
+        }
+        LocationType::Field => {
+            // Show monster info and actions
+            if let Some(field) = map.field_info() {
+                // Monster list
+                draw_text(display, "Monsters:", Point::new(120, 85), &FONT_9X18_BOLD, COLOR_TEXT)?;
+                for (i, monster) in field.monsters.iter().enumerate() {
+                    let y = 110 + i as i32 * 22;
+                    draw_text(display, monster, Point::new(130, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+                }
+
+                let level_y = 110 + (field.monsters.len() as i32 * 22) + 10;
+                let mut level_str = String::<32>::new();
+                write!(level_str, "Lv {}-{}", field.level_range.0, field.level_range.1).ok();
+                draw_text(display, &level_str, Point::new(130, level_y), &FONT_9X15, Rgb888::YELLOW)?;
+
+                // Action buttons (centered, large)
+                // Auto Farm button
+                Rectangle::new(Point::new(84, 210), Size::new(200, 60))
+                    .into_styled(PrimitiveStyle::with_fill(Rgb888::new(50, 100, 50)))
+                    .draw(display)?;
+                Rectangle::new(Point::new(84, 210), Size::new(200, 60))
+                    .into_styled(PrimitiveStyle::with_stroke(Rgb888::GREEN, 3))
+                    .draw(display)?;
+                draw_text(display, "AUTO FARM", Point::new(115, 235), &FONT_9X18_BOLD, Rgb888::WHITE)?;
+
+                // Battle button
+                Rectangle::new(Point::new(84, 280), Size::new(200, 60))
+                    .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
+                    .draw(display)?;
+                Rectangle::new(Point::new(84, 280), Size::new(200, 60))
+                    .into_styled(PrimitiveStyle::with_stroke(Rgb888::RED, 3))
+                    .draw(display)?;
+                draw_text(display, "BATTLE", Point::new(140, 305), &FONT_9X18_BOLD, Rgb888::WHITE)?;
+            }
+        }
+    }
+
+    // Battery and FPS at bottom
+    draw_battery_info(display, Point::new(10, 355), battery_mv, battery_pct)?;
+    draw_fps_info(display, Point::new(240, 365), fps)?;
+
+    Ok(())
+}
+
 /// Draw the Menu overlay
 pub fn draw_menu<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
 where
@@ -477,9 +638,9 @@ where
 
     draw_text(display, "=== MENU ===", Point::new(115, 70), &FONT_10X20, COLOR_TEXT)?;
 
-    // Menu items in 2 columns x 3 rows (5 items + 1 empty slot)
+    // Menu items in 2 columns x 3 rows (6 items)
     // Button size: 150x70 with 10px spacing
-    let menu_items = ["Overview", "Farm", "Rest", "Battle", "Save"];
+    let menu_items = ["Overview", "Farm", "Rest", "Battle", "Map", "Save"];
 
     for (i, item) in menu_items.iter().enumerate() {
         let col = i % 2;

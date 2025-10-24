@@ -3,7 +3,7 @@ use ft3x68_rs::{TouchState, TouchPoint};
 
 use crate::ecs::resources::{TouchResource, ButtonResource, DisplayResource, BatteryResource, RtcResource, SdCardResource};
 use crate::tamagotchi::models::{GameState, GamePage, FarmState, RestState, BattleState, Enemy};
-use crate::tamagotchi::ui::{draw_overview_page, draw_farm_page, draw_rest_page, draw_battle_page, draw_menu};
+use crate::tamagotchi::ui::{draw_overview_page, draw_farm_page, draw_rest_page, draw_battle_page, draw_map_page, draw_menu};
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
 
@@ -34,6 +34,7 @@ pub fn tamagotchi_button_system(
                 1 => GamePage::Farm,
                 2 => GamePage::Rest,
                 3 => GamePage::Battle,
+                4 => GamePage::Map,
                 _ => GamePage::Overview,
             };
         } else {
@@ -90,7 +91,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             // Button layout:
             // [Overview(0)] [Farm(1)]      Row 0: y=110-180
             // [Rest(2)]     [Battle(3)]    Row 1: y=190-260
-            // [Save(4)]     [empty]        Row 2: y=270-340
+            // [Map(4)]      [Save(5)]      Row 2: y=270-340
             //
             // Col 0: x=24-174, Col 1: x=184-334
 
@@ -121,7 +122,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 // Calculate button index (row * 2 + col)
                 if row < 3 && col < 2 {
                     let button_index = row * 2 + col;
-                    if button_index < 5 { // Only 5 buttons exist
+                    if button_index < 6 { // Now 6 buttons exist
                         clicked_button = Some(button_index);
                     }
                 }
@@ -132,7 +133,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     esp_println::println!("[MENU] Selected button {} at ({}, {})", item_index, x, y);
 
                     // Handle selection
-                    if item_index == 4 {
+                    if item_index == 5 {
                         // Save Game selected
                         game_state.save_requested = true;
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
@@ -143,6 +144,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             1 => GamePage::Farm,
                             2 => GamePage::Rest,
                             3 => GamePage::Battle,
+                            4 => GamePage::Map,
                             _ => GamePage::Overview,
                         };
                     }
@@ -219,6 +221,65 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     esp_println::println!("[BATTLE] Resetting battle state from {:?}", game_state.battle_state);
                     // Reset battle state
                     game_state.reset_battle();
+                }
+            }
+        }
+        GamePage::Map => {
+            // Map navigation with border buttons and center actions
+            let exits = game_state.current_location.exits();
+            let location_type = game_state.current_location.location_type();
+
+            // Check directional navigation buttons (large border buttons)
+            let mut traveled = false;
+            for exit in exits {
+                let hit = match exit.direction {
+                    "North" => x >= 10 && x <= 358 && y <= 40,
+                    "South" => x >= 10 && x <= 358 && y >= 408,
+                    "West" => x <= 50 && y >= 45 && y <= 403,
+                    "East" => x >= 318 && y >= 45 && y <= 403,
+                    _ => false,
+                };
+
+                if hit {
+                    esp_println::println!("[MAP] Traveling {} to {}", exit.direction, exit.destination.name());
+                    game_state.current_location = exit.destination;
+                    traveled = true;
+                    break;
+                }
+            }
+
+            // Check center action buttons (only if didn't travel)
+            if !traveled {
+                match location_type {
+                    crate::tamagotchi::models::LocationType::City => {
+                        // NPC action buttons (2x2 grid in center)
+                        if let Some(npcs) = game_state.current_location.city_npcs() {
+                            for (i, npc) in npcs.iter().enumerate() {
+                                let row = i / 2;
+                                let col = i % 2;
+                                let btn_x = 59 + col as i32 * 130;
+                                let btn_y = 100 + row as i32 * 75;
+
+                                if x >= btn_x as u16 && x <= (btn_x + 120) as u16 &&
+                                   y >= btn_y as u16 && y <= (btn_y + 60) as u16 {
+                                    esp_println::println!("[MAP] Selected NPC: {}", npc);
+                                    // TODO: Implement NPC interactions
+                                }
+                            }
+                        }
+                    }
+                    crate::tamagotchi::models::LocationType::Field => {
+                        // Check Auto Farm button (84, 210, 200x60)
+                        if x >= 84 && x <= 284 && y >= 210 && y <= 270 {
+                            esp_println::println!("[MAP] Auto Farm selected - switching to Farm page");
+                            game_state.current_page = GamePage::Farm;
+                        }
+                        // Check Battle button (84, 280, 200x60)
+                        else if x >= 84 && x <= 284 && y >= 280 && y <= 340 {
+                            esp_println::println!("[MAP] Battle selected - switching to Battle page");
+                            game_state.current_page = GamePage::Battle;
+                        }
+                    }
                 }
             }
         }
@@ -331,6 +392,9 @@ pub fn tamagotchi_render_system(
         }
         GamePage::Battle => {
             draw_battle_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
+        }
+        GamePage::Map => {
+            draw_map_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
         }
         GamePage::Menu => {
             // Draw the previous page first, then overlay menu

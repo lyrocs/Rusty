@@ -9,6 +9,7 @@ pub enum GamePage {
     Farm,
     Rest,
     Battle,  // Whac-A-Mole mini-game
+    Map,     // Navigation and world map
     Menu,
 }
 
@@ -312,11 +313,122 @@ impl Circle {
     }
 }
 
+/// Location type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocationType {
+    City,        // Cities with NPCs (Prontera, etc)
+    Field,       // Monster fields for hunting
+}
+
+/// Map location ID
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MapId {
+    Prontera,
+    PronteraSouth,
+    PronteraWest,
+    PronteraEast,
+    PronteraNorth,
+}
+
+impl MapId {
+    pub fn name(&self) -> &'static str {
+        match self {
+            MapId::Prontera => "Prontera",
+            MapId::PronteraSouth => "Prontera South",
+            MapId::PronteraWest => "Prontera West",
+            MapId::PronteraEast => "Prontera East",
+            MapId::PronteraNorth => "Prontera North",
+        }
+    }
+
+    pub fn location_type(&self) -> LocationType {
+        match self {
+            MapId::Prontera => LocationType::City,
+            MapId::PronteraSouth | MapId::PronteraWest | MapId::PronteraEast | MapId::PronteraNorth => LocationType::Field,
+        }
+    }
+
+    /// Get available exits from this location
+    pub fn exits(&self) -> &'static [MapExit] {
+        match self {
+            MapId::Prontera => &[
+                MapExit { direction: "South", destination: MapId::PronteraSouth },
+                MapExit { direction: "West", destination: MapId::PronteraWest },
+                MapExit { direction: "East", destination: MapId::PronteraEast },
+                MapExit { direction: "North", destination: MapId::PronteraNorth },
+            ],
+            MapId::PronteraSouth => &[
+                MapExit { direction: "North", destination: MapId::Prontera },
+            ],
+            MapId::PronteraWest => &[
+                MapExit { direction: "East", destination: MapId::Prontera },
+            ],
+            MapId::PronteraEast => &[
+                MapExit { direction: "West", destination: MapId::Prontera },
+            ],
+            MapId::PronteraNorth => &[
+                MapExit { direction: "South", destination: MapId::Prontera },
+            ],
+        }
+    }
+
+    /// Get monsters for field locations (level range)
+    pub fn field_info(&self) -> Option<FieldInfo> {
+        match self {
+            MapId::PronteraSouth => Some(FieldInfo {
+                monsters: &["Poring", "Lunatic"],
+                level_range: (1, 4),
+            }),
+            MapId::PronteraWest => Some(FieldInfo {
+                monsters: &["Spore", "Poring"],
+                level_range: (2, 5),
+            }),
+            MapId::PronteraEast => Some(FieldInfo {
+                monsters: &["Lunatic", "Poring"],
+                level_range: (1, 3),
+            }),
+            MapId::PronteraNorth => Some(FieldInfo {
+                monsters: &["Spore", "Lunatic"],
+                level_range: (3, 6),
+            }),
+            MapId::Prontera => None,
+        }
+    }
+
+    /// Get NPCs for city locations
+    pub fn city_npcs(&self) -> Option<&'static [&'static str]> {
+        match self {
+            MapId::Prontera => Some(&[
+                "Item Shop",
+                "Weapon Shop",
+                "Refiner (Coming Soon)",
+                "Storage (Coming Soon)",
+            ]),
+            _ => None,
+        }
+    }
+}
+
+/// Exit from a location
+#[derive(Debug, Clone, Copy)]
+pub struct MapExit {
+    pub direction: &'static str,
+    pub destination: MapId,
+}
+
+/// Field information
+#[derive(Debug, Clone, Copy)]
+pub struct FieldInfo {
+    pub monsters: &'static [&'static str],
+    pub level_range: (u16, u16), // (min, max)
+}
+
 /// Main game state resource
 #[derive(Resource)]
 pub struct GameState {
     pub current_page: GamePage,
     pub hero: Hero,
+    pub current_location: MapId,  // Current map location
     pub current_enemy: Option<Enemy>,
     pub farm_state: FarmState,
     pub farm_progress: u32,      // 0-60000 (60 seconds in milliseconds)
@@ -353,6 +465,7 @@ impl Default for GameState {
         Self {
             current_page: GamePage::Overview,
             hero: Hero::new(),
+            current_location: MapId::Prontera,  // Start in Prontera
             current_enemy: None,
             farm_state: FarmState::Idle,
             farm_progress: 0,
