@@ -86,12 +86,50 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     game_state.needs_redraw = true; // Mark for redraw on any touch
     match game_state.current_page {
         GamePage::Menu => {
-            // Menu item selection based on touch Y position
-            // Updated for new menu with 48px spacing (5 items: Overview, Farm, Rest, Battle, Save)
-            if x > 40 && x < 328 && y > 130 && y < 370 {
-                let item_index = ((y - 130) / 48) as u8;
-                if item_index < 5 { // Now 5 items: Overview, Farm, Rest, Battle, Save
+            // Menu item selection based on button position (2 columns x 3 rows)
+            // Button layout:
+            // [Overview(0)] [Farm(1)]      Row 0: y=110-180
+            // [Rest(2)]     [Battle(3)]    Row 1: y=190-260
+            // [Save(4)]     [empty]        Row 2: y=270-340
+            //
+            // Col 0: x=24-174, Col 1: x=184-334
+
+            // Check if touch is within button area
+            if y >= 110 && y <= 340 {
+                let mut clicked_button: Option<u8> = None;
+
+                // Determine row (0, 1, or 2)
+                let row = if y >= 110 && y <= 180 {
+                    0
+                } else if y >= 190 && y <= 260 {
+                    1
+                } else if y >= 270 && y <= 340 {
+                    2
+                } else {
+                    255 // Invalid
+                };
+
+                // Determine column (0 or 1)
+                let col = if x >= 24 && x <= 174 {
+                    0
+                } else if x >= 184 && x <= 334 {
+                    1
+                } else {
+                    255 // Invalid
+                };
+
+                // Calculate button index (row * 2 + col)
+                if row < 3 && col < 2 {
+                    let button_index = row * 2 + col;
+                    if button_index < 5 { // Only 5 buttons exist
+                        clicked_button = Some(button_index);
+                    }
+                }
+
+                if let Some(item_index) = clicked_button {
                     game_state.menu_selection = item_index;
+
+                    esp_println::println!("[MENU] Selected button {} at ({}, {})", item_index, x, y);
 
                     // Handle selection
                     if item_index == 4 {
@@ -236,12 +274,13 @@ pub fn tamagotchi_update_system(
         }
     }
 
-    // Update rest progress (only redraw when SP actually changes)
+    // Update rest progress (only redraw when HP or SP actually changes)
     if game_state.current_page == GamePage::Rest && game_state.rest_state == RestState::Resting {
         let old_sp = game_state.hero.sp;
+        let old_hp = game_state.hero.hp;
         game_state.update_rest_progress(delta_ms);
-        // Only redraw if SP changed or state changed
-        if game_state.hero.sp != old_sp || game_state.rest_state != RestState::Resting {
+        // Only redraw if HP or SP changed or state changed
+        if game_state.hero.sp != old_sp || game_state.hero.hp != old_hp || game_state.rest_state != RestState::Resting {
             game_state.needs_redraw = true;
         }
     }

@@ -228,7 +228,7 @@ where
     Ok(())
 }
 
-/// Draw the Rest/Sit page for SP regeneration
+/// Draw the Rest/Sit page for HP and SP regeneration
 pub fn draw_rest_page<D>(display: &mut D, game_state: &GameState, battery_mv: u16, battery_pct: u8, fps: u32) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
@@ -243,25 +243,35 @@ where
     draw_text(display, "|____|", Point::new(140, 120), &FONT_10X20, COLOR_TEXT)?;
     draw_text(display, "Zzz...", Point::new(200, 90), &FONT_9X15, COLOR_TEXT_DIM)?;
 
+    // HP bar
+    draw_text(display, "HP Recovery", Point::new(105, 160), &FONT_9X18_BOLD, COLOR_TEXT)?;
+    let mut hp_str = String::<32>::new();
+    write!(hp_str, "{}/{}", game_state.hero.hp, game_state.hero.max_hp).ok();
+    draw_text(display, &hp_str, Point::new(125, 180), &FONT_9X18_BOLD, COLOR_HP)?;
+    draw_bar(display, Point::new(20, 195), 328, game_state.hero.hp_percent(), COLOR_HP)?;
+
+    // HP Regen rate
+    draw_text(display, "+10 HP/sec", Point::new(120, 215), &FONT_9X15, COLOR_TEXT_DIM)?;
+
     // SP bar
-    draw_text(display, "SP Recovery", Point::new(105, 180), &FONT_9X18_BOLD, COLOR_TEXT)?;
+    draw_text(display, "SP Recovery", Point::new(105, 245), &FONT_9X18_BOLD, COLOR_TEXT)?;
     let mut sp_str = String::<32>::new();
     write!(sp_str, "{}/{}", game_state.hero.sp, game_state.hero.max_sp).ok();
-    draw_text(display, &sp_str, Point::new(125, 210), &FONT_9X18_BOLD, COLOR_SP)?;
-    draw_bar(display, Point::new(20, 230), 328, game_state.hero.sp_percent(), COLOR_SP)?;
+    draw_text(display, &sp_str, Point::new(125, 265), &FONT_9X18_BOLD, COLOR_SP)?;
+    draw_bar(display, Point::new(20, 280), 328, game_state.hero.sp_percent(), COLOR_SP)?;
 
-    // Regen rate
-    let mut regen_str = String::<32>::new();
-    write!(regen_str, "+{} SP/sec", game_state.sp_regen_rate).ok();
-    draw_text(display, &regen_str, Point::new(120, 255), &FONT_9X15, COLOR_TEXT_DIM)?;
+    // SP Regen rate
+    let mut sp_regen_str = String::<32>::new();
+    write!(sp_regen_str, "+{} SP/sec", game_state.sp_regen_rate).ok();
+    draw_text(display, &sp_regen_str, Point::new(120, 300), &FONT_9X15, COLOR_TEXT_DIM)?;
 
     match game_state.rest_state {
         RestState::Resting => {
-            draw_text(display, "Recovering SP...", Point::new(85, 300), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+            draw_text(display, "Recovering HP & SP...", Point::new(65, 330), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
         }
         RestState::FullSP => {
-            draw_text(display, "SP Fully Recovered!", Point::new(60, 300), &FONT_9X18_BOLD, COLOR_TEXT)?;
-            draw_text(display, "Touch to continue", Point::new(90, 330), &FONT_9X15, COLOR_TEXT_DIM)?;
+            draw_text(display, "Fully Recovered!", Point::new(75, 330), &FONT_9X18_BOLD, COLOR_TEXT)?;
+            draw_text(display, "Touch to continue", Point::new(90, 355), &FONT_9X15, COLOR_TEXT_DIM)?;
         }
     }
 
@@ -456,34 +466,61 @@ pub fn draw_menu<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Er
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    // Larger background panel for better spacing
-    Rectangle::new(Point::new(40, 60), Size::new(288, 328))
+    // Full-width background panel with padding
+    Rectangle::new(Point::new(10, 40), Size::new(348, 368))
         .into_styled(PrimitiveStyle::with_fill(COLOR_MENU_BG))
         .draw(display)?;
 
-    Rectangle::new(Point::new(40, 60), Size::new(288, 328))
+    Rectangle::new(Point::new(10, 40), Size::new(348, 368))
         .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 3))
         .draw(display)?;
 
-    draw_text(display, "=== MENU ===", Point::new(105, 90), &FONT_10X20, COLOR_TEXT)?;
+    draw_text(display, "=== MENU ===", Point::new(115, 70), &FONT_10X20, COLOR_TEXT)?;
 
-    // Menu items with much more spacing (now 5 items including Battle)
-    let menu_items = ["Overview", "Auto Farm", "Rest", "Battle", "Save"];
+    // Menu items in 2 columns x 3 rows (5 items + 1 empty slot)
+    // Button size: 150x70 with 10px spacing
+    let menu_items = ["Overview", "Farm", "Rest", "Battle", "Save"];
+
     for (i, item) in menu_items.iter().enumerate() {
-        let y = 130 + i as i32 * 48; // Adjusted spacing for 5 items
-        let color = if i as u8 == game_state.menu_selection {
+        let col = i % 2;
+        let row = i / 2;
+
+        // Calculate button position
+        let x = 24 + col as i32 * 160; // 24px left margin, 160px spacing (150 button + 10 gap)
+        let y = 110 + row as i32 * 80; // 110px top, 80px spacing (70 button + 10 gap)
+
+        let is_selected = i as u8 == game_state.menu_selection;
+
+        // Draw button background
+        let button_color = if is_selected {
             COLOR_MENU_SELECT
         } else {
-            COLOR_TEXT_DIM
+            COLOR_PANEL
         };
 
-        let mut item_str = String::<32>::new();
-        write!(item_str, "{} {}", if i as u8 == game_state.menu_selection { ">" } else { " " }, item).ok();
-        draw_text(display, &item_str, Point::new(70, y), &FONT_10X20, color)?;
+        Rectangle::new(Point::new(x, y), Size::new(150, 70))
+            .into_styled(PrimitiveStyle::with_fill(button_color))
+            .draw(display)?;
+
+        // Draw button border (thicker if selected)
+        let border_width = if is_selected { 3 } else { 2 };
+        Rectangle::new(Point::new(x, y), Size::new(150, 70))
+            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, border_width))
+            .draw(display)?;
+
+        // Draw text centered in button
+        let text_color = if is_selected { COLOR_TEXT } else { COLOR_TEXT_DIM };
+
+        // Calculate text centering (rough approximation)
+        let text_len = item.len() as i32;
+        let text_x = x + (150 - text_len * 9) / 2; // 9px per char for FONT_9X18_BOLD
+        let text_y = y + 30; // Center vertically in 70px button
+
+        draw_text(display, item, Point::new(text_x, text_y), &FONT_9X18_BOLD, text_color)?;
     }
 
-    draw_text(display, "Touch to select", Point::new(85, 350), &FONT_9X15, COLOR_TEXT_DIM)?;
-    draw_text(display, "BOOT to close", Point::new(90, 370), &FONT_9X15, COLOR_TEXT_DIM)?;
+    draw_text(display, "Touch button to select", Point::new(75, 360), &FONT_9X15, COLOR_TEXT_DIM)?;
+    draw_text(display, "BOOT to close menu", Point::new(80, 385), &FONT_9X15, COLOR_TEXT_DIM)?;
 
     Ok(())
 }
