@@ -22,24 +22,29 @@ use esp_hal::spi::Mode;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Rate;
 use esp_hal::dma_buffers;
+use embedded_sdmmc::{SdCard, VolumeManager, VolumeIdx};
 use esp_println::logger::init_logger_from_env;
 use log::info;
 use static_cell::StaticCell;
 
 use ft3x68_rs::{FT3168_DEVICE_ADDRESS, Ft3x68Driver};
 use sh8601_rs::{ColorMode, DMA_CHUNK_SIZE, ResetDriver, Sh8601Driver, Ws18AmoledDriver};
+use axp2101::core::Axp2101;
 
 // Import from our library
 use esp32_conways_game_of_life_rs::display::{DISPLAY_SIZE, FB_SIZE};
-use esp32_conways_game_of_life_rs::drivers::{ResetTouchDriver, Tca9554Driver};
+use esp32_conways_game_of_life_rs::drivers::{ResetTouchDriver, Tca9554Driver, Pcf85063, ExioPin};
 use esp32_conways_game_of_life_rs::ecs::resources::*;
 use esp32_conways_game_of_life_rs::tamagotchi::{GameState};
 use esp32_conways_game_of_life_rs::tamagotchi::systems::{
     tamagotchi_button_system,
     tamagotchi_touch_system,
     tamagotchi_update_system,
-    tamagotchi_render_system
+    tamagotchi_render_system,
+    tamagotchi_save_system,
 };
+use esp32_conways_game_of_life_rs::ui::voltage_to_battery_percent;
+use esp32_conways_game_of_life_rs::utils::DummyTimeSource;
 
 // Type aliases
 static I2C_CELL: StaticCell<AtomicCell<RefCellDevice<'static, I2c<'static, Blocking>>>> =
@@ -141,15 +146,95 @@ fn main() -> ! {
     let i2c_gpio_expander = i2c::AtomicDevice::new(i2c_cell);
     let gpio_expander = Tca9554Driver::new(i2c_gpio_expander);
 
+    // Initialize AXP2101 PMIC for battery monitoring
+    esp_println::println!("Initializing AXP2101 PMIC...");
+    let i2c_pmic = i2c::AtomicDevice::new(i2c_cell);
+    let mut pmic = Axp2101::new(i2c_pmic);
+
+    // Read initial battery voltage
+    let battery_voltage_mv = pmic.battery_voltage().unwrap_or(0);
+    let battery_percent = voltage_to_battery_percent(battery_voltage_mv);
+    esp_println::println!("Battery: {}mV ({}%)", battery_voltage_mv, battery_percent);
+
+    // Initialize RTC (for potential future use)
+    let i2c_rtc = i2c::AtomicDevice::new(i2c_cell);
+    let rtc = Pcf85063::new(i2c_rtc);
+
+    // Initialize SD Card
+    // SD card pins: MOSI=GPIO1, MISO=GPIO3, SCK=GPIO2, CS=EXIO7
+    esp_println::println!("Initializing SD card...");
+
+    let sd_spi = Spi::new(
+        peripherals.SPI3,
+        SpiConfig::default()
+            .with_frequency(Rate::from_khz(400)) // Start slow for initialization
+            .with_mode(Mode::_0),
+    )
+    .unwrap()
+    .with_sck(peripherals.GPIO2)
+    .with_mosi(peripherals.GPIO1)
+    .with_miso(peripherals.GPIO3);
+
+    // Create GPIO expander instance for SD card CS pin (EXIO7)
+    let i2c_sd_cs = i2c::AtomicDevice::new(i2c_cell);
+    let sd_cs_expander = Tca9554Driver::new(i2c_sd_cs);
+    let sd_cs_pin = ExioPin::new(sd_cs_expander, 7).expect("Failed to configure SD CS pin");
+
+    // Wrap SPI with ExclusiveDevice for CS control
+    use embedded_hal_bus::spi::ExclusiveDevice;
+    let sd_spi_device = ExclusiveDevice::new(sd_spi, sd_cs_pin, Delay::new()).unwrap();
+
+    // Create SD card and volume manager
+    let sd_card = SdCard::new(sd_spi_device, Delay::new());
+    let time_source = DummyTimeSource;
+    let mut volume_mgr = VolumeManager::new(sd_card, time_source);
+
+    esp_println::println!("SD card initialized successfully");
+
     // Initialize Bevy ECS World
     let mut world = World::default();
 
-    // Insert game state
-    world.insert_resource(GameState::default());
+    // Try to load saved hero data from SD card
+    let loaded_hero = load_hero_from_sd(&mut volume_mgr);
+
+    // Insert game state with loaded or default hero
+    let mut game_state = GameState::default();
+    if let Some(hero) = loaded_hero {
+        esp_println::println!("Loaded saved hero: Level {} {} with {} EXP",
+            hero.level, hero.job, hero.exp);
+        game_state.hero = hero;
+    } else {
+        esp_println::println!("No save file found - Starting {} Level {}",
+            game_state.hero.job, game_state.hero.level);
+    }
+    world.insert_resource(game_state);
+
+    // Insert SD card resource
+    let sd_resource = SdCardResource { volume_mgr };
+    world.insert_non_send_resource(sd_resource);
+
+    // Insert battery resource
+    world.insert_resource(BatteryResource {
+        voltage_mv: battery_voltage_mv,
+        percent: battery_percent,
+        last_update_generation: 0,
+    });
 
     // Insert display and touch as NonSend resources
     world.insert_non_send_resource(DisplayResource { display });
     world.insert_non_send_resource(TouchResource { touch });
+
+    // Insert AXP2101 PMIC resource
+    world.insert_non_send_resource(Axp2101Resource { pmic });
+
+    // Insert RTC resource (for potential future use)
+    let initial_cycles = esp_hal::xtensa_lx::timer::get_cycle_count();
+    world.insert_non_send_resource(RtcResource {
+        rtc,
+        last_timestamp: None,
+        last_cycles: initial_cycles,
+        cpu_freq_mhz: 240,
+    });
 
     // Insert button resource
     world.insert_non_send_resource(ButtonResource {
@@ -166,6 +251,8 @@ fn main() -> ! {
     schedule.add_systems(tamagotchi_button_system);
     schedule.add_systems(tamagotchi_touch_system);
     schedule.add_systems(tamagotchi_update_system);
+    schedule.add_systems(update_battery_system);
+    schedule.add_systems(tamagotchi_save_system);
     schedule.add_systems(tamagotchi_render_system);
 
     info!("Entering Tamagotchi game loop...");
@@ -177,4 +264,54 @@ fn main() -> ! {
         // Small delay to control frame rate (~60 FPS)
         esp_hal::delay::Delay::new().delay_millis(16);
     }
+}
+
+/// System to update battery information periodically
+fn update_battery_system(
+    mut axp_res: NonSendMut<Axp2101Resource>,
+    mut battery_res: ResMut<BatteryResource>,
+    game_state: Res<GameState>,
+) {
+    // Update battery every 100 generations (~6 seconds at 60fps)
+    if game_state.last_update_ms % 6000 < 100 {
+        if let Ok(voltage_mv) = axp_res.pmic.battery_voltage() {
+            battery_res.voltage_mv = voltage_mv;
+            battery_res.percent = voltage_to_battery_percent(voltage_mv);
+        }
+    }
+}
+
+/// Load hero data from SD card
+fn load_hero_from_sd<D, T>(
+    volume_mgr: &mut VolumeManager<D, T, 4, 4, 1>,
+) -> Option<esp32_conways_game_of_life_rs::tamagotchi::models::Hero>
+where
+    D: embedded_sdmmc::BlockDevice,
+    T: embedded_sdmmc::TimeSource,
+    D::Error: core::fmt::Debug,
+{
+    use embedded_sdmmc::Mode;
+
+    esp_println::println!("[LOAD] Attempting to load hero from SD card...");
+
+    // Open volume
+    let mut volume = volume_mgr.open_volume(VolumeIdx(0)).ok()?;
+
+    // Open root directory
+    let mut root_dir = volume.open_root_dir().ok()?;
+
+    // Try to open save file
+    let mut file = root_dir.open_file_in_dir("HERO.SAV", Mode::ReadOnly).ok()?;
+
+    // Read file contents
+    let mut buffer = [0u8; 128];
+    let bytes_read = file.read(&mut buffer).ok()?;
+
+    esp_println::println!("[LOAD] Read {} bytes from HERO.SAV", bytes_read);
+
+    // Parse save data
+    let save_str = core::str::from_utf8(&buffer[..bytes_read]).ok()?;
+    esp_println::println!("[LOAD] Save data: {}", save_str);
+
+    esp32_conways_game_of_life_rs::tamagotchi::models::Hero::from_save_string(save_str)
 }

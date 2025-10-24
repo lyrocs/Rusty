@@ -11,6 +11,7 @@ use time::PrimitiveDateTime;
 use tinybmp::Bmp;
 use axp2101::core::Axp2101;
 use embedded_hal_bus::i2c;
+use embedded_sdmmc::{SdCard, VolumeManager};
 
 use crate::display::{HeapBuffer, LCD_H_RES, LCD_V_RES, LCD_BUFFER_SIZE};
 use crate::drivers::{Tca9554Driver, Pcf85063};
@@ -120,4 +121,23 @@ pub struct ButtonResource {
     pub pwr_last_state: bool,                    // Last debounced state of PWR (true = pressed)
     pub boot_debounce_counter: u8,               // Counter for debouncing BOOT
     pub pwr_debounce_counter: u8,                // Counter for debouncing PWR
+}
+
+/// SD Card resource for save/load functionality
+/// Uses the VolumeManager from embedded-sdmmc with proper types
+pub struct SdCardResource {
+    pub volume_mgr: VolumeManager<
+        SdCard<
+            embedded_hal_bus::spi::ExclusiveDevice<
+                esp_hal::spi::master::Spi<'static, esp_hal::Blocking>,
+                crate::drivers::ExioPin<embedded_hal_bus::i2c::AtomicDevice<'static, RefCellDevice<'static, esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>>>>,
+                esp_hal::delay::Delay
+            >,
+            esp_hal::delay::Delay
+        >,
+        crate::utils::DummyTimeSource,
+        4,
+        4,
+        1
+    >,
 }

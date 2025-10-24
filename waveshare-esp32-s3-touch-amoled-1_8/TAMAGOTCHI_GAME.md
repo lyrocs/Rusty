@@ -44,7 +44,9 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
   - Overview
   - Auto Farm
   - Rest
+  - Save Game (framework ready, SD card pending)
 - Visual selection indicator
+- Larger menu items with 55px spacing for easy touch selection
 
 ## Controls
 
@@ -122,18 +124,32 @@ cargo espflash flash --bin tamagotchi --release --monitor
 5. **Rest**: When SP is low, go to Rest page
 6. **Level Up**: Gain EXP to level up and grow stronger!
 
+## Recent Updates
+
+### v0.7.0 - UI and Save System Improvements
+- **Increased text sizes**: All text now uses 12px+ fonts (FONT_9X18_BOLD, FONT_9X15) for better readability
+- **Battery monitoring**: Added battery voltage and percentage display on all pages
+- **Enhanced menu**:
+  - Increased spacing to 55px between items
+  - Larger menu panel (288x328 vs 248x248)
+  - Added "Save Game" button (4th menu item)
+- **Save/Load framework**: Hero data serialization ready (CSV format)
+  - ⚠️ **SD card support pending** due to esp-hal/embedded-sdmmc SPI trait compatibility
+  - See `SD_CARD_STATUS.md` for details and solutions
+
 ## Future Enhancements
 
 Potential features to add:
+- **Enable SD card saves** (pending SPI trait compatibility fix)
 - Multiple job classes (Mage, Archer, etc.)
 - Item/Equipment system
 - More monster types
 - Skills and abilities
 - Pet system
-- Saving/loading game state to SD card
 - Day/night cycle
 - Quest system
 - Boss battles
+- Sound effects and music
 
 ## Credits
 

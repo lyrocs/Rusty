@@ -1,4 +1,6 @@
 use bevy_ecs::prelude::*;
+use core::fmt::Write;
+use heapless::String;
 
 /// Game pages/screens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +122,51 @@ impl Hero {
     pub fn exp_percent(&self) -> u8 {
         ((self.exp as u64 * 100) / self.exp_to_next_level as u64) as u8
     }
+
+    /// Serialize hero data to a CSV-like string format
+    /// Format: level,exp,exp_to_next,job,hp,max_hp,sp,max_sp,zeny
+    pub fn to_save_string(&self) -> String<128> {
+        let mut save_str = String::<128>::new();
+        write!(
+            save_str,
+            "{},{},{},{},{},{},{},{},{}",
+            self.level,
+            self.exp,
+            self.exp_to_next_level,
+            self.job,
+            self.hp,
+            self.max_hp,
+            self.sp,
+            self.max_sp,
+            self.zeny
+        ).ok();
+        save_str
+    }
+
+    /// Deserialize hero data from a CSV-like string
+    pub fn from_save_string(data: &str) -> Option<Self> {
+        let parts: heapless::Vec<&str, 9> = data.split(',').collect();
+        if parts.len() != 9 {
+            return None;
+        }
+
+        // Parse job to a static string
+        let job: &'static str = if parts[3] == "Novice" { "Novice" } else { "Swordsman" };
+        let name: &'static str = if parts[3] == "Novice" { "Novice" } else { "Swordsman" };
+
+        Some(Hero {
+            name,
+            level: parts[0].parse().ok()?,
+            exp: parts[1].parse().ok()?,
+            exp_to_next_level: parts[2].parse().ok()?,
+            job,
+            hp: parts[4].parse().ok()?,
+            max_hp: parts[5].parse().ok()?,
+            sp: parts[6].parse().ok()?,
+            max_sp: parts[7].parse().ok()?,
+            zeny: parts[8].parse().ok()?,
+        })
+    }
 }
 
 /// Enemy data
@@ -214,8 +261,14 @@ pub struct GameState {
     pub rest_state: RestState,
     pub rest_progress: u32,      // Progress in milliseconds
     pub sp_regen_rate: u16,      // SP per second while resting
-    pub menu_selection: u8,      // 0 = Overview, 1 = Farm, 2 = Rest
+    pub menu_selection: u8,      // 0 = Overview, 1 = Farm, 2 = Rest, 3 = Save
     pub last_update_ms: u32,     // Last update time for progress tracking
+    pub save_requested: bool,    // Flag to trigger save
+    pub save_status_msg: Option<&'static str>, // Status message after save
+    pub save_status_timeout: u32, // Time when save message should clear (0 = no message)
+    pub fps: u32,                // Current FPS
+    pub frame_count: u32,        // Total frames rendered
+    pub last_fps_update_ms: u32, // Last time FPS was calculated
 }
 
 impl Default for GameState {
@@ -232,6 +285,12 @@ impl Default for GameState {
             sp_regen_rate: 5, // 5 SP per second
             menu_selection: 0,
             last_update_ms: 0,
+            save_requested: false,
+            save_status_msg: None,
+            save_status_timeout: 0,
+            fps: 0,
+            frame_count: 0,
+            last_fps_update_ms: 0,
         }
     }
 }
