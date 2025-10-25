@@ -142,10 +142,24 @@ fn main() -> ! {
     let boot_config = InputConfig::default().with_pull(Pull::Up);
     let boot_button = Input::new(boot_button, boot_config);
 
-    // Initialize GPIO expander (not used for this game, but keeping for compatibility)
-    esp_println::println!("Initializing GPIO expander...");
+    // Initialize GPIO expander for PWR button (EXIO4)
+    esp_println::println!("Initializing GPIO expander for PWR button...");
     let i2c_gpio_expander = i2c::AtomicDevice::new(i2c_cell);
-    let gpio_expander = Tca9554Driver::new(i2c_gpio_expander);
+    let mut gpio_expander = Tca9554Driver::new(i2c_gpio_expander);
+
+    // Configure EXIO4 (pin 4) as input for PWR button
+    gpio_expander.configure_pin(4, false).unwrap_or_else(|e| {
+        esp_println::println!("Warning: Could not configure EXIO4 as input: {:?}", e);
+    });
+
+    // Read initial state
+    match gpio_expander.read_pin(4) {
+        Ok(state) => esp_println::println!(
+            "EXIO4 (PWR button) initial state: {}",
+            if state { "HIGH" } else { "LOW" }
+        ),
+        Err(e) => esp_println::println!("Warning: Could not read EXIO4 initial state: {:?}", e),
+    }
 
     // Initialize AXP2101 PMIC for battery monitoring
     esp_println::println!("Initializing AXP2101 PMIC...");

@@ -433,6 +433,7 @@ pub struct GameState {
     pub frame_count: u32,   // Total frames rendered
     pub last_fps_update_ms: u32, // Last time FPS was calculated
     pub needs_redraw: bool, // Flag to indicate screen needs redrawing
+    pub screen_on: bool,    // Screen power state (controlled by PWR button)
 }
 
 impl Default for GameState {
@@ -472,6 +473,7 @@ impl Default for GameState {
             frame_count: 0,
             last_fps_update_ms: 0,
             needs_redraw: true, // Start with needing a redraw
+            screen_on: true,    // Screen starts on
         }
     }
 }

@@ -21,7 +21,7 @@ pub fn tamagotchi_button_system(
     // BOOT Button (GPIO0) - Active Low
     let boot_pressed = button_res.boot_button.is_low();
 
-    // Debouncing logic
+    // Debouncing logic for BOOT
     if boot_pressed {
         if button_res.boot_debounce_counter < DEBOUNCE_THRESHOLD {
             button_res.boot_debounce_counter += 1;
@@ -50,8 +50,32 @@ pub fn tamagotchi_button_system(
         game_state.needs_redraw = true; // Mark for redraw on page change
     }
 
-    // Update last state
+    // Update last state for BOOT
     button_res.boot_last_state = button_res.boot_debounce_counter >= DEBOUNCE_THRESHOLD;
+
+    // PWR Button (EXIO4 via TCA9554) - Active Low
+    let pwr_pin_state = button_res.gpio_expander.read_pin(4).unwrap_or(false);
+    let pwr_low = !pwr_pin_state; // Active low: pressed = false (LOW), released = true (HIGH)
+    let pwr_pressed = pwr_low;
+
+    // Debouncing logic for PWR
+    if pwr_pressed {
+        if button_res.pwr_debounce_counter < DEBOUNCE_THRESHOLD {
+            button_res.pwr_debounce_counter += 1;
+        }
+    } else {
+        button_res.pwr_debounce_counter = 0;
+    }
+
+    // Detect rising edge for PWR (button release after being pressed)
+    if button_res.pwr_last_state && !pwr_pressed && button_res.pwr_debounce_counter == 0 {
+        // Toggle screen on/off
+        game_state.screen_on = !game_state.screen_on;
+        game_state.needs_redraw = true;
+    }
+
+    // Update last state for PWR
+    button_res.pwr_last_state = button_res.pwr_debounce_counter >= DEBOUNCE_THRESHOLD;
 }
 
 /// System to handle touch input
@@ -480,8 +504,33 @@ pub fn tamagotchi_render_system(
     mut game_state: ResMut<GameState>,
     battery_res: Res<BatteryResource>,
 ) {
+    // Handle screen on/off state changes
+    static mut LAST_SCREEN_STATE: bool = true;
+    let screen_state_changed = unsafe {
+        let changed = LAST_SCREEN_STATE != game_state.screen_on;
+        LAST_SCREEN_STATE = game_state.screen_on;
+        changed
+    };
+
+    if screen_state_changed {
+        if game_state.screen_on {
+            // Turn display on
+            display_res.display.display_on().ok();
+        } else {
+            // Turn display off
+            display_res.display.display_off().ok();
+            game_state.needs_redraw = false;
+            return;
+        }
+    }
+
     // Only render if something changed
     if !game_state.needs_redraw {
+        return;
+    }
+
+    // Skip rendering if screen is off
+    if !game_state.screen_on {
         return;
     }
 
