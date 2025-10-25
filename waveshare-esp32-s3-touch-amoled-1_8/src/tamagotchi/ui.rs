@@ -515,6 +515,39 @@ where
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
+
+                // Display loot if any
+                if !game_state.last_drops.is_empty() {
+                    draw_text(
+                        display,
+                        "Items:",
+                        Point::new(120, 250),
+                        &FONT_9X18_BOLD,
+                        Rgb888::YELLOW,
+                    )?;
+
+                    let mut y = 280;
+                    for (_, item_name, quantity) in &game_state.last_drops {
+                        let mut item_str = String::<48>::new();
+                        write!(item_str, "{} x{}", item_name, quantity).ok();
+                        draw_text(
+                            display,
+                            &item_str,
+                            Point::new(80, y),
+                            &FONT_9X15,
+                            Rgb888::YELLOW,
+                        )?;
+                        y += 20;
+                    }
+                } else {
+                    draw_text(
+                        display,
+                        "No items dropped",
+                        Point::new(90, 270),
+                        &FONT_9X15,
+                        COLOR_TEXT_DIM,
+                    )?;
+                }
             }
 
             // Battery info
@@ -1069,6 +1102,31 @@ where
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
+
+                // Display loot if any
+                if !game_state.last_drops.is_empty() {
+                    draw_text(
+                        display,
+                        "Items:",
+                        Point::new(140, 315),
+                        &FONT_9X15,
+                        Rgb888::YELLOW,
+                    )?;
+
+                    let mut y = 335;
+                    for (_, item_name, quantity) in &game_state.last_drops {
+                        let mut item_str = String::<40>::new();
+                        write!(item_str, "{} x{}", item_name, quantity).ok();
+                        draw_text(
+                            display,
+                            &item_str,
+                            Point::new(80, y),
+                            &FONT_9X15,
+                            Rgb888::YELLOW,
+                        )?;
+                        y += 18;
+                    }
+                }
             }
 
             draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
@@ -1408,10 +1466,10 @@ where
         COLOR_TEXT,
     )?;
 
-    // Menu items in 2 columns x 2 rows (4 items)
+    // Menu items in 2 columns x 3 rows (5 items)
     // Farm and Battle are now accessed via Map page
     // Button size: 150x70 with 10px spacing
-    let menu_items = ["Overview", "Rest", "Map", "Save"];
+    let menu_items = ["Overview", "Rest", "Map", "Inventory", "Save"];
 
     for (i, item) in menu_items.iter().enumerate() {
         let col = i % 2;
@@ -1472,6 +1530,91 @@ where
         display,
         "BOOT to close menu",
         Point::new(80, 385),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
+    )?;
+
+    Ok(())
+}
+
+/// Draw inventory page showing all collected items
+pub fn draw_inventory<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    // Clear display
+    display.clear(COLOR_BG)?;
+
+    // Header
+    draw_text(
+        display,
+        "=== INVENTORY ===",
+        Point::new(85, 20),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+
+    // Draw item list
+    let inventory = &game_state.hero.inventory;
+
+    if inventory.is_empty() {
+        draw_text(
+            display,
+            "No items yet!",
+            Point::new(110, 200),
+            &FONT_10X20,
+            COLOR_TEXT_DIM,
+        )?;
+        draw_text(
+            display,
+            "Defeat enemies to earn items",
+            Point::new(40, 230),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    } else {
+        // Draw items in a scrollable list (show first 15 items)
+        let mut y = 60;
+        for (i, item) in inventory.iter().take(15).enumerate() {
+            let mut item_str = String::<64>::new();
+            write!(item_str, "{} x{}", item.name, item.quantity).ok();
+
+            let text_color = if i % 2 == 0 {
+                COLOR_TEXT
+            } else {
+                Rgb888::new(200, 200, 200)
+            };
+
+            draw_text(
+                display,
+                &item_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                text_color,
+            )?;
+
+            y += 20;
+        }
+
+        // Show count if there are more items
+        if inventory.len() > 15 {
+            let mut count_str = String::<32>::new();
+            write!(count_str, "...and {} more", inventory.len() - 15).ok();
+            draw_text(
+                display,
+                &count_str,
+                Point::new(90, y + 10),
+                &FONT_9X15,
+                COLOR_TEXT_DIM,
+            )?;
+        }
+    }
+
+    // Footer
+    draw_text(
+        display,
+        "Touch to go back",
+        Point::new(90, 440),
         &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;

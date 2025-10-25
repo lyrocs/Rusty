@@ -1,12 +1,30 @@
 use bevy_ecs::prelude::*;
 use core::fmt::Write;
 use heapless::String;
+use heapless::Vec as HeaplessVec;
 
 // Game data functions are re-exported from tamagotchi::game_data
 use crate::tamagotchi::{
-    MAP_PRONTERA_ID, get_city_npcs, get_enemy_data, get_map_connections, get_map_enemies,
-    get_map_name, is_city,
+    MAP_PRONTERA_ID, get_city_npcs, get_enemy_data, get_item_name, get_map_connections,
+    get_map_enemies, get_map_name, is_city,
 };
+
+/// Item in inventory
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Item {
+    pub id: u32,
+    pub name: &'static str,
+    pub quantity: u16,
+}
+
+impl Item {
+    pub fn new(id: u32, name: &'static str, quantity: u16) -> Self {
+        Self { id, name, quantity }
+    }
+}
+
+/// Inventory with max 50 unique items
+pub type Inventory = HeaplessVec<Item, 50>;
 
 /// Game pages/screens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +35,7 @@ pub enum GamePage {
     Battle, // Whac-A-Mole mini-game
     Map,    // Navigation and world map
     Menu,
+    Inventory, // Item inventory
 }
 
 /// Hero character data
@@ -32,6 +51,7 @@ pub struct Hero {
     pub sp: u16,
     pub max_sp: u16,
     pub zeny: u32, // Currency
+    pub inventory: Inventory, // Item inventory
 }
 
 impl Hero {
@@ -47,6 +67,7 @@ impl Hero {
             sp: 50,
             max_sp: 50,
             zeny: 0,
+            inventory: HeaplessVec::new(),
         }
     }
 
@@ -101,6 +122,32 @@ impl Hero {
         self.sp = (self.sp + amount).min(self.max_sp);
     }
 
+    /// Add item to inventory (stacks if same item exists)
+    pub fn add_item(&mut self, id: u32, name: &'static str, quantity: u16) -> bool {
+        // Check if item already exists in inventory
+        for item in self.inventory.iter_mut() {
+            if item.id == id {
+                // Stack the item
+                item.quantity = item.quantity.saturating_add(quantity);
+                esp_println::println!("[INVENTORY] Added {} x{} (total: {})", name, quantity, item.quantity);
+                return true;
+            }
+        }
+
+        // Add as new item
+        let new_item = Item::new(id, name, quantity);
+        match self.inventory.push(new_item) {
+            Ok(_) => {
+                esp_println::println!("[INVENTORY] Added new item: {} x{}", name, quantity);
+                true
+            }
+            Err(_) => {
+                esp_println::println!("[INVENTORY] Inventory full! Cannot add {}", name);
+                false
+            }
+        }
+    }
+
     /// Take damage
     pub fn take_damage(&mut self, damage: u16) {
         self.hp = self.hp.saturating_sub(damage);
@@ -152,6 +199,37 @@ impl Hero {
         save_str
     }
 
+    /// Serialize inventory to a string for saving (item_id:quantity,item_id:quantity,...)
+    pub fn inventory_to_save_string(&self) -> String<512> {
+        let mut save_str = String::<512>::new();
+        for (i, item) in self.inventory.iter().enumerate() {
+            if i > 0 {
+                write!(save_str, ",").ok();
+            }
+            write!(save_str, "{}:{}", item.id, item.quantity).ok();
+        }
+        save_str
+    }
+
+    /// Deserialize inventory from save string
+    pub fn inventory_from_save_string(&mut self, data: &str) {
+        let data = data.trim();
+        if data.is_empty() {
+            return;
+        }
+
+        for pair in data.split(',') {
+            if let Some((id_str, qty_str)) = pair.split_once(':') {
+                if let (Ok(id), Ok(quantity)) = (id_str.parse::<u32>(), qty_str.parse::<u16>()) {
+                    // Find item name from game data
+                    if let Some(item_name) = get_item_name(id) {
+                        self.add_item(id, item_name, quantity);
+                    }
+                }
+            }
+        }
+    }
+
     /// Deserialize hero data from a CSV-like string
     pub fn from_save_string(data: &str) -> Option<Self> {
         // Trim whitespace and newlines first
@@ -194,6 +272,7 @@ impl Hero {
             sp,
             max_sp,
             zeny,
+            inventory: Inventory::new(),
         })
     }
 }
@@ -434,6 +513,7 @@ pub struct GameState {
     pub last_fps_update_ms: u32, // Last time FPS was calculated
     pub needs_redraw: bool, // Flag to indicate screen needs redrawing
     pub screen_on: bool,    // Screen power state (controlled by PWR button)
+    pub last_drops: HeaplessVec<(u32, &'static str, u16), 4>, // Last items that dropped
 }
 
 impl Default for GameState {
@@ -474,6 +554,7 @@ impl Default for GameState {
             last_fps_update_ms: 0,
             needs_redraw: true, // Start with needing a redraw
             screen_on: true,    // Screen starts on
+            last_drops: HeaplessVec::new(),
         }
     }
 }
@@ -506,6 +587,22 @@ impl GameState {
             self.hero.add_exp(enemy.base_exp);
             self.hero.add_zeny(enemy.zeny_reward);
             self.farm_state = FarmState::Victory;
+
+            // Roll for item drops
+            let rng_value = (self.last_update_ms % 255) as u8;
+            let drops = crate::tamagotchi::game_data::roll_drops(enemy.id, rng_value);
+
+            // Clear previous drops and store new ones
+            self.last_drops.clear();
+
+            for (item_id, item_name, quantity) in drops.iter() {
+                if self.hero.add_item(*item_id, item_name, *quantity) {
+                    esp_println::println!("[DROPS] Got {} x{}", item_name, quantity);
+                    self.last_drops.push((*item_id, item_name, *quantity)).ok();
+                } else {
+                    esp_println::println!("[DROPS] Inventory full! Lost {}", item_name);
+                }
+            }
         }
     }
 
@@ -721,8 +818,26 @@ impl GameState {
                 let exp_mult = (self.battle_score as u32).max(1);
                 self.hero.add_exp(enemy.base_exp * exp_mult / 5);
                 self.hero.add_zeny(enemy.zeny_reward * exp_mult / 5);
+
+                // Roll for item drops
+                let rng_value = (self.last_update_ms % 255) as u8;
+                let drops = crate::tamagotchi::game_data::roll_drops(enemy.id, rng_value);
+
+                // Clear previous drops and store new ones
+                self.last_drops.clear();
+
+                for (item_id, item_name, quantity) in drops.iter() {
+                    if self.hero.add_item(*item_id, item_name, *quantity) {
+                        esp_println::println!("[DROPS] Got {} x{}", item_name, quantity);
+                        self.last_drops.push((*item_id, item_name, *quantity)).ok();
+                    } else {
+                        esp_println::println!("[DROPS] Inventory full! Lost {}", item_name);
+                    }
+                }
             } else {
                 self.battle_state = BattleState::Defeat;
+                // Clear drops on defeat
+                self.last_drops.clear();
             }
             // Record when battle ended to prevent accidental clicks
             self.battle_end_time = self.last_update_ms;

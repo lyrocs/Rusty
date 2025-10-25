@@ -8,7 +8,8 @@ use crate::tamagotchi::models::{
     BattleState, Enemy, FarmState, GamePage, GameState, MapHelper, RestState,
 };
 use crate::tamagotchi::ui::{
-    draw_battle_page, draw_farm_page, draw_map_page, draw_menu, draw_overview_page, draw_rest_page,
+    draw_battle_page, draw_farm_page, draw_inventory, draw_map_page, draw_menu, draw_overview_page,
+    draw_rest_page,
 };
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
@@ -117,23 +118,26 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     game_state.needs_redraw = true; // Mark for redraw on any touch
     match game_state.current_page {
         GamePage::Menu => {
-            // Menu item selection based on button position (2 columns x 2 rows)
-            // Now only 4 items - Farm and Battle removed (accessed via Map)
+            // Menu item selection based on button position (2 columns x 3 rows)
+            // Now 5 items - Farm and Battle removed (accessed via Map)
             // Button layout:
             // [Overview(0)] [Rest(1)]      Row 0: y=110-180
-            // [Map(2)]      [Save(3)]      Row 1: y=190-260
+            // [Map(2)]      [Inventory(3)] Row 1: y=190-260
+            // [Save(4)]                    Row 2: y=270-340
             //
             // Col 0: x=24-174, Col 1: x=184-334
 
             // Check if touch is within button area
-            if y >= 110 && y <= 260 {
+            if y >= 110 && y <= 340 {
                 let mut clicked_button: Option<u8> = None;
 
-                // Determine row (0 or 1)
+                // Determine row (0, 1, or 2)
                 let row = if y >= 110 && y <= 180 {
                     0
                 } else if y >= 190 && y <= 260 {
                     1
+                } else if y >= 270 && y <= 340 {
+                    2
                 } else {
                     255 // Invalid
                 };
@@ -148,10 +152,10 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 };
 
                 // Calculate button index (row * 2 + col)
-                if row < 2 && col < 2 {
+                if row < 3 && col < 2 {
                     let button_index = row * 2 + col;
-                    if button_index < 4 {
-                        // Now 4 buttons exist
+                    if button_index < 5 {
+                        // Now 5 buttons exist
                         clicked_button = Some(button_index);
                     }
                 }
@@ -167,7 +171,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     );
 
                     // Handle selection
-                    if item_index == 3 {
+                    if item_index == 4 {
                         // Save Game selected
                         game_state.save_requested = true;
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
@@ -177,6 +181,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             0 => GamePage::Overview,
                             1 => GamePage::Rest,
                             2 => GamePage::Map,
+                            3 => GamePage::Inventory,
                             _ => GamePage::Overview,
                         };
                     }
@@ -413,6 +418,11 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         GamePage::Overview => {
             // No touch actions on overview page
         }
+        GamePage::Inventory => {
+            // Go back to menu on touch
+            game_state.current_page = GamePage::Menu;
+            game_state.needs_redraw = true;
+        }
     }
 }
 
@@ -597,6 +607,9 @@ pub fn tamagotchi_render_system(
             // For simplicity, we'll just draw menu on a dark background
             draw_menu(&mut display_res.display, &game_state).ok();
         }
+        GamePage::Inventory => {
+            draw_inventory(&mut display_res.display, &game_state).ok();
+        }
     }
 
     // Flush the display
@@ -618,21 +631,33 @@ pub fn tamagotchi_save_system(
         let save_data = game_state.hero.to_save_string();
 
         esp_println::println!(
-            "[SAVE] Saving hero: Level {} {} with {} EXP and {} Zeny",
+            "[SAVE] Saving hero: Level {} {} with {} EXP and {} Zeny, {} items",
             game_state.hero.level,
             game_state.hero.job,
             game_state.hero.exp,
-            game_state.hero.zeny
+            game_state.hero.zeny,
+            game_state.hero.inventory.len()
         );
 
-        // Try to write to SD card
-        match save_hero_to_sd(&mut sd_card_res, save_data.as_str()) {
-            Ok(_) => {
-                esp_println::println!("[SAVE] Successfully saved to SD card");
+        // Try to write hero data to SD card
+        let hero_result = save_hero_to_sd(&mut sd_card_res, save_data.as_str());
+
+        // Try to write inventory to SD card
+        let inventory_data = game_state.hero.inventory_to_save_string();
+        let inventory_result = save_inventory_to_sd(&mut sd_card_res, inventory_data.as_str());
+
+        // Check results
+        match (hero_result, inventory_result) {
+            (Ok(_), Ok(_)) => {
+                esp_println::println!("[SAVE] Successfully saved hero and inventory to SD card");
                 game_state.save_status_msg = Some("Saved to SD!");
             }
-            Err(e) => {
-                esp_println::println!("[SAVE] Error saving to SD: {:?}", e);
+            (Ok(_), Err(e)) => {
+                esp_println::println!("[SAVE] Hero saved but inventory failed: {:?}", e);
+                game_state.save_status_msg = Some("Save partial!");
+            }
+            (Err(e), _) => {
+                esp_println::println!("[SAVE] Error saving hero to SD: {:?}", e);
                 game_state.save_status_msg = Some("Save failed!");
             }
         }
@@ -670,6 +695,28 @@ fn save_hero_to_sd(
 
     // Write save data
     file.write(save_data.as_bytes())?;
+
+    Ok(())
+}
+
+/// Helper function to save inventory data to SD card
+fn save_inventory_to_sd(
+    sd_card_res: &mut SdCardResource,
+    inventory_data: &str,
+) -> Result<(), embedded_sdmmc::Error<embedded_sdmmc::SdCardError>> {
+    use embedded_sdmmc::{Mode, VolumeIdx};
+
+    // Open volume
+    let mut volume = sd_card_res.volume_mgr.open_volume(VolumeIdx(0))?;
+
+    // Open root directory
+    let mut root_dir = volume.open_root_dir()?;
+
+    // Create or truncate inventory file
+    let mut file = root_dir.open_file_in_dir("ITEMS.SAV", Mode::ReadWriteCreateOrTruncate)?;
+
+    // Write inventory data
+    file.write(inventory_data.as_bytes())?;
 
     Ok(())
 }
