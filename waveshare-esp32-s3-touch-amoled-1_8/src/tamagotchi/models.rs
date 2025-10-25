@@ -2,14 +2,20 @@ use bevy_ecs::prelude::*;
 use core::fmt::Write;
 use heapless::String;
 
+// Game data functions are re-exported from tamagotchi::game_data
+use crate::tamagotchi::{
+    MAP_PRONTERA_ID, get_city_npcs, get_enemy_data, get_map_connections, get_map_enemies,
+    get_map_name, is_city,
+};
+
 /// Game pages/screens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GamePage {
     Overview,
     Farm,
     Rest,
-    Battle,  // Whac-A-Mole mini-game
-    Map,     // Navigation and world map
+    Battle, // Whac-A-Mole mini-game
+    Map,    // Navigation and world map
     Menu,
 }
 
@@ -141,7 +147,8 @@ impl Hero {
             self.sp,
             self.max_sp,
             self.zeny
-        ).ok();
+        )
+        .ok();
         save_str
     }
 
@@ -165,8 +172,16 @@ impl Hero {
         let zeny: u32 = parts.next()?.parse().ok()?;
 
         // Parse job to a static string
-        let job: &'static str = if job_str == "Novice" { "Novice" } else { "Swordsman" };
-        let name: &'static str = if job_str == "Novice" { "Novice" } else { "Swordsman" };
+        let job: &'static str = if job_str == "Novice" {
+            "Novice"
+        } else {
+            "Swordsman"
+        };
+        let name: &'static str = if job_str == "Novice" {
+            "Novice"
+        } else {
+            "Swordsman"
+        };
 
         Some(Hero {
             name,
@@ -183,59 +198,42 @@ impl Hero {
     }
 }
 
-/// Enemy data
+/// Enemy data (based on data/enemies.json)
+/// Note: JSON files in data/ folder serve as source of truth
+/// This struct contains runtime enemy data used in battles
 #[derive(Debug, Clone)]
 pub struct Enemy {
+    pub id: u32, // Enemy ID from JSON
     pub name: &'static str,
     pub level: u16,
     pub hp: u16,
     pub max_hp: u16,
-    pub exp_reward: u32,
-    pub zeny_reward: u32,
+    pub attack: u16,      // Added from JSON
+    pub defense: u16,     // Added from JSON
+    pub base_exp: u32,    // Renamed from exp_reward
+    pub job_exp: u32,     // Added from JSON
+    pub zeny_reward: u32, // Calculated zeny (base_exp / 10)
 }
 
 impl Enemy {
-    pub fn poring(level: u16) -> Self {
-        Self {
-            name: "Poring",
-            level,
-            hp: 50 + level * 10,
-            max_hp: 50 + level * 10,
-            exp_reward: 10 + level as u32 * 5,
-            zeny_reward: 5 + level as u32 * 2,
-        }
-    }
-
-    pub fn lunatic(level: u16) -> Self {
-        Self {
-            name: "Lunatic",
-            level,
-            hp: 70 + level * 12,
-            max_hp: 70 + level * 12,
-            exp_reward: 15 + level as u32 * 7,
-            zeny_reward: 8 + level as u32 * 3,
-        }
-    }
-
-    pub fn spore(level: u16) -> Self {
-        Self {
-            name: "Spore",
-            level,
-            hp: 60 + level * 11,
-            max_hp: 60 + level * 11,
-            exp_reward: 12 + level as u32 * 6,
-            zeny_reward: 6 + level as u32 * 2,
-        }
-    }
-
-    /// Get a random enemy based on hero level
+    /// Get a random enemy based on hero level (from enemies.json)
+    /// Uses generated data from build.rs
     pub fn random_for_level(hero_level: u16, rng_value: u8) -> Self {
-        let enemy_level = hero_level.max(1);
-        match rng_value % 3 {
-            0 => Self::poring(enemy_level),
-            1 => Self::lunatic(enemy_level),
-            _ => Self::spore(enemy_level),
-        }
+        // Enemy IDs from enemies.json: Poring=1002, Fabre=1007, Hornet=1004, Thief Bug=1051
+        let enemy_id = match rng_value % 4 {
+            0 => 1002, // Poring
+            1 => 1007, // Fabre
+            2 => 1004, // Hornet
+            _ => 1051, // Thief Bug
+        };
+
+        // Use generated function to get enemy data from JSON
+        get_enemy_data(enemy_id).expect("Enemy ID should exist in enemies.json")
+    }
+
+    /// Get enemy by ID from JSON data (convenience function)
+    pub fn from_id(id: u32) -> Option<Self> {
+        get_enemy_data(id)
     }
 
     pub fn is_alive(&self) -> bool {
@@ -266,17 +264,17 @@ pub enum RestState {
 /// Battle state for Whac-A-Mole mini-game
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattleState {
-    Idle,      // Waiting to start
-    Playing,   // Active gameplay
-    Victory,   // Won the game
-    Defeat,    // Lost the game
+    Idle,    // Waiting to start
+    Playing, // Active gameplay
+    Victory, // Won the game
+    Defeat,  // Lost the game
 }
 
 /// Circle type for Whac-A-Mole game
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircleType {
-    GoodTarget,   // Click to hit enemy (green) - gain score
-    BadTarget,    // Enemy attack (red) - must click to block, else take damage
+    GoodTarget, // Click to hit enemy (green) - gain score
+    BadTarget,  // Enemy attack (red) - must click to block, else take damage
 }
 
 /// Active circle in the Whac-A-Mole game
@@ -286,8 +284,8 @@ pub struct Circle {
     pub y: i32,
     pub radius: u32,
     pub circle_type: CircleType,
-    pub spawn_time: u32,     // When it spawned
-    pub lifetime_ms: u32,    // How long it lasts (1500ms)
+    pub spawn_time: u32,  // When it spawned
+    pub lifetime_ms: u32, // How long it lasts (1500ms)
 }
 
 impl Circle {
@@ -295,10 +293,10 @@ impl Circle {
         Self {
             x,
             y,
-            radius: 25,  // Fixed radius
+            radius: 25, // Fixed radius
             circle_type,
             spawn_time,
-            lifetime_ms: 1500,  // 1.5 seconds to click
+            lifetime_ms: 1500, // 1.5 seconds to click
         }
     }
 
@@ -316,96 +314,78 @@ impl Circle {
 /// Location type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocationType {
-    City,        // Cities with NPCs (Prontera, etc)
-    Field,       // Monster fields for hunting
+    City,  // Cities with NPCs (Prontera, etc)
+    Field, // Monster fields for hunting
 }
 
-/// Map location ID
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MapId {
-    Prontera,
-    PronteraSouth,
-    PronteraWest,
-    PronteraEast,
-    PronteraNorth,
-}
+/// Map location ID (loaded from maps.json)
+pub type MapId = u32;
 
-impl MapId {
-    pub fn name(&self) -> &'static str {
-        match self {
-            MapId::Prontera => "Prontera",
-            MapId::PronteraSouth => "Prontera South",
-            MapId::PronteraWest => "Prontera West",
-            MapId::PronteraEast => "Prontera East",
-            MapId::PronteraNorth => "Prontera North",
+/// Map helper functions (uses generated data from maps.json)
+pub struct MapHelper;
+
+impl MapHelper {
+    pub fn name(map_id: MapId) -> &'static str {
+        get_map_name(map_id).unwrap_or("Unknown")
+    }
+
+    pub fn location_type(map_id: MapId) -> LocationType {
+        if is_city(map_id) {
+            LocationType::City
+        } else {
+            LocationType::Field
         }
     }
 
-    pub fn location_type(&self) -> LocationType {
-        match self {
-            MapId::Prontera => LocationType::City,
-            MapId::PronteraSouth | MapId::PronteraWest | MapId::PronteraEast | MapId::PronteraNorth => LocationType::Field,
+    /// Get available exits from this location (from maps.json)
+    pub fn exits(map_id: MapId) -> heapless::Vec<MapExit, 4> {
+        let (north, south, east, west) = get_map_connections(map_id);
+        let mut exits = heapless::Vec::new();
+
+        if let Some(dest) = north {
+            exits
+                .push(MapExit {
+                    direction: "North",
+                    destination: dest,
+                })
+                .ok();
         }
+        if let Some(dest) = south {
+            exits
+                .push(MapExit {
+                    direction: "South",
+                    destination: dest,
+                })
+                .ok();
+        }
+        if let Some(dest) = east {
+            exits
+                .push(MapExit {
+                    direction: "East",
+                    destination: dest,
+                })
+                .ok();
+        }
+        if let Some(dest) = west {
+            exits
+                .push(MapExit {
+                    direction: "West",
+                    destination: dest,
+                })
+                .ok();
+        }
+
+        exits
     }
 
-    /// Get available exits from this location
-    pub fn exits(&self) -> &'static [MapExit] {
-        match self {
-            MapId::Prontera => &[
-                MapExit { direction: "South", destination: MapId::PronteraSouth },
-                MapExit { direction: "West", destination: MapId::PronteraWest },
-                MapExit { direction: "East", destination: MapId::PronteraEast },
-                MapExit { direction: "North", destination: MapId::PronteraNorth },
-            ],
-            MapId::PronteraSouth => &[
-                MapExit { direction: "North", destination: MapId::Prontera },
-            ],
-            MapId::PronteraWest => &[
-                MapExit { direction: "East", destination: MapId::Prontera },
-            ],
-            MapId::PronteraEast => &[
-                MapExit { direction: "West", destination: MapId::Prontera },
-            ],
-            MapId::PronteraNorth => &[
-                MapExit { direction: "South", destination: MapId::Prontera },
-            ],
-        }
+    /// Get enemy IDs for a map (from maps.json)
+    pub fn enemies(map_id: MapId) -> heapless::Vec<u32, 8> {
+        get_map_enemies(map_id)
     }
 
-    /// Get monsters for field locations (level range)
-    pub fn field_info(&self) -> Option<FieldInfo> {
-        match self {
-            MapId::PronteraSouth => Some(FieldInfo {
-                monsters: &["Poring", "Lunatic"],
-                level_range: (1, 4),
-            }),
-            MapId::PronteraWest => Some(FieldInfo {
-                monsters: &["Spore", "Poring"],
-                level_range: (2, 5),
-            }),
-            MapId::PronteraEast => Some(FieldInfo {
-                monsters: &["Lunatic", "Poring"],
-                level_range: (1, 3),
-            }),
-            MapId::PronteraNorth => Some(FieldInfo {
-                monsters: &["Spore", "Lunatic"],
-                level_range: (3, 6),
-            }),
-            MapId::Prontera => None,
-        }
-    }
-
-    /// Get NPCs for city locations
-    pub fn city_npcs(&self) -> Option<&'static [&'static str]> {
-        match self {
-            MapId::Prontera => Some(&[
-                "Item Shop",
-                "Weapon Shop",
-                "Refiner (Coming Soon)",
-                "Storage (Coming Soon)",
-            ]),
-            _ => None,
-        }
+    /// Get NPCs for city locations (from maps.json)
+    pub fn npcs(map_id: MapId) -> heapless::Vec<&'static str, 8> {
+        get_city_npcs(map_id)
     }
 }
 
@@ -416,48 +396,41 @@ pub struct MapExit {
     pub destination: MapId,
 }
 
-/// Field information
-#[derive(Debug, Clone, Copy)]
-pub struct FieldInfo {
-    pub monsters: &'static [&'static str],
-    pub level_range: (u16, u16), // (min, max)
-}
-
 /// Main game state resource
 #[derive(Resource)]
 pub struct GameState {
     pub current_page: GamePage,
     pub hero: Hero,
-    pub current_location: MapId,  // Current map location
+    pub current_location: MapId, // Current map location
     pub current_enemy: Option<Enemy>,
     pub farm_state: FarmState,
-    pub farm_progress: u32,      // 0-60000 (60 seconds in milliseconds)
-    pub farm_duration_ms: u32,   // 60000 ms = 1 minute
+    pub farm_progress: u32,       // 0-60000 (60 seconds in milliseconds)
+    pub farm_duration_ms: u32,    // 60000 ms = 1 minute
     pub farm_touch_cooldown: u32, // Cooldown in ms to prevent immediate re-touch
     pub rest_state: RestState,
-    pub rest_progress: u32,      // Progress in milliseconds
-    pub sp_regen_rate: u16,      // SP per second while resting
-    pub menu_selection: u8,      // 0 = Overview, 1 = Farm, 2 = Rest, 3 = Battle, 4 = Save
+    pub rest_progress: u32,                    // Progress in milliseconds
+    pub sp_regen_rate: u16,                    // SP per second while resting
+    pub menu_selection: u8, // 0 = Overview, 1 = Farm, 2 = Rest, 3 = Battle, 4 = Save
     pub battle_state: BattleState, // Current battle state
     pub battle_enemy: Option<Enemy>, // Enemy being fought
     pub battle_circles: [Option<Circle>; 4], // Up to 4 active circles
-    pub battle_score: u16,       // Hits made in current battle
-    pub battle_missed: u16,      // Circles missed or bad targets hit
-    pub battle_next_spawn: u32,  // When next circle spawns
+    pub battle_score: u16,  // Hits made in current battle
+    pub battle_missed: u16, // Circles missed or bad targets hit
+    pub battle_next_spawn: u32, // When next circle spawns
     pub battle_spawn_interval: u32, // Time between spawns (800ms)
-    pub battle_duration: u32,    // Total battle time (30 seconds)
-    pub battle_elapsed: u32,     // Time elapsed in battle
+    pub battle_duration: u32, // Total battle time (30 seconds)
+    pub battle_elapsed: u32, // Time elapsed in battle
     pub battle_last_touch_x: i32, // Last touch X position for debug display
     pub battle_last_touch_y: i32, // Last touch Y position for debug display
     pub battle_last_touch_time: u32, // When last touch occurred (for fade out)
-    pub last_update_ms: u32,     // Last update time for progress tracking
-    pub save_requested: bool,    // Flag to trigger save
+    pub last_update_ms: u32, // Last update time for progress tracking
+    pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
     pub save_status_timeout: u32, // Time when save message should clear (0 = no message)
-    pub fps: u32,                // Current FPS
-    pub frame_count: u32,        // Total frames rendered
+    pub fps: u32,           // Current FPS
+    pub frame_count: u32,   // Total frames rendered
     pub last_fps_update_ms: u32, // Last time FPS was calculated
-    pub needs_redraw: bool,      // Flag to indicate screen needs redrawing
+    pub needs_redraw: bool, // Flag to indicate screen needs redrawing
 }
 
 impl Default for GameState {
@@ -465,7 +438,7 @@ impl Default for GameState {
         Self {
             current_page: GamePage::Overview,
             hero: Hero::new(),
-            current_location: MapId::Prontera,  // Start in Prontera
+            current_location: MAP_PRONTERA_ID, // Start in Prontera (ID from maps.json)
             current_enemy: None,
             farm_state: FarmState::Idle,
             farm_progress: 0,
@@ -481,8 +454,8 @@ impl Default for GameState {
             battle_score: 0,
             battle_missed: 0,
             battle_next_spawn: 0,
-            battle_spawn_interval: 800,  // 800ms between spawns
-            battle_duration: 30000,      // 30 seconds
+            battle_spawn_interval: 800, // 800ms between spawns
+            battle_duration: 30000,     // 30 seconds
             battle_elapsed: 0,
             battle_last_touch_x: 0,
             battle_last_touch_y: 0,
@@ -524,7 +497,7 @@ impl GameState {
     /// Complete farming and award rewards
     fn complete_farming(&mut self) {
         if let Some(enemy) = &self.current_enemy {
-            self.hero.add_exp(enemy.exp_reward);
+            self.hero.add_exp(enemy.base_exp);
             self.hero.add_zeny(enemy.zeny_reward);
             self.farm_state = FarmState::Victory;
         }
@@ -549,7 +522,8 @@ impl GameState {
                 let seconds = self.rest_progress / 1000;
 
                 // Regenerate SP (5 SP per second by default)
-                self.hero.regenerate_sp((seconds as u16) * self.sp_regen_rate);
+                self.hero
+                    .regenerate_sp((seconds as u16) * self.sp_regen_rate);
 
                 // Regenerate HP (10 HP per second)
                 let hp_regen_rate = 10u16;
@@ -572,13 +546,17 @@ impl GameState {
 
     /// Start Whac-A-Mole battle
     pub fn start_battle(&mut self, enemy: Enemy) {
-        self.battle_enemy = Some(enemy);
-        self.battle_state = BattleState::Playing;
-        self.battle_circles = [None, None, None, None];
-        self.battle_score = 0;
-        self.battle_missed = 0;
-        self.battle_elapsed = 0;
-        self.battle_next_spawn = self.last_update_ms + 500; // First spawn in 500ms
+        if self.hero.use_sp(30) {
+            // Battle costs 30 SP (more than farming)
+            self.battle_enemy = Some(enemy);
+            self.battle_state = BattleState::Playing;
+            self.battle_circles = [None, None, None, None];
+            self.battle_score = 0;
+            self.battle_missed = 0;
+            self.battle_elapsed = 0;
+            self.battle_next_spawn = self.last_update_ms + 500; // First spawn in 500ms
+            self.current_page = GamePage::Battle; // Switch to battle page
+        }
     }
 
     /// Spawn a new circle in the battle
@@ -679,7 +657,11 @@ impl GameState {
                             if let Some(enemy) = &mut self.battle_enemy {
                                 let damage = 5 + self.hero.level;
                                 enemy.hp = enemy.hp.saturating_sub(damage);
-                                esp_println::println!("[BATTLE] Hit green! Dealt {} damage. Enemy HP: {}", damage, enemy.hp);
+                                esp_println::println!(
+                                    "[BATTLE] Hit green! Dealt {} damage. Enemy HP: {}",
+                                    damage,
+                                    enemy.hp
+                                );
 
                                 // Check if enemy is defeated
                                 if enemy.hp == 0 {
@@ -715,7 +697,7 @@ impl GameState {
                 self.battle_state = BattleState::Victory;
                 // Award rewards based on score
                 let exp_mult = (self.battle_score as u32).max(1);
-                self.hero.add_exp(enemy.exp_reward * exp_mult / 5);
+                self.hero.add_exp(enemy.base_exp * exp_mult / 5);
                 self.hero.add_zeny(enemy.zeny_reward * exp_mult / 5);
             } else {
                 self.battle_state = BattleState::Defeat;

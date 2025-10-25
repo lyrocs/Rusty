@@ -1,9 +1,15 @@
 use bevy_ecs::prelude::*;
-use ft3x68_rs::{TouchState, TouchPoint};
+use ft3x68_rs::{TouchPoint, TouchState};
 
-use crate::ecs::resources::{TouchResource, ButtonResource, DisplayResource, BatteryResource, RtcResource, SdCardResource};
-use crate::tamagotchi::models::{GameState, GamePage, FarmState, RestState, BattleState, Enemy};
-use crate::tamagotchi::ui::{draw_overview_page, draw_farm_page, draw_rest_page, draw_battle_page, draw_map_page, draw_menu};
+use crate::ecs::resources::{
+    BatteryResource, ButtonResource, DisplayResource, RtcResource, SdCardResource, TouchResource,
+};
+use crate::tamagotchi::models::{
+    BattleState, Enemy, FarmState, GamePage, GameState, MapHelper, RestState,
+};
+use crate::tamagotchi::ui::{
+    draw_battle_page, draw_farm_page, draw_map_page, draw_menu, draw_overview_page, draw_rest_page,
+};
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
 
@@ -29,12 +35,12 @@ pub fn tamagotchi_button_system(
         // Toggle menu
         if game_state.current_page == GamePage::Menu {
             // Close menu and go to selected page
+            // Menu now has 4 items: Overview, Rest, Map, Save
             game_state.current_page = match game_state.menu_selection {
                 0 => GamePage::Overview,
-                1 => GamePage::Farm,
-                2 => GamePage::Rest,
-                3 => GamePage::Battle,
-                4 => GamePage::Map,
+                1 => GamePage::Rest,
+                2 => GamePage::Map,
+                // 3 is Save - handled in touch system, stays on current page
                 _ => GamePage::Overview,
             };
         } else {
@@ -87,25 +93,23 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     game_state.needs_redraw = true; // Mark for redraw on any touch
     match game_state.current_page {
         GamePage::Menu => {
-            // Menu item selection based on button position (2 columns x 3 rows)
+            // Menu item selection based on button position (2 columns x 2 rows)
+            // Now only 4 items - Farm and Battle removed (accessed via Map)
             // Button layout:
-            // [Overview(0)] [Farm(1)]      Row 0: y=110-180
-            // [Rest(2)]     [Battle(3)]    Row 1: y=190-260
-            // [Map(4)]      [Save(5)]      Row 2: y=270-340
+            // [Overview(0)] [Rest(1)]      Row 0: y=110-180
+            // [Map(2)]      [Save(3)]      Row 1: y=190-260
             //
             // Col 0: x=24-174, Col 1: x=184-334
 
             // Check if touch is within button area
-            if y >= 110 && y <= 340 {
+            if y >= 110 && y <= 260 {
                 let mut clicked_button: Option<u8> = None;
 
-                // Determine row (0, 1, or 2)
+                // Determine row (0 or 1)
                 let row = if y >= 110 && y <= 180 {
                     0
                 } else if y >= 190 && y <= 260 {
                     1
-                } else if y >= 270 && y <= 340 {
-                    2
                 } else {
                     255 // Invalid
                 };
@@ -120,9 +124,10 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 };
 
                 // Calculate button index (row * 2 + col)
-                if row < 3 && col < 2 {
+                if row < 2 && col < 2 {
                     let button_index = row * 2 + col;
-                    if button_index < 6 { // Now 6 buttons exist
+                    if button_index < 4 {
+                        // Now 4 buttons exist
                         clicked_button = Some(button_index);
                     }
                 }
@@ -130,10 +135,15 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 if let Some(item_index) = clicked_button {
                     game_state.menu_selection = item_index;
 
-                    esp_println::println!("[MENU] Selected button {} at ({}, {})", item_index, x, y);
+                    esp_println::println!(
+                        "[MENU] Selected button {} at ({}, {})",
+                        item_index,
+                        x,
+                        y
+                    );
 
                     // Handle selection
-                    if item_index == 5 {
+                    if item_index == 3 {
                         // Save Game selected
                         game_state.save_requested = true;
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
@@ -141,10 +151,8 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                         // Navigate to selected page
                         game_state.current_page = match item_index {
                             0 => GamePage::Overview,
-                            1 => GamePage::Farm,
-                            2 => GamePage::Rest,
-                            3 => GamePage::Battle,
-                            4 => GamePage::Map,
+                            1 => GamePage::Rest,
+                            2 => GamePage::Map,
                             _ => GamePage::Overview,
                         };
                     }
@@ -154,30 +162,24 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         GamePage::Farm => {
             match game_state.farm_state {
                 FarmState::Idle => {
-                    // Check cooldown first
-                    if game_state.farm_touch_cooldown > 0 {
-                        esp_println::println!("[FARM] Touch cooldown active: {}ms", game_state.farm_touch_cooldown);
-                        return; // Ignore touch during cooldown
-                    }
-
-                    // Start farming if hero has enough SP
-                    if game_state.hero.sp >= 20 {
-                        esp_println::println!("[FARM] Starting farm with enemy");
-                        // Generate a random enemy (using touch position as random seed)
-                        let rng_value = (x.wrapping_add(y)) as u8;
-                        let enemy = Enemy::random_for_level(game_state.hero.level, rng_value);
-                        game_state.start_farming(enemy);
-                    } else {
-                        esp_println::println!("[FARM] Not enough SP: {}/20", game_state.hero.sp);
-                    }
+                    // Farm should be started from Map page
+                    // If we're here with Idle state, go back to map
+                    esp_println::println!("[FARM] No active farm, returning to map");
+                    game_state.current_page = GamePage::Map;
                 }
                 FarmState::Victory | FarmState::Defeat => {
-                    esp_println::println!("[FARM] Resetting farming state from {:?}", game_state.farm_state);
+                    esp_println::println!(
+                        "[FARM] Resetting farming state from {:?}",
+                        game_state.farm_state
+                    );
                     // Reset farming state
                     game_state.reset_farming();
                 }
                 _ => {
-                    esp_println::println!("[FARM] Touch ignored, state: {:?}", game_state.farm_state);
+                    esp_println::println!(
+                        "[FARM] Touch ignored, state: {:?}",
+                        game_state.farm_state
+                    );
                 }
             }
         }
@@ -192,16 +194,10 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         GamePage::Battle => {
             match game_state.battle_state {
                 BattleState::Idle => {
-                    // Start battle if hero has enough SP
-                    if game_state.hero.sp >= 20 {
-                        esp_println::println!("[BATTLE] Starting Whac-A-Mole battle");
-                        // Generate a random enemy (using touch position as random seed)
-                        let rng_value = (x.wrapping_add(y)) as u8;
-                        let enemy = Enemy::random_for_level(game_state.hero.level, rng_value);
-                        game_state.start_battle(enemy);
-                    } else {
-                        esp_println::println!("[BATTLE] Not enough SP: {}/20", game_state.hero.sp);
-                    }
+                    // Battle should be started from Map page
+                    // If we're here with Idle state, go back to map
+                    esp_println::println!("[BATTLE] No active battle, returning to map");
+                    game_state.current_page = GamePage::Map;
                 }
                 BattleState::Playing => {
                     // Record touch position for debug display
@@ -218,7 +214,10 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     }
                 }
                 BattleState::Victory | BattleState::Defeat => {
-                    esp_println::println!("[BATTLE] Resetting battle state from {:?}", game_state.battle_state);
+                    esp_println::println!(
+                        "[BATTLE] Resetting battle state from {:?}",
+                        game_state.battle_state
+                    );
                     // Reset battle state
                     game_state.reset_battle();
                 }
@@ -226,12 +225,13 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         }
         GamePage::Map => {
             // Map navigation with border buttons and center actions
-            let exits = game_state.current_location.exits();
-            let location_type = game_state.current_location.location_type();
+            let map_id = game_state.current_location;
+            let exits = MapHelper::exits(map_id);
+            let location_type = MapHelper::location_type(map_id);
 
             // Check directional navigation buttons (large border buttons)
             let mut traveled = false;
-            for exit in exits {
+            for exit in exits.iter() {
                 let hit = match exit.direction {
                     "North" => x >= 10 && x <= 358 && y <= 40,
                     "South" => x >= 10 && x <= 358 && y >= 408,
@@ -241,7 +241,11 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 };
 
                 if hit {
-                    esp_println::println!("[MAP] Traveling {} to {}", exit.direction, exit.destination.name());
+                    esp_println::println!(
+                        "[MAP] Traveling {} to {}",
+                        exit.direction,
+                        MapHelper::name(exit.destination)
+                    );
                     game_state.current_location = exit.destination;
                     traveled = true;
                     break;
@@ -253,15 +257,19 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 match location_type {
                     crate::tamagotchi::models::LocationType::City => {
                         // NPC action buttons (2x2 grid in center)
-                        if let Some(npcs) = game_state.current_location.city_npcs() {
+                        let npcs = MapHelper::npcs(map_id);
+                        if !npcs.is_empty() {
                             for (i, npc) in npcs.iter().enumerate() {
                                 let row = i / 2;
                                 let col = i % 2;
                                 let btn_x = 59 + col as i32 * 130;
                                 let btn_y = 100 + row as i32 * 75;
 
-                                if x >= btn_x as u16 && x <= (btn_x + 120) as u16 &&
-                                   y >= btn_y as u16 && y <= (btn_y + 60) as u16 {
+                                if x >= btn_x as u16
+                                    && x <= (btn_x + 120) as u16
+                                    && y >= btn_y as u16
+                                    && y <= (btn_y + 60) as u16
+                                {
                                     esp_println::println!("[MAP] Selected NPC: {}", npc);
                                     // TODO: Implement NPC interactions
                                 }
@@ -271,13 +279,47 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     crate::tamagotchi::models::LocationType::Field => {
                         // Check Auto Farm button (84, 210, 200x60)
                         if x >= 84 && x <= 284 && y >= 210 && y <= 270 {
-                            esp_println::println!("[MAP] Auto Farm selected - switching to Farm page");
-                            game_state.current_page = GamePage::Farm;
+                            esp_println::println!("[MAP] Auto Farm selected");
+                            // Spawn enemy from current map
+                            let enemy_ids = MapHelper::enemies(map_id);
+                            if !enemy_ids.is_empty() && game_state.hero.sp >= 20 {
+                                // Pick random enemy from map
+                                let rng_value = (x.wrapping_add(y)) as u8;
+                                let enemy_index = (rng_value as usize) % enemy_ids.len();
+                                let enemy_id = enemy_ids[enemy_index];
+
+                                if let Some(enemy) = Enemy::from_id(enemy_id) {
+                                    esp_println::println!(
+                                        "[MAP] Starting farm with {} from map",
+                                        enemy.name
+                                    );
+                                    game_state.start_farming(enemy);
+                                }
+                            } else if game_state.hero.sp < 20 {
+                                esp_println::println!("[MAP] Not enough SP for farming");
+                            }
                         }
                         // Check Battle button (84, 280, 200x60)
                         else if x >= 84 && x <= 284 && y >= 280 && y <= 340 {
-                            esp_println::println!("[MAP] Battle selected - switching to Battle page");
-                            game_state.current_page = GamePage::Battle;
+                            esp_println::println!("[MAP] Battle selected");
+                            // Spawn enemy from current map
+                            let enemy_ids = MapHelper::enemies(map_id);
+                            if !enemy_ids.is_empty() && game_state.hero.sp >= 30 {
+                                // Pick random enemy from map
+                                let rng_value = (x.wrapping_add(y)) as u8;
+                                let enemy_index = (rng_value as usize) % enemy_ids.len();
+                                let enemy_id = enemy_ids[enemy_index];
+
+                                if let Some(enemy) = Enemy::from_id(enemy_id) {
+                                    esp_println::println!(
+                                        "[MAP] Starting battle with {} from map",
+                                        enemy.name
+                                    );
+                                    game_state.start_battle(enemy);
+                                }
+                            } else if game_state.hero.sp < 30 {
+                                esp_println::println!("[MAP] Not enough SP for battle");
+                            }
                         }
                     }
                 }
@@ -315,7 +357,9 @@ pub fn tamagotchi_update_system(
 
     // Update FPS counter every 2 seconds for less frequent updates
     game_state.frame_count += 1;
-    let fps_elapsed = game_state.last_update_ms.wrapping_sub(game_state.last_fps_update_ms);
+    let fps_elapsed = game_state
+        .last_update_ms
+        .wrapping_sub(game_state.last_fps_update_ms);
     if fps_elapsed >= 2000 {
         // Calculate FPS: frames / seconds
         game_state.fps = (game_state.frame_count * 1000) / fps_elapsed;
@@ -341,13 +385,18 @@ pub fn tamagotchi_update_system(
         let old_hp = game_state.hero.hp;
         game_state.update_rest_progress(delta_ms);
         // Only redraw if HP or SP changed or state changed
-        if game_state.hero.sp != old_sp || game_state.hero.hp != old_hp || game_state.rest_state != RestState::Resting {
+        if game_state.hero.sp != old_sp
+            || game_state.hero.hp != old_hp
+            || game_state.rest_state != RestState::Resting
+        {
             game_state.needs_redraw = true;
         }
     }
 
     // Update battle progress (spawn circles, check expiration, handle damage)
-    if game_state.current_page == GamePage::Battle && game_state.battle_state == BattleState::Playing {
+    if game_state.current_page == GamePage::Battle
+        && game_state.battle_state == BattleState::Playing
+    {
         let old_score = game_state.battle_score;
         let old_missed = game_state.battle_missed;
         let old_state = game_state.battle_state;
@@ -355,9 +404,10 @@ pub fn tamagotchi_update_system(
         game_state.update_battle(delta_ms);
 
         // Redraw if score/missed changed or state changed
-        if game_state.battle_score != old_score ||
-           game_state.battle_missed != old_missed ||
-           game_state.battle_state != old_state {
+        if game_state.battle_score != old_score
+            || game_state.battle_missed != old_missed
+            || game_state.battle_state != old_state
+        {
             game_state.needs_redraw = true;
         }
     }
@@ -382,19 +432,55 @@ pub fn tamagotchi_render_system(
     // Draw the current page
     match game_state.current_page {
         GamePage::Overview => {
-            draw_overview_page(&mut display_res.display, &game_state.hero, battery_mv, battery_pct, fps, game_state.save_status_msg).ok();
+            draw_overview_page(
+                &mut display_res.display,
+                &game_state.hero,
+                battery_mv,
+                battery_pct,
+                fps,
+                game_state.save_status_msg,
+            )
+            .ok();
         }
         GamePage::Farm => {
-            draw_farm_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
+            draw_farm_page(
+                &mut display_res.display,
+                &game_state,
+                battery_mv,
+                battery_pct,
+                fps,
+            )
+            .ok();
         }
         GamePage::Rest => {
-            draw_rest_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
+            draw_rest_page(
+                &mut display_res.display,
+                &game_state,
+                battery_mv,
+                battery_pct,
+                fps,
+            )
+            .ok();
         }
         GamePage::Battle => {
-            draw_battle_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
+            draw_battle_page(
+                &mut display_res.display,
+                &game_state,
+                battery_mv,
+                battery_pct,
+                fps,
+            )
+            .ok();
         }
         GamePage::Map => {
-            draw_map_page(&mut display_res.display, &game_state, battery_mv, battery_pct, fps).ok();
+            draw_map_page(
+                &mut display_res.display,
+                &game_state,
+                battery_mv,
+                battery_pct,
+                fps,
+            )
+            .ok();
         }
         GamePage::Menu => {
             // Draw the previous page first, then overlay menu
@@ -421,7 +507,8 @@ pub fn tamagotchi_save_system(
         // Generate save data
         let save_data = game_state.hero.to_save_string();
 
-        esp_println::println!("[SAVE] Saving hero: Level {} {} with {} EXP and {} Zeny",
+        esp_println::println!(
+            "[SAVE] Saving hero: Level {} {} with {} EXP and {} Zeny",
             game_state.hero.level,
             game_state.hero.job,
             game_state.hero.exp,
@@ -446,7 +533,9 @@ pub fn tamagotchi_save_system(
     }
 
     // Clear save message after timeout
-    if game_state.save_status_timeout > 0 && game_state.last_update_ms >= game_state.save_status_timeout {
+    if game_state.save_status_timeout > 0
+        && game_state.last_update_ms >= game_state.save_status_timeout
+    {
         game_state.save_status_msg = None;
         game_state.save_status_timeout = 0;
         game_state.needs_redraw = true; // Redraw to clear message

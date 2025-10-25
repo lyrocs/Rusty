@@ -2,6 +2,10 @@ fn main() {
     linker_be_nice();
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
     println!("cargo:rustc-link-arg=-Tlinkall.x");
+
+    // Rebuild if JSON files change
+    println!("cargo:rerun-if-changed=src/tamagotchi/data/enemies.json");
+    println!("cargo:rerun-if-changed=src/tamagotchi/data/maps.json");
 }
 
 fn linker_be_nice() {
