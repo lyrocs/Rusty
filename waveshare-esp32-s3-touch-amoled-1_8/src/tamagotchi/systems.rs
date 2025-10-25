@@ -232,12 +232,40 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     }
                 }
                 BattleState::Victory | BattleState::Defeat => {
+                    // Prevent accidental clicks - require 500ms delay after battle ends
+                    let time_since_end = game_state.last_update_ms.saturating_sub(game_state.battle_end_time);
+                    if time_since_end < 500 {
+                        esp_println::println!(
+                            "[BATTLE] Ignoring click too soon after battle end ({}ms)",
+                            time_since_end
+                        );
+                        return;
+                    }
+
                     esp_println::println!(
-                        "[BATTLE] Resetting battle state from {:?}",
+                        "[BATTLE] Restarting manual battle from {:?}",
                         game_state.battle_state
                     );
-                    // Reset battle state
+                    // Reset battle state first
                     game_state.reset_battle();
+
+                    // Restart battle with a new enemy from current map
+                    let map_id = game_state.current_location;
+                    let enemy_ids = MapHelper::enemies(map_id);
+                    if !enemy_ids.is_empty() && game_state.hero.sp >= 30 {
+                        // Pick random enemy from map using touch coordinates as seed
+                        let rng_value = (x.wrapping_add(y)) as u8;
+                        let enemy_index = (rng_value as usize) % enemy_ids.len();
+                        let enemy_id = enemy_ids[enemy_index];
+
+                        if let Some(enemy) = Enemy::from_id(enemy_id) {
+                            esp_println::println!("[BATTLE] Starting new battle with {}", enemy.name);
+                            game_state.start_battle(enemy);
+                        }
+                    } else if game_state.hero.sp < 30 {
+                        esp_println::println!("[BATTLE] Not enough SP to restart battle");
+                        game_state.current_page = GamePage::Map;
+                    }
                 }
             }
         }
@@ -315,28 +343,43 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                                 }
                             } else if game_state.hero.sp < 20 {
                                 esp_println::println!("[MAP] Not enough SP for farming");
+                                game_state.save_status_msg = Some("Not enough SP! (need 20)");
+                                game_state.save_status_timeout = game_state.last_update_ms + 2000;
+                                game_state.needs_redraw = true;
                             }
                         }
                         // Check Battle button (84, 280, 200x60)
                         else if x >= 84 && x <= 284 && y >= 280 && y <= 340 {
                             esp_println::println!("[MAP] Battle selected");
-                            // Spawn enemy from current map
-                            let enemy_ids = MapHelper::enemies(map_id);
-                            if !enemy_ids.is_empty() && game_state.hero.sp >= 30 {
-                                // Pick random enemy from map
-                                let rng_value = (x.wrapping_add(y)) as u8;
-                                let enemy_index = (rng_value as usize) % enemy_ids.len();
-                                let enemy_id = enemy_ids[enemy_index];
 
-                                if let Some(enemy) = Enemy::from_id(enemy_id) {
-                                    esp_println::println!(
-                                        "[MAP] Starting battle with {} from map",
-                                        enemy.name
-                                    );
-                                    game_state.start_battle(enemy);
-                                }
+                            // Check HP first
+                            if game_state.hero.hp == 0 {
+                                esp_println::println!("[MAP] No HP! Cannot battle");
+                                game_state.save_status_msg = Some("No HP! Rest to recover");
+                                game_state.save_status_timeout = game_state.last_update_ms + 2000;
+                                game_state.needs_redraw = true;
                             } else if game_state.hero.sp < 30 {
                                 esp_println::println!("[MAP] Not enough SP for battle");
+                                game_state.save_status_msg = Some("Not enough SP! (need 30)");
+                                game_state.save_status_timeout = game_state.last_update_ms + 2000;
+                                game_state.needs_redraw = true;
+                            } else {
+                                // Spawn enemy from current map
+                                let enemy_ids = MapHelper::enemies(map_id);
+                                if !enemy_ids.is_empty() {
+                                    // Pick random enemy from map
+                                    let rng_value = (x.wrapping_add(y)) as u8;
+                                    let enemy_index = (rng_value as usize) % enemy_ids.len();
+                                    let enemy_id = enemy_ids[enemy_index];
+
+                                    if let Some(enemy) = Enemy::from_id(enemy_id) {
+                                        esp_println::println!(
+                                            "[MAP] Starting battle with {} from map",
+                                            enemy.name
+                                        );
+                                        game_state.start_battle(enemy);
+                                    }
+                                }
                             }
                         }
                     }

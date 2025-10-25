@@ -11,37 +11,34 @@ use core::cell::RefCell;
 use embedded_hal_bus::i2c;
 use embedded_hal_bus::i2c::RefCellDevice;
 use embedded_hal_bus::util::AtomicCell;
+use embedded_sdmmc::{SdCard, VolumeIdx, VolumeManager};
 use esp_hal::Blocking;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::{DmaRxBuf, DmaTxBuf};
+use esp_hal::dma_buffers;
 use esp_hal::gpio::{Input, InputConfig, Pull};
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::main;
 use esp_hal::spi::Mode;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Rate;
-use esp_hal::dma_buffers;
-use embedded_sdmmc::{SdCard, VolumeManager, VolumeIdx};
 use esp_println::logger::init_logger_from_env;
 use log::info;
 use static_cell::StaticCell;
 
+use axp2101::core::Axp2101;
 use ft3x68_rs::{FT3168_DEVICE_ADDRESS, Ft3x68Driver};
 use sh8601_rs::{ColorMode, DMA_CHUNK_SIZE, ResetDriver, Sh8601Driver, Ws18AmoledDriver};
-use axp2101::core::Axp2101;
 
 // Import from our library
 use esp32_conways_game_of_life_rs::display::{DISPLAY_SIZE, FB_SIZE};
-use esp32_conways_game_of_life_rs::drivers::{ResetTouchDriver, Tca9554Driver, Pcf85063, ExioPin};
+use esp32_conways_game_of_life_rs::drivers::{ExioPin, Pcf85063, ResetTouchDriver, Tca9554Driver};
 use esp32_conways_game_of_life_rs::ecs::resources::*;
-use esp32_conways_game_of_life_rs::tamagotchi::{GameState};
+use esp32_conways_game_of_life_rs::tamagotchi::GameState;
 use esp32_conways_game_of_life_rs::tamagotchi::systems::{
-    tamagotchi_button_system,
-    tamagotchi_touch_system,
-    tamagotchi_update_system,
-    tamagotchi_render_system,
-    tamagotchi_save_system,
+    tamagotchi_button_system, tamagotchi_render_system, tamagotchi_save_system,
+    tamagotchi_touch_system, tamagotchi_update_system,
 };
 use esp32_conways_game_of_life_rs::ui::voltage_to_battery_percent;
 use esp32_conways_game_of_life_rs::utils::DummyTimeSource;
@@ -112,8 +109,12 @@ fn main() -> ! {
         delay,
     );
 
-    touch.initialize().expect("Failed to initialize touch driver");
-    touch.set_gesture_mode(true).expect("Failed to set gesture mode");
+    touch
+        .initialize()
+        .expect("Failed to initialize touch driver");
+    touch
+        .set_gesture_mode(true)
+        .expect("Failed to set gesture mode");
 
     // Initialize Display
     esp_println::println!("Initializing SH8601 Display...");
@@ -200,12 +201,19 @@ fn main() -> ! {
     // Insert game state with loaded or default hero
     let mut game_state = GameState::default();
     if let Some(hero) = loaded_hero {
-        esp_println::println!("Loaded saved hero: Level {} {} with {} EXP",
-            hero.level, hero.job, hero.exp);
+        esp_println::println!(
+            "Loaded saved hero: Level {} {} with {} EXP",
+            hero.level,
+            hero.job,
+            hero.exp
+        );
         game_state.hero = hero;
     } else {
-        esp_println::println!("No save file found - Starting {} Level {}",
-            game_state.hero.job, game_state.hero.level);
+        esp_println::println!(
+            "No save file found - Starting {} Level {}",
+            game_state.hero.job,
+            game_state.hero.level
+        );
     }
     world.insert_resource(game_state);
 
@@ -264,8 +272,8 @@ fn main() -> ! {
     loop {
         schedule.run(&mut world);
 
-        // Small delay to control frame rate (~60 FPS)
-        esp_hal::delay::Delay::new().delay_millis(16);
+        // Small delay to control frame rate (~120 FPS)
+        esp_hal::delay::Delay::new().delay_millis(8);
     }
 }
 

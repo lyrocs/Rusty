@@ -416,6 +416,7 @@ pub struct GameState {
     pub battle_circles: [Option<Circle>; 4], // Up to 4 active circles
     pub battle_score: u16,  // Hits made in current battle
     pub battle_missed: u16, // Circles missed or bad targets hit
+    pub battle_combo: u16,  // Current combo count (consecutive green hits)
     pub battle_next_spawn: u32, // When next circle spawns
     pub battle_spawn_interval: u32, // Time between spawns (800ms)
     pub battle_duration: u32, // Total battle time (30 seconds)
@@ -423,6 +424,7 @@ pub struct GameState {
     pub battle_last_touch_x: i32, // Last touch X position for debug display
     pub battle_last_touch_y: i32, // Last touch Y position for debug display
     pub battle_last_touch_time: u32, // When last touch occurred (for fade out)
+    pub battle_end_time: u32, // When battle ended (for preventing accidental clicks)
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -453,6 +455,7 @@ impl Default for GameState {
             battle_circles: [None, None, None, None],
             battle_score: 0,
             battle_missed: 0,
+            battle_combo: 0,
             battle_next_spawn: 0,
             battle_spawn_interval: 800, // 800ms between spawns
             battle_duration: 30000,     // 30 seconds
@@ -460,6 +463,7 @@ impl Default for GameState {
             battle_last_touch_x: 0,
             battle_last_touch_y: 0,
             battle_last_touch_time: 0,
+            battle_end_time: 0,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,
@@ -553,6 +557,7 @@ impl GameState {
             self.battle_circles = [None, None, None, None];
             self.battle_score = 0;
             self.battle_missed = 0;
+            self.battle_combo = 0;
             self.battle_elapsed = 0;
             self.battle_next_spawn = self.last_update_ms + 500; // First spawn in 500ms
             self.current_page = GamePage::Battle; // Switch to battle page
@@ -626,9 +631,13 @@ impl GameState {
                         self.hero.hp = self.hero.hp.saturating_sub(damage);
                         esp_println::println!("[BATTLE] Missed red circle! Took {} damage", damage);
                         self.battle_missed += 1;
+                        // Reset combo on missing red circle
+                        self.battle_combo = 0;
                     } else {
-                        // Missed green circle - counts as miss
+                        // Missed green circle - counts as miss and resets combo
                         self.battle_missed += 1;
+                        self.battle_combo = 0;
+                        esp_println::println!("[BATTLE] Missed green circle! Combo reset");
                     }
                     *circle = None;
 
@@ -652,13 +661,24 @@ impl GameState {
                 if c.contains_point(x, y) {
                     match c.circle_type {
                         CircleType::GoodTarget => {
-                            // Hit enemy! Simple damage: 5 + hero level
+                            // Increase combo on green hit
+                            self.battle_combo += 1;
                             self.battle_score += 1;
+
                             if let Some(enemy) = &mut self.battle_enemy {
-                                let damage = 5 + self.hero.level;
+                                // Base damage: 5 + hero level
+                                let base_damage = 5 + self.hero.level;
+
+                                // Combo multiplier: 1.0x at combo 1, increases by 0.2x per combo
+                                // Caps at 3.0x (combo 11+)
+                                let combo_multiplier = (1.0 + (self.battle_combo - 1) as f32 * 0.2).min(3.0);
+                                let damage = (base_damage as f32 * combo_multiplier) as u16;
+
                                 enemy.hp = enemy.hp.saturating_sub(damage);
                                 esp_println::println!(
-                                    "[BATTLE] Hit green! Dealt {} damage. Enemy HP: {}",
+                                    "[BATTLE] Hit green! Combo: {}x ({}x multiplier) Dealt {} damage. Enemy HP: {}",
+                                    self.battle_combo,
+                                    combo_multiplier,
                                     damage,
                                     enemy.hp
                                 );
@@ -671,9 +691,9 @@ impl GameState {
                             }
                         }
                         CircleType::BadTarget => {
-                            // Blocked enemy attack!
+                            // Blocked enemy attack - doesn't increase or decrease combo
                             self.battle_score += 1;
-                            esp_println::println!("[BATTLE] Blocked red attack!");
+                            esp_println::println!("[BATTLE] Blocked red attack! Combo maintained at {}", self.battle_combo);
                         }
                     }
                     *circle = None;
@@ -702,6 +722,8 @@ impl GameState {
             } else {
                 self.battle_state = BattleState::Defeat;
             }
+            // Record when battle ended to prevent accidental clicks
+            self.battle_end_time = self.last_update_ms;
         }
     }
 
@@ -712,9 +734,11 @@ impl GameState {
         self.battle_circles = [None, None, None, None];
         self.battle_score = 0;
         self.battle_missed = 0;
+        self.battle_combo = 0;
         self.battle_elapsed = 0;
         self.battle_last_touch_x = 0;
         self.battle_last_touch_y = 0;
         self.battle_last_touch_time = 0;
+        self.battle_end_time = 0;
     }
 }

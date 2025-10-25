@@ -899,12 +899,12 @@ where
                     Rgb888::YELLOW,
                 )?;
 
-                // Score
-                let mut score_str = String::<32>::new();
+                // Score and Combo
+                let mut score_str = String::<48>::new();
                 write!(
                     score_str,
-                    "Hits:{} Missed:{}",
-                    game_state.battle_score, game_state.battle_missed
+                    "Hits:{} Miss:{} Combo:{}x",
+                    game_state.battle_score, game_state.battle_missed, game_state.battle_combo
                 )
                 .ok();
                 draw_text(
@@ -923,20 +923,12 @@ where
                             CircleType::BadTarget => Rgb888::RED,
                         };
 
-                        // Draw filled circle
+                        // Draw only colored border (no fill)
                         EgCircle::new(
                             Point::new(c.x - c.radius as i32, c.y - c.radius as i32),
                             c.radius * 2,
                         )
-                        .into_styled(PrimitiveStyle::with_fill(color))
-                        .draw(display)?;
-
-                        // Draw border
-                        EgCircle::new(
-                            Point::new(c.x - c.radius as i32, c.y - c.radius as i32),
-                            c.radius * 2,
-                        )
-                        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+                        .into_styled(PrimitiveStyle::with_stroke(color, 3))
                         .draw(display)?;
                     }
                 }
@@ -979,18 +971,29 @@ where
                     }
                 }
 
+                // Hero HP at bottom
+                let mut hp_str = String::<32>::new();
+                write!(hp_str, "HP: {}/{}", game_state.hero.hp, game_state.hero.max_hp).ok();
+                draw_text(
+                    display,
+                    &hp_str,
+                    Point::new(20, 370),
+                    &FONT_10X20,
+                    Rgb888::CYAN,
+                )?;
+
                 // Instructions at bottom
                 draw_text(
                     display,
                     "Green: Hit enemy",
-                    Point::new(20, 390),
+                    Point::new(20, 395),
                     &FONT_9X15,
                     Rgb888::GREEN,
                 )?;
                 draw_text(
                     display,
                     "Red: Block attack",
-                    Point::new(20, 410),
+                    Point::new(20, 415),
                     &FONT_9X15,
                     Rgb888::RED,
                 )?;
@@ -1368,6 +1371,17 @@ where
     // Battery and FPS at bottom
     draw_battery_info(display, Point::new(10, 355), battery_mv, battery_pct)?;
     draw_fps_info(display, Point::new(240, 365), fps)?;
+
+    // Status message (for SP/HP warnings)
+    if let Some(msg) = game_state.save_status_msg {
+        draw_text(
+            display,
+            msg,
+            Point::new(60, 390),
+            &FONT_10X20,
+            Rgb888::RED,
+        )?;
+    }
 
     Ok(())
 }
