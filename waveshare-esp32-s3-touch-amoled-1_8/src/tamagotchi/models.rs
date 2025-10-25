@@ -285,7 +285,7 @@ pub struct Circle {
     pub radius: u32,
     pub circle_type: CircleType,
     pub spawn_time: u32,  // When it spawned
-    pub lifetime_ms: u32, // How long it lasts (1500ms)
+    pub lifetime_ms: u32, // How long it lasts (2000ms)
 }
 
 impl Circle {
@@ -296,7 +296,7 @@ impl Circle {
             radius: 25, // Fixed radius
             circle_type,
             spawn_time,
-            lifetime_ms: 1500, // 1.5 seconds to click
+            lifetime_ms: 2000, // 2 seconds to click (increased for better playability)
         }
     }
 
@@ -692,8 +692,8 @@ impl GameState {
     /// Complete battle and calculate rewards
     fn complete_battle(&mut self) {
         if let Some(enemy) = &self.battle_enemy {
-            // Win if enemy HP is 0 or we have more hits than misses
-            if enemy.hp == 0 || self.battle_score > self.battle_missed * 2 {
+            // Win only if enemy HP is 0 (defeated before timeout)
+            if enemy.hp == 0 {
                 self.battle_state = BattleState::Victory;
                 // Award rewards based on score
                 let exp_mult = (self.battle_score as u32).max(1);
