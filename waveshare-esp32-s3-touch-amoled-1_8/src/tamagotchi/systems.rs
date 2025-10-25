@@ -169,11 +169,29 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 }
                 FarmState::Victory | FarmState::Defeat => {
                     esp_println::println!(
-                        "[FARM] Resetting farming state from {:?}",
+                        "[FARM] Restarting auto farm from {:?}",
                         game_state.farm_state
                     );
-                    // Reset farming state
+                    // Reset farming state first
                     game_state.reset_farming();
+
+                    // Restart farming with a new enemy from current map
+                    let map_id = game_state.current_location;
+                    let enemy_ids = MapHelper::enemies(map_id);
+                    if !enemy_ids.is_empty() && game_state.hero.sp >= 20 {
+                        // Pick random enemy from map using touch coordinates as seed
+                        let rng_value = (x.wrapping_add(y)) as u8;
+                        let enemy_index = (rng_value as usize) % enemy_ids.len();
+                        let enemy_id = enemy_ids[enemy_index];
+
+                        if let Some(enemy) = Enemy::from_id(enemy_id) {
+                            esp_println::println!("[FARM] Starting new farm with {}", enemy.name);
+                            game_state.start_farming(enemy);
+                        }
+                    } else if game_state.hero.sp < 20 {
+                        esp_println::println!("[FARM] Not enough SP to restart farming");
+                        game_state.current_page = GamePage::Map;
+                    }
                 }
                 _ => {
                     esp_println::println!(
