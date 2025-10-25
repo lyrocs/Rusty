@@ -1,91 +1,36 @@
 [
   {
-    "name": "Prontera",
     "id": 1,
-    "connections": {
-      "east": 2,
-      "west": 3,
-      "south": 2,
-      "north": 4
-    },
-    "npc": [
-      {
-        "name": "Items Trader",
-        "id": 1001
-      },
-      {
-        "name": "Equipment Trader",
-        "id": 1002
-      },
-      {
-        "name": "Skill Trader",
-        "id": 1003
-      }
-    ],
-    "enemies": []
+    "name": "Prontera",
+    "north": 4,
+    "south": 2,
+    "east": 5,
+    "west": 3,
+    "enemies": [],
+    "npcs": [1001, 1002, 1003]
   },
   {
-    "name": "Prontera South",
     "id": 2,
-    "connections": {
-      "north": 1
-    },
-    "enemies": [
-      {
-        "name": "Poring",
-        "id": 1002
-      },
-      {
-        "name": "Fabre",
-        "id": 1007
-      }
-    ]
+    "name": "Prontera South",
+    "north": 1,
+    "enemies": [1002, 1007]
   },
   {
-    "name": "Prontera West",
     "id": 3,
-    "connections": {
-      "east": 1
-    },
-    "enemies": [
-      {
-        "name": "Hornet",
-        "id": 1004
-      },
-      {
-        "name": "Thief Bug",
-        "id": 1051
-      }
-    ]
+    "name": "Prontera West",
+    "east": 1,
+    "enemies": [1004, 1051]
   },
   {
-    "name": "Prontera East",
-    "id": 5,
-    "connections": {
-      "west": 1
-    },
-    "enemies": [
-      {
-        "name": "Fabre",
-        "id": 1007
-      }
-    ]
-  },
-  {
-    "name": "Prontera North",
     "id": 4,
-    "connections": {
-      "south": 1
-    },
-    "enemies": [
-      {
-        "name": "Thief Bug",
-        "id": 1051
-      },
-      {
-        "name": "Fabre",
-        "id": 1007
-      }
-    ]
+    "name": "Prontera North",
+    "south": 1,
+    "enemies": [1051, 1007]
+  },
+  {
+    "id": 5,
+    "name": "Prontera East",
+    "west": 1,
+    "enemies": [1007]
   }
 ]

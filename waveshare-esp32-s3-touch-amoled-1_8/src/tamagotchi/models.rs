@@ -223,9 +223,8 @@ impl Hero {
             if let Some((id_str, qty_str)) = pair.split_once(':') {
                 if let (Ok(id), Ok(quantity)) = (id_str.parse::<u32>(), qty_str.parse::<u16>()) {
                     // Find item name from game data
-                    if let Some(item_name) = get_item_name(id) {
-                        self.add_item(id, item_name, quantity);
-                    }
+                    let item_name = get_item_name(id);
+                    self.add_item(id, item_name, quantity);
                 }
             }
         }
@@ -406,7 +405,7 @@ pub struct MapHelper;
 
 impl MapHelper {
     pub fn name(map_id: MapId) -> &'static str {
-        get_map_name(map_id).unwrap_or("Unknown")
+        get_map_name(map_id)
     }
 
     pub fn location_type(map_id: MapId) -> LocationType {
