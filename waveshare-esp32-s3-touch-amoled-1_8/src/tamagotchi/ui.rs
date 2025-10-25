@@ -1466,10 +1466,10 @@ where
         COLOR_TEXT,
     )?;
 
-    // Menu items in 2 columns x 3 rows (5 items)
+    // Menu items in 2 columns x 3 rows (6 items)
     // Farm and Battle are now accessed via Map page
     // Button size: 150x70 with 10px spacing
-    let menu_items = ["Overview", "Rest", "Map", "Inventory", "Save"];
+    let menu_items = ["Overview", "Rest", "Map", "Inventory", "Settings", "Save"];
 
     for (i, item) in menu_items.iter().enumerate() {
         let col = i % 2;
@@ -1615,6 +1615,107 @@ where
         display,
         "Touch to go back",
         Point::new(90, 440),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
+    )?;
+
+    Ok(())
+}
+
+/// Draw the settings page with brightness slider
+pub fn draw_settings_page<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    // Clear display
+    display.clear(COLOR_BG)?;
+
+    draw_text(
+        display,
+        "=== SETTINGS ===",
+        Point::new(85, 20),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+
+    // Brightness section
+    draw_text(
+        display,
+        "Brightness",
+        Point::new(130, 100),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+
+    // Brightness value display
+    let mut brightness_str = String::<16>::new();
+    write!(brightness_str, "{}%", (game_state.brightness as u32 * 100) / 255).ok();
+    draw_text(
+        display,
+        &brightness_str,
+        Point::new(155, 130),
+        &FONT_9X18_BOLD,
+        Rgb888::YELLOW,
+    )?;
+
+    // Slider track (background bar)
+    Rectangle::new(Point::new(40, 180), Size::new(280, 20))
+        .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(40, 180), Size::new(280, 20))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+        .draw(display)?;
+
+    // Slider filled portion (represents current brightness)
+    let filled_width = ((game_state.brightness as u32 * 280) / 255) as u32;
+    if filled_width > 0 {
+        Rectangle::new(Point::new(40, 180), Size::new(filled_width, 20))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::YELLOW))
+            .draw(display)?;
+    }
+
+    // Slider handle (indicator)
+    let handle_x = 40 + ((game_state.brightness as i32 * 280) / 255);
+    EgCircle::new(Point::new(handle_x - 8, 172), 16)
+        .into_styled(PrimitiveStyle::with_fill(COLOR_MENU_SELECT))
+        .draw(display)?;
+
+    EgCircle::new(Point::new(handle_x - 8, 172), 16)
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 3))
+        .draw(display)?;
+
+    // Instructions
+    draw_text(
+        display,
+        "Touch slider to adjust",
+        Point::new(70, 250),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
+    )?;
+
+    // Brightness range labels
+    draw_text(
+        display,
+        "0%",
+        Point::new(35, 210),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
+    )?;
+
+    draw_text(
+        display,
+        "100%",
+        Point::new(290, 210),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
+    )?;
+
+    // Footer
+    draw_text(
+        display,
+        "Touch bottom to go back",
+        Point::new(65, 440),
         &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;

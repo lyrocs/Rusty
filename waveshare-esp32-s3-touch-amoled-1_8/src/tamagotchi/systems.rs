@@ -9,7 +9,7 @@ use crate::tamagotchi::models::{
 };
 use crate::tamagotchi::ui::{
     draw_battle_page, draw_farm_page, draw_inventory, draw_map_page, draw_menu, draw_overview_page,
-    draw_rest_page,
+    draw_rest_page, draw_settings_page,
 };
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
@@ -126,11 +126,11 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     match game_state.current_page {
         GamePage::Menu => {
             // Menu item selection based on button position (2 columns x 3 rows)
-            // Now 5 items - Farm and Battle removed (accessed via Map)
+            // Now 6 items - Farm and Battle removed (accessed via Map)
             // Button layout:
-            // [Overview(0)] [Rest(1)]      Row 0: y=110-180
-            // [Map(2)]      [Inventory(3)] Row 1: y=190-260
-            // [Save(4)]                    Row 2: y=270-340
+            // [Overview(0)]  [Rest(1)]      Row 0: y=110-180
+            // [Map(2)]       [Inventory(3)] Row 1: y=190-260
+            // [Settings(4)]  [Save(5)]      Row 2: y=270-340
             //
             // Col 0: x=24-174, Col 1: x=184-334
 
@@ -161,8 +161,8 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 // Calculate button index (row * 2 + col)
                 if row < 3 && col < 2 {
                     let button_index = row * 2 + col;
-                    if button_index < 5 {
-                        // Now 5 buttons exist
+                    if button_index < 6 {
+                        // Now 6 buttons exist
                         clicked_button = Some(button_index);
                     }
                 }
@@ -178,7 +178,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     );
 
                     // Handle selection
-                    if item_index == 4 {
+                    if item_index == 5 {
                         // Save Game selected
                         game_state.save_requested = true;
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
@@ -189,6 +189,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             1 => GamePage::Rest,
                             2 => GamePage::Map,
                             3 => GamePage::Inventory,
+                            4 => GamePage::Settings,
                             _ => GamePage::Overview,
                         };
 
@@ -437,6 +438,26 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             game_state.current_page = GamePage::Menu;
             game_state.needs_redraw = true;
         }
+        GamePage::Settings => {
+            // Brightness slider area: x=40-320, y=180-200 (horizontal bar)
+            // Slider handle position based on brightness: x = 40 + (brightness * 280 / 255)
+
+            if y >= 160 && y <= 220 && x >= 40 && x <= 320 {
+                // Calculate new brightness from touch position
+                // Left (x=40) should be 0% (dim), Right (x=320) should be 100% (bright)
+                let slider_x = (x - 40).max(0).min(280);
+                let new_brightness = ((slider_x as u32 * 255) / 280) as u8;
+
+                if game_state.brightness != new_brightness {
+                    game_state.brightness = new_brightness;
+                    game_state.needs_redraw = true;
+                }
+            } else if y >= 350 {
+                // Bottom area - go back to menu
+                game_state.current_page = GamePage::Menu;
+                game_state.needs_redraw = true;
+            }
+        }
     }
 }
 
@@ -624,7 +645,15 @@ pub fn tamagotchi_render_system(
         GamePage::Inventory => {
             draw_inventory(&mut display_res.display, &game_state).ok();
         }
+        GamePage::Settings => {
+            draw_settings_page(&mut display_res.display, &game_state).ok();
+        }
     }
+
+    // Apply brightness setting directly
+    // Slider 0% (brightness=0) = dim, Slider 100% (brightness=255) = bright
+    let brightness_value = game_state.brightness as u16;
+    display_res.display.set_brightness(brightness_value).ok();
 
     // Flush the display
     display_res.display.flush().ok();

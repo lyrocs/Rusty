@@ -36,6 +36,7 @@ pub enum GamePage {
     Map,    // Navigation and world map
     Menu,
     Inventory, // Item inventory
+    Settings,  // Settings page (brightness, etc.)
 }
 
 /// Hero character data
@@ -514,6 +515,7 @@ pub struct GameState {
     pub needs_redraw: bool, // Flag to indicate screen needs redrawing
     pub screen_on: bool,    // Screen power state (controlled by PWR button)
     pub last_drops: HeaplessVec<(u32, &'static str, u16), 4>, // Last items that dropped
+    pub brightness: u8,     // Screen brightness (0-255)
 }
 
 impl Default for GameState {
@@ -555,6 +557,7 @@ impl Default for GameState {
             needs_redraw: true, // Start with needing a redraw
             screen_on: true,    // Screen starts on
             last_drops: HeaplessVec::new(),
+            brightness: 204,    // 80% brightness by default (204/255 = 0.8)
         }
     }
 }

@@ -1,183 +1,183 @@
 [
-    {
-        "name": "Poring",
-        "id": 1002,
-        "level": 1,
-        "hp": 60,
-        "max_hp": 60,
-        "attack": 13,
-        "defense": 2,
-        "base_exp": 150,
-        "job_exp": 40,
-        "drops": [
-            {
-                "chance": 70,
-                "drop": {
-                    "Item": {
-                        "id": 909,
-                        "name": "Jellopy",
-                        "quantity": 1
-                    }
-                }
-            },
-            {
-                "chance": 1.5,
-                "drop": {
-                    "Item": {
-                        "id": 512,
-                        "name": "Apple",
-                        "quantity": 1
-                    }
-                }
-            },
-            {
-                "chance": 50,
-                "drop": {
-                    "Equipment": {
-                        "id": 1208,
-                        "name": "Main Gauche"
-                    }
-                }
-            },
-            {
-                "chance": 0.2,
-                "drop": {
-                    "Item": {
-                        "id": 4001,
-                        "name": "Poring Card",
-                        "quantity": 1
-                    }
-                }
-            }
-        ]
-    },
-    {
-        "name": "Fabre",
-        "id": 1007,
-        "level": 6,
-        "hp": 72,
-        "max_hp": 72,
-        "attack": 27,
-        "defense": 24,
-        "base_exp": 158,
-        "job_exp": 65,
-        "drops": [
-            {
-                "chance": 70,
-                "drop": {
-                    "Item": {
-                        "id": 914,
-                        "name": "Fluff",
-                        "quantity": 1
-                    }
-                }
-            },
-            {
-                "chance": 30,
-                "drop": {
-                    "Item": {
-                        "id": 511,
-                        "name": "Green Herb",
-                        "quantity": 1
-                    }
-                }
-            },
-            {
-                "drop": {
-                    "Item": {
-                        "id": 4002,
-                        "name": "Fabre Card",
-                        "quantity": 1
-                    }
-                },
-                "chance": 0.2
-            }
-        ]
-    },
-    {
-        "name": "Hornet",
-        "id": 1004,
-        "level": 11,
-        "hp": 90,
-        "max_hp": 90,
-        "attack": 33,
-        "defense": 7,
-        "base_exp": 158,
-        "job_exp": 90,
-        "drops": [
-            {
-                "drop": {
-                    "Item": {
-                        "id": 939,
-                        "name": "Bee Sting",
-                        "quantity": 1
-                    }
-                },
-                "chance": 80
-            },
-            {
-                "drop": {
-                    "Item": {
-                        "id": 511,
-                        "name": "Green Herb",
-                        "quantity": 1
-                    }
-                },
-                "chance": 5
-            },
-            {
-                "drop": {
-                    "Item": {
-                        "id": 4002,
-                        "name": "Hornet Card",
-                        "quantity": 1
-                    }
-                },
-                "chance": 0.2
-            }
-        ]
-    },
-    {
-        "name": "Thief Bug",
-        "id": 1051,
-        "level": 21,
-        "hp": 354,
-        "max_hp": 354,
-        "attack": 84,
-        "defense": 24,
-        "base_exp": 188,
-        "job_exp": 140,
-        "drops": [
-            {
-                "drop": {
-                    "Item": {
-                        "id": 955,
-                        "name": "Worm Peeling",
-                        "quantity": 1
-                    }
-                },
-                "chance": 30
-            },
-            {
-                "drop": {
-                    "Item": {
-                        "id": 955,
-                        "name": "Red Herb",
-                        "quantity": 1
-                    }
-                },
-                "chance": 1.75
-            },
-            {
-                "drop": {
-                    "Item": {
-                        "id": 4002,
-                        "name": "Thief Bug Card",
-                        "quantity": 1
-                    }
-                },
-                "chance": 0.2
-            }
-        ]
-    }
+  {
+    "name": "Poring",
+    "id": 1002,
+    "level": 1,
+    "hp": 60,
+    "max_hp": 60,
+    "attack": 13,
+    "defense": 2,
+    "base_exp": 150,
+    "job_exp": 40,
+    "drops": [
+      {
+        "chance": 70,
+        "drop": {
+          "Item": {
+            "id": 909,
+            "name": "Jellopy",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 1.5,
+        "drop": {
+          "Item": {
+            "id": 512,
+            "name": "Apple",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 50,
+        "drop": {
+          "Equipment": {
+            "id": 1208,
+            "name": "Main Gauche"
+          }
+        }
+      },
+      {
+        "chance": 0.2,
+        "drop": {
+          "Item": {
+            "id": 4001,
+            "name": "Poring Card",
+            "quantity": 1
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Fabre",
+    "id": 1007,
+    "level": 6,
+    "hp": 72,
+    "max_hp": 72,
+    "attack": 27,
+    "defense": 24,
+    "base_exp": 158,
+    "job_exp": 65,
+    "drops": [
+      {
+        "chance": 70,
+        "drop": {
+          "Item": {
+            "id": 914,
+            "name": "Fluff",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 30,
+        "drop": {
+          "Item": {
+            "id": 511,
+            "name": "Green Herb",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "drop": {
+          "Item": {
+            "id": 4002,
+            "name": "Fabre Card",
+            "quantity": 1
+          }
+        },
+        "chance": 0.2
+      }
+    ]
+  },
+  {
+    "name": "Hornet",
+    "id": 1004,
+    "level": 11,
+    "hp": 90,
+    "max_hp": 90,
+    "attack": 33,
+    "defense": 7,
+    "base_exp": 158,
+    "job_exp": 90,
+    "drops": [
+      {
+        "chance": 80,
+        "drop": {
+          "Item": {
+            "id": 939,
+            "name": "Bee Sting",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 5,
+        "drop": {
+          "Item": {
+            "id": 511,
+            "name": "Green Herb",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 0.2,
+        "drop": {
+          "Item": {
+            "id": 4002,
+            "name": "Hornet Card",
+            "quantity": 1
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Thief Bug",
+    "id": 1051,
+    "level": 21,
+    "hp": 354,
+    "max_hp": 354,
+    "attack": 84,
+    "defense": 24,
+    "base_exp": 188,
+    "job_exp": 140,
+    "drops": [
+      {
+        "chance": 30,
+        "drop": {
+          "Item": {
+            "id": 955,
+            "name": "Worm Peeling",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 1.75,
+        "drop": {
+          "Item": {
+            "id": 955,
+            "name": "Red Herb",
+            "quantity": 1
+          }
+        }
+      },
+      {
+        "chance": 0.2,
+        "drop": {
+          "Item": {
+            "id": 4002,
+            "name": "Thief Bug Card",
+            "quantity": 1
+          }
+        }
+      }
+    ]
+  }
 ]
