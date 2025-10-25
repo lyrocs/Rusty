@@ -37,13 +37,20 @@ pub fn tamagotchi_button_system(
         if game_state.current_page == GamePage::Menu {
             // Close menu and go to selected page
             // Menu now has 4 items: Overview, Rest, Map, Save
-            game_state.current_page = match game_state.menu_selection {
+            let new_page = match game_state.menu_selection {
                 0 => GamePage::Overview,
                 1 => GamePage::Rest,
                 2 => GamePage::Map,
                 // 3 is Save - handled in touch system, stays on current page
                 _ => GamePage::Overview,
             };
+
+            // Initialize rest state if going to Rest page
+            if matches!(new_page, GamePage::Rest) {
+                game_state.init_rest_state();
+            }
+
+            game_state.current_page = new_page;
         } else {
             // Open menu
             game_state.current_page = GamePage::Menu;
@@ -177,13 +184,20 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
                     } else {
                         // Navigate to selected page
-                        game_state.current_page = match item_index {
+                        let new_page = match item_index {
                             0 => GamePage::Overview,
                             1 => GamePage::Rest,
                             2 => GamePage::Map,
                             3 => GamePage::Inventory,
                             _ => GamePage::Overview,
                         };
+
+                        // Initialize rest state if going to Rest page
+                        if matches!(new_page, GamePage::Rest) {
+                            game_state.init_rest_state();
+                        }
+
+                        game_state.current_page = new_page;
                     }
                 }
             }

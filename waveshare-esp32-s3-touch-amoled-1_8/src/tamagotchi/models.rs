@@ -615,6 +615,17 @@ impl GameState {
         self.farm_touch_cooldown = 300;
     }
 
+    /// Initialize rest state based on current HP/SP
+    pub fn init_rest_state(&mut self) {
+        // Check if already fully recovered
+        if self.hero.sp >= self.hero.max_sp && self.hero.hp >= self.hero.max_hp {
+            self.rest_state = RestState::FullSP;
+        } else {
+            self.rest_state = RestState::Resting;
+        }
+        self.rest_progress = 0;
+    }
+
     /// Update rest progress
     pub fn update_rest_progress(&mut self, delta_ms: u32) {
         if self.rest_state == RestState::Resting {
