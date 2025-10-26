@@ -355,6 +355,37 @@ impl MonsterAnimation {
     }
 }
 
+/// Monster attacked animation (when hero attacks monster)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MonsterAttackedAnimation {
+    Normal,   // Not being attacked
+    Attacked, // 24.gif - plays once when hero attacks
+}
+
+/// Hero GIF animation state
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeroAnimation {
+    Resting,   // 16.gif - loops (shown on rest page)
+    Idle,      // 36.gif - loops (main loop on battle/farm)
+    Attacking, // 84.gif - plays once (hero attacks)
+    Attacked,  // 52.gif - plays once (hero takes damage)
+}
+
+impl HeroAnimation {
+    pub fn gif_data(&self) -> &'static [u8] {
+        match self {
+            HeroAnimation::Resting => include_bytes!("images/swordman/16.gif"),
+            HeroAnimation::Idle => include_bytes!("images/swordman/36.gif"),
+            HeroAnimation::Attacking => include_bytes!("images/swordman/84.gif"),
+            HeroAnimation::Attacked => include_bytes!("images/swordman/52.gif"),
+        }
+    }
+
+    pub fn should_loop(&self) -> bool {
+        matches!(self, HeroAnimation::Resting | HeroAnimation::Idle)
+    }
+}
+
 /// Rest state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestState {
@@ -540,7 +571,14 @@ pub struct GameState {
     pub monster_animation: MonsterAnimation, // Current monster animation
     pub monster_animation_frame: usize, // Current frame in animation
     pub monster_animation_started_ms: u32, // When current animation started
-    pub last_attack_animation_ms: u32, // When last attack animation was triggered
+    pub monster_attacked_animation: MonsterAttackedAnimation, // Monster attacked state
+    pub monster_attacked_frame: usize, // Current frame in attacked animation
+    pub monster_attacked_started_ms: u32, // When monster attacked animation started
+    pub hero_animation: HeroAnimation, // Current hero animation
+    pub hero_animation_frame: usize, // Current frame in hero animation
+    pub hero_animation_started_ms: u32, // When current hero animation started
+    pub last_attack_animation_ms: u32, // When last attack animation was triggered (for timing)
+    pub last_hero_attack_ms: u32, // When hero last attacked (for triggering hero attack anim)
 }
 
 impl Default for GameState {
@@ -586,7 +624,14 @@ impl Default for GameState {
             monster_animation: MonsterAnimation::Idle,
             monster_animation_frame: 0,
             monster_animation_started_ms: 0,
+            monster_attacked_animation: MonsterAttackedAnimation::Normal,
+            monster_attacked_frame: 0,
+            monster_attacked_started_ms: 0,
+            hero_animation: HeroAnimation::Idle,
+            hero_animation_frame: 0,
+            hero_animation_started_ms: 0,
             last_attack_animation_ms: 0,
+            last_hero_attack_ms: 0,
         }
     }
 }
