@@ -371,7 +371,7 @@ where
                 draw_hero_gif(display, game_state, Point::new(60, 200))?;
 
                 // Draw monster GIF animation with attacked state (right side)
-                draw_monster_attacked_gif(display, game_state, Point::new(180, 200))?;
+                draw_monster_attacked_gif(display, game_state, Point::new(180, 200), enemy.name)?;
 
                 // Progress bar
                 draw_text(
@@ -438,7 +438,7 @@ where
                 )?;
 
                 // Draw dying monster GIF animation (centered)
-                draw_monster_gif(display, game_state, Point::new(120, 110))?;
+                draw_monster_gif(display, game_state, Point::new(120, 110), enemy.name)?;
 
                 draw_text(
                     display,
@@ -913,10 +913,10 @@ where
                 COLOR_TEXT,
             )?;
 
-            // Draw dying monster GIF animation (centered)
-            draw_monster_gif(display, game_state, Point::new(120, 110))?;
-
             if let Some(enemy) = &game_state.battle_enemy {
+                // Draw dying monster GIF animation (centered)
+                draw_monster_gif(display, game_state, Point::new(120, 110), enemy.name)?;
+
                 let mut enemy_str = String::<32>::new();
                 write!(enemy_str, "Defeated {}", enemy.name).ok();
                 draw_text(
@@ -1590,11 +1590,12 @@ fn draw_monster_gif<D>(
     display: &mut D,
     game_state: &GameState,
     center_position: Point,
+    monster_name: &str,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    let gif_data = game_state.monster_animation.gif_data();
+    let gif_data = game_state.monster_animation.gif_data(monster_name);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
 
     // Get GIF dimensions to calculate centered position
@@ -1664,19 +1665,20 @@ fn draw_monster_attacked_gif<D>(
     display: &mut D,
     game_state: &GameState,
     center_position: Point,
+    monster_name: &str,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    use crate::tamagotchi::models::MonsterAttackedAnimation;
+    use crate::tamagotchi::models::{MonsterAttackedAnimation, get_monster_attacked_gif};
 
     if game_state.monster_attacked_animation == MonsterAttackedAnimation::Normal {
         // No attacked animation, draw normal monster
-        return draw_monster_gif(display, game_state, center_position);
+        return draw_monster_gif(display, game_state, center_position, monster_name);
     }
 
-    // Draw attacked animation (24.gif)
-    let gif_data = include_bytes!("images/poring/24.gif");
+    // Draw attacked animation (24.gif) for specific monster
+    let gif_data = get_monster_attacked_gif(monster_name);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse monster attacked GIF");
 
     // Get GIF dimensions to calculate centered position

@@ -462,12 +462,12 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
 }
 
 /// Helper function to update monster GIF animation
-fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32) {
+fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_name: &str) {
     use tinygif::Gif;
     use embedded_graphics::pixelcolor::Rgb888;
     use crate::tamagotchi::models::MonsterAnimation;
 
-    let gif_data = game_state.monster_animation.gif_data();
+    let gif_data = game_state.monster_animation.gif_data(monster_name);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
     let total_frames = gif.frames().count();
 
@@ -545,16 +545,16 @@ fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
 }
 
 /// Helper function to update monster attacked animation (24.gif)
-fn update_monster_attacked_animation(game_state: &mut GameState, _delta_ms: u32) {
+fn update_monster_attacked_animation(game_state: &mut GameState, _delta_ms: u32, monster_name: &str) {
     use tinygif::Gif;
     use embedded_graphics::pixelcolor::Rgb888;
-    use crate::tamagotchi::models::MonsterAttackedAnimation;
+    use crate::tamagotchi::models::{MonsterAttackedAnimation, get_monster_attacked_gif};
 
     if game_state.monster_attacked_animation == MonsterAttackedAnimation::Normal {
         return; // Not being attacked
     }
 
-    let gif_data = include_bytes!("../tamagotchi/images/poring/24.gif");
+    let gif_data = get_monster_attacked_gif(monster_name);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse attacked GIF");
     let total_frames = gif.frames().count();
 
@@ -687,10 +687,13 @@ pub fn tamagotchi_update_system(
                     game_state.needs_redraw = true;
                 }
 
-                // Update all animations
-                update_monster_animation(&mut game_state, delta_ms);
+                // Update all animations (get monster name from current enemy)
+                if let Some(enemy) = &game_state.current_enemy {
+                    let monster_name = enemy.name;
+                    update_monster_animation(&mut game_state, delta_ms, monster_name);
+                    update_monster_attacked_animation(&mut game_state, delta_ms, monster_name);
+                }
                 update_hero_animation(&mut game_state, delta_ms);
-                update_monster_attacked_animation(&mut game_state, delta_ms);
             }
             FarmState::Victory => {
                 // Set to dying animation when entering victory
@@ -701,8 +704,11 @@ pub fn tamagotchi_update_system(
                     game_state.monster_animation_started_ms = game_state.last_update_ms;
                     game_state.needs_redraw = true;
                 }
-                // Animate dying GIF
-                update_monster_animation(&mut game_state, delta_ms);
+                // Animate dying GIF (get monster name from current enemy)
+                let monster_name = game_state.current_enemy.as_ref().map(|e| e.name);
+                if let Some(name) = monster_name {
+                    update_monster_animation(&mut game_state, delta_ms, name);
+                }
             }
             FarmState::Defeat => {
                 // No animation for defeat state
@@ -782,8 +788,11 @@ pub fn tamagotchi_update_system(
                     game_state.monster_animation_started_ms = game_state.last_update_ms;
                     game_state.needs_redraw = true;
                 }
-                // Animate dying GIF
-                update_monster_animation(&mut game_state, delta_ms);
+                // Animate dying GIF (get monster name from battle enemy)
+                let monster_name = game_state.battle_enemy.as_ref().map(|e| e.name);
+                if let Some(name) = monster_name {
+                    update_monster_animation(&mut game_state, delta_ms, name);
+                }
             }
             BattleState::Defeat => {
                 // No animation for defeat state, keep it idle or stopped

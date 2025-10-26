@@ -342,16 +342,50 @@ pub enum MonsterAnimation {
 }
 
 impl MonsterAnimation {
-    pub fn gif_data(&self) -> &'static [u8] {
-        match self {
-            MonsterAnimation::Idle => include_bytes!("images/poring/0.gif"),
-            MonsterAnimation::Attacking => include_bytes!("images/poring/16.gif"),
-            MonsterAnimation::Dying => include_bytes!("images/poring/32.gif"),
+    /// Get GIF data for a specific monster and animation state
+    pub fn gif_data(&self, monster_name: &str) -> &'static [u8] {
+        // Convert monster name to lowercase for folder matching
+        let monster_lower = monster_name.to_lowercase();
+
+        match (monster_lower.as_str(), self) {
+            // Poring animations
+            ("poring", MonsterAnimation::Idle) => include_bytes!("images/poring/0.gif"),
+            ("poring", MonsterAnimation::Attacking) => include_bytes!("images/poring/16.gif"),
+            ("poring", MonsterAnimation::Dying) => include_bytes!("images/poring/32.gif"),
+
+            // Fabre animations
+            ("fabre", MonsterAnimation::Idle) => include_bytes!("images/fabre/0.gif"),
+            ("fabre", MonsterAnimation::Attacking) => include_bytes!("images/fabre/16.gif"),
+            ("fabre", MonsterAnimation::Dying) => include_bytes!("images/fabre/32.gif"),
+
+            // Default fallback to Poring if monster not found
+            _ => {
+                esp_println::println!("[WARNING] No GIF found for monster '{}', using Poring", monster_name);
+                match self {
+                    MonsterAnimation::Idle => include_bytes!("images/poring/0.gif"),
+                    MonsterAnimation::Attacking => include_bytes!("images/poring/16.gif"),
+                    MonsterAnimation::Dying => include_bytes!("images/poring/32.gif"),
+                }
+            }
         }
     }
 
     pub fn should_loop(&self) -> bool {
         matches!(self, MonsterAnimation::Idle)
+    }
+}
+
+/// Get monster attacked GIF (24.gif) for a specific monster
+pub fn get_monster_attacked_gif(monster_name: &str) -> &'static [u8] {
+    let monster_lower = monster_name.to_lowercase();
+
+    match monster_lower.as_str() {
+        "poring" => include_bytes!("images/poring/24.gif"),
+        "fabre" => include_bytes!("images/fabre/24.gif"),
+        _ => {
+            esp_println::println!("[WARNING] No attacked GIF found for monster '{}', using Poring", monster_name);
+            include_bytes!("images/poring/24.gif")
+        }
     }
 }
 
