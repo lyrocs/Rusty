@@ -489,6 +489,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
 }
 
 /// Helper function to update monster GIF animation
+/// Uses global animation clock for synchronized updates - only sets needs_redraw when frame changes
 fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_name: &str) {
     use crate::tamagotchi::models::MonsterAnimation;
     use embedded_graphics::pixelcolor::Rgb888;
@@ -498,12 +499,13 @@ fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
     let total_frames = gif.frames().count();
 
-    // Update animation frame every ~100ms (10 FPS for smooth animation)
-    let elapsed_ms = game_state.last_update_ms - game_state.monster_animation_started_ms;
+    // Use global animation clock for synchronized updates (100ms per frame)
+    let elapsed_ms = game_state.gif_animation_clock_ms
+        .wrapping_sub(game_state.monster_animation_started_ms);
     let frame_duration_ms = 100;
     let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
 
-    // Check if animation should loop or stop at last frame
+    // Only update and redraw if frame actually changed
     if game_state.monster_animation.should_loop() {
         // Loop animations (Idle)
         if game_state.monster_animation_frame != target_frame {
@@ -522,7 +524,7 @@ fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_
             if game_state.monster_animation == MonsterAnimation::Attacking {
                 game_state.monster_animation = MonsterAnimation::Idle;
                 game_state.monster_animation_frame = 0;
-                game_state.monster_animation_started_ms = game_state.last_update_ms;
+                game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                 game_state.needs_redraw = true;
             }
         }
@@ -530,6 +532,7 @@ fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_
 }
 
 /// Helper function to update hero GIF animation
+/// Uses global animation clock for synchronized updates - only sets needs_redraw when frame changes
 fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
     use crate::tamagotchi::models::HeroAnimation;
     use embedded_graphics::pixelcolor::Rgb888;
@@ -539,12 +542,13 @@ fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
     let total_frames = gif.frames().count();
 
-    // Update animation frame every ~100ms (10 FPS for smooth animation)
-    let elapsed_ms = game_state.last_update_ms - game_state.hero_animation_started_ms;
+    // Use global animation clock for synchronized updates (100ms per frame)
+    let elapsed_ms = game_state.gif_animation_clock_ms
+        .wrapping_sub(game_state.hero_animation_started_ms);
     let frame_duration_ms = 100;
     let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
 
-    // Check if animation should loop or stop at last frame
+    // Only update and redraw if frame actually changed
     if game_state.hero_animation.should_loop() {
         // Loop animations (Resting, Idle)
         if game_state.hero_animation_frame != target_frame {
@@ -565,7 +569,7 @@ fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
             {
                 game_state.hero_animation = HeroAnimation::Idle;
                 game_state.hero_animation_frame = 0;
-                game_state.hero_animation_started_ms = game_state.last_update_ms;
+                game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
                 game_state.needs_redraw = true;
             }
         }
@@ -573,6 +577,7 @@ fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
 }
 
 /// Helper function to update monster attacked animation (24.gif)
+/// Uses global animation clock for synchronized updates - only sets needs_redraw when frame changes
 fn update_monster_attacked_animation(
     game_state: &mut GameState,
     _delta_ms: u32,
@@ -590,12 +595,13 @@ fn update_monster_attacked_animation(
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse attacked GIF");
     let total_frames = gif.frames().count();
 
-    // Update animation frame every ~100ms (10 FPS)
-    let elapsed_ms = game_state.last_update_ms - game_state.monster_attacked_started_ms;
+    // Use global animation clock for synchronized updates (100ms per frame)
+    let elapsed_ms = game_state.gif_animation_clock_ms
+        .wrapping_sub(game_state.monster_attacked_started_ms);
     let frame_duration_ms = 100;
     let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
 
-    // Play once and return to Normal
+    // Play once and return to Normal - only update and redraw if frame actually changed
     if game_state.monster_attacked_frame < total_frames - 1 {
         if game_state.monster_attacked_frame != target_frame {
             game_state.monster_attacked_frame = target_frame.min(total_frames - 1);
@@ -620,12 +626,12 @@ fn update_battle_animations(game_state: &mut GameState, delta_ms: u32, monster_n
             if game_state.hero_animation != HeroAnimation::Idle {
                 game_state.hero_animation = HeroAnimation::Idle;
                 game_state.hero_animation_frame = 0;
-                game_state.hero_animation_started_ms = game_state.last_update_ms;
+                game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
             }
             if game_state.monster_animation != MonsterAnimation::Idle {
                 game_state.monster_animation = MonsterAnimation::Idle;
                 game_state.monster_animation_frame = 0;
-                game_state.monster_animation_started_ms = game_state.last_update_ms;
+                game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
             }
             // Update both idle animations
             update_hero_animation(game_state, delta_ms);
@@ -636,12 +642,12 @@ fn update_battle_animations(game_state: &mut GameState, delta_ms: u32, monster_n
             if game_state.monster_animation != MonsterAnimation::Attacking {
                 game_state.monster_animation = MonsterAnimation::Attacking;
                 game_state.monster_animation_frame = 0;
-                game_state.monster_animation_started_ms = game_state.last_update_ms;
+                game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
             }
             if game_state.hero_animation != HeroAnimation::Attacked {
                 game_state.hero_animation = HeroAnimation::Attacked;
                 game_state.hero_animation_frame = 0;
-                game_state.hero_animation_started_ms = game_state.last_update_ms;
+                game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
             }
             update_hero_animation(game_state, delta_ms);
             update_monster_animation(game_state, delta_ms, monster_name);
@@ -651,20 +657,20 @@ fn update_battle_animations(game_state: &mut GameState, delta_ms: u32, monster_n
             if game_state.hero_animation != HeroAnimation::Attacking {
                 game_state.hero_animation = HeroAnimation::Attacking;
                 game_state.hero_animation_frame = 0;
-                game_state.hero_animation_started_ms = game_state.last_update_ms;
+                game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
             }
             // Use monster_attacked_animation for the hit animation (24.gif)
             use crate::tamagotchi::models::MonsterAttackedAnimation;
             if game_state.monster_attacked_animation != MonsterAttackedAnimation::Attacked {
                 game_state.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
                 game_state.monster_attacked_frame = 0;
-                game_state.monster_attacked_started_ms = game_state.last_update_ms;
+                game_state.monster_attacked_started_ms = game_state.gif_animation_clock_ms;
             }
             // Set monster to idle so it doesn't override the attacked animation
             if game_state.monster_animation != MonsterAnimation::Idle {
                 game_state.monster_animation = MonsterAnimation::Idle;
                 game_state.monster_animation_frame = 0;
-                game_state.monster_animation_started_ms = game_state.last_update_ms;
+                game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
             }
             update_hero_animation(game_state, delta_ms);
             update_monster_attacked_animation(game_state, delta_ms, monster_name);
@@ -716,6 +722,21 @@ pub fn tamagotchi_update_system(
         }
     }
 
+    // Update global GIF animation clock every 100ms for synchronized animations
+    // This ensures all GIF animations update at the same time, reducing redraws
+    let gif_clock_elapsed = game_state
+        .last_update_ms
+        .wrapping_sub(game_state.gif_animation_last_update_ms);
+    if gif_clock_elapsed >= 100 {
+        game_state.gif_animation_clock_ms = game_state
+            .gif_animation_clock_ms
+            .wrapping_add(100);
+        game_state.gif_animation_last_update_ms = game_state.last_update_ms;
+
+        // Note: We don't set needs_redraw here - individual animation functions will do that
+        // only if they actually change frames
+    }
+
     // Handle farm state transitions and animations
     if game_state.current_page == GamePage::Farm {
         match game_state.farm_state {
@@ -725,7 +746,7 @@ pub fn tamagotchi_update_system(
                 if game_state.monster_animation != MonsterAnimation::Idle {
                     game_state.monster_animation = MonsterAnimation::Idle;
                     game_state.monster_animation_frame = 0;
-                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.needs_redraw = true;
                 }
             }
@@ -750,7 +771,7 @@ pub fn tamagotchi_update_system(
                 {
                     game_state.hero_animation = HeroAnimation::Idle;
                     game_state.hero_animation_frame = 0;
-                    game_state.hero_animation_started_ms = game_state.last_update_ms;
+                    game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.needs_redraw = true;
                 }
 
@@ -765,13 +786,13 @@ pub fn tamagotchi_update_system(
                     // Hero attacks!
                     game_state.hero_animation = HeroAnimation::Attacking;
                     game_state.hero_animation_frame = 0;
-                    game_state.hero_animation_started_ms = game_state.last_update_ms;
+                    game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.last_hero_attack_ms = game_state.last_update_ms;
 
                     // Monster gets attacked!
                     game_state.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
                     game_state.monster_attacked_frame = 0;
-                    game_state.monster_attacked_started_ms = game_state.last_update_ms;
+                    game_state.monster_attacked_started_ms = game_state.gif_animation_clock_ms;
 
                     game_state.needs_redraw = true;
                 }
@@ -787,13 +808,13 @@ pub fn tamagotchi_update_system(
                     // Monster attacks!
                     game_state.monster_animation = MonsterAnimation::Attacking;
                     game_state.monster_animation_frame = 0;
-                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.last_attack_animation_ms = game_state.last_update_ms;
 
                     // Hero gets attacked!
                     game_state.hero_animation = HeroAnimation::Attacked;
                     game_state.hero_animation_frame = 0;
-                    game_state.hero_animation_started_ms = game_state.last_update_ms;
+                    game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
 
                     game_state.needs_redraw = true;
                 }
@@ -812,7 +833,7 @@ pub fn tamagotchi_update_system(
                 if game_state.monster_animation != MonsterAnimation::Dying {
                     game_state.monster_animation = MonsterAnimation::Dying;
                     game_state.monster_animation_frame = 0;
-                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.needs_redraw = true;
                 }
                 // Animate dying GIF (get monster name from current enemy)
@@ -849,7 +870,7 @@ pub fn tamagotchi_update_system(
         if game_state.hero_animation != HeroAnimation::Resting {
             game_state.hero_animation = HeroAnimation::Resting;
             game_state.hero_animation_frame = 0;
-            game_state.hero_animation_started_ms = game_state.last_update_ms;
+            game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
             game_state.needs_redraw = true;
         }
 
@@ -866,7 +887,7 @@ pub fn tamagotchi_update_system(
                 if game_state.monster_animation != MonsterAnimation::Idle {
                     game_state.monster_animation = MonsterAnimation::Idle;
                     game_state.monster_animation_frame = 0;
-                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.needs_redraw = true;
                 }
             }
@@ -948,7 +969,7 @@ pub fn tamagotchi_update_system(
                 if game_state.monster_animation != MonsterAnimation::Dying {
                     game_state.monster_animation = MonsterAnimation::Dying;
                     game_state.monster_animation_frame = 0;
-                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                     game_state.needs_redraw = true;
                 }
                 // Animate dying GIF (get monster name from battle enemy)

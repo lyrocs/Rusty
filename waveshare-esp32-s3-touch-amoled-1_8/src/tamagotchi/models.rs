@@ -656,6 +656,8 @@ pub struct GameState {
     pub last_hero_attack_ms: u32, // When hero last attacked (for triggering hero attack anim)
     pub map_monster_animation_frame: usize, // Current frame for monster idle animations on map page
     pub map_monster_animation_last_update: u32, // Last time map monster animation was updated
+    pub gif_animation_clock_ms: u32, // Global clock for synchronized GIF animations (increments every 100ms)
+    pub gif_animation_last_update_ms: u32, // Last time GIF animation clock was updated
 }
 
 impl Default for GameState {
@@ -713,6 +715,8 @@ impl Default for GameState {
             last_hero_attack_ms: 0,
             map_monster_animation_frame: 0,
             map_monster_animation_last_update: 0,
+            gif_animation_clock_ms: 0,
+            gif_animation_last_update_ms: 0,
         }
     }
 }
@@ -728,7 +732,7 @@ impl GameState {
             // Reset animation to Idle when starting new farm
             self.monster_animation = MonsterAnimation::Idle;
             self.monster_animation_frame = 0;
-            self.monster_animation_started_ms = self.last_update_ms;
+            self.monster_animation_started_ms = self.gif_animation_clock_ms;
             self.needs_redraw = true;
         }
     }
@@ -779,7 +783,7 @@ impl GameState {
         // Reset animation to Idle
         self.monster_animation = MonsterAnimation::Idle;
         self.monster_animation_frame = 0;
-        self.monster_animation_started_ms = self.last_update_ms;
+        self.monster_animation_started_ms = self.gif_animation_clock_ms;
     }
 
     /// Initialize rest state based on current HP/SP
@@ -842,7 +846,7 @@ impl GameState {
             // Reset animation to Idle when starting new battle
             self.monster_animation = MonsterAnimation::Idle;
             self.monster_animation_frame = 0;
-            self.monster_animation_started_ms = self.last_update_ms;
+            self.monster_animation_started_ms = self.gif_animation_clock_ms;
             self.needs_redraw = true;
         }
     }
@@ -1047,6 +1051,6 @@ impl GameState {
         // Reset animation to Idle
         self.monster_animation = MonsterAnimation::Idle;
         self.monster_animation_frame = 0;
-        self.monster_animation_started_ms = self.last_update_ms;
+        self.monster_animation_started_ms = self.gif_animation_clock_ms;
     }
 }
