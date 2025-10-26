@@ -8,8 +8,10 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Circle as EgCircle, Line, PrimitiveStyle, Rectangle},
     text::Text,
+    image::Image,
 };
 use heapless::String;
+use tinygif::Gif;
 
 use crate::tamagotchi::models::{
     BattleState, CircleType, Enemy, FarmState, GameState, Hero, LocationType, MapHelper, RestState,
@@ -201,9 +203,9 @@ where
 pub fn draw_farm_page<D>(
     display: &mut D,
     game_state: &GameState,
-    battery_mv: u16,
-    battery_pct: u8,
-    fps: u32,
+    _battery_mv: u16,
+    _battery_pct: u8,
+    _fps: u32,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
@@ -256,14 +258,14 @@ where
                 draw_text(
                     display,
                     "Touch screen to",
-                    Point::new(90, 160),
+                    Point::new(90, 200),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
                 draw_text(
                     display,
                     "start farming",
-                    Point::new(95, 185),
+                    Point::new(95, 225),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
@@ -271,14 +273,14 @@ where
                 draw_text(
                     display,
                     "Cost: 20 SP",
-                    Point::new(110, 230),
+                    Point::new(110, 280),
                     &FONT_9X15,
                     COLOR_TEXT_DIM,
                 )?;
                 draw_text(
                     display,
                     "Duration: 1 minute",
-                    Point::new(90, 250),
+                    Point::new(90, 300),
                     &FONT_9X15,
                     COLOR_TEXT_DIM,
                 )?;
@@ -287,7 +289,7 @@ where
                 draw_text(
                     display,
                     "NOT ENOUGH SP!",
-                    Point::new(75, 150),
+                    Point::new(75, 180),
                     &FONT_10X20,
                     COLOR_HP,
                 )?;
@@ -297,7 +299,7 @@ where
                 draw_text(
                     display,
                     &needed_str,
-                    Point::new(90, 185),
+                    Point::new(90, 215),
                     &FONT_9X18_BOLD,
                     COLOR_HP,
                 )?;
@@ -305,37 +307,23 @@ where
                 draw_text(
                     display,
                     "Go to Rest page to",
-                    Point::new(75, 225),
+                    Point::new(75, 265),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT_DIM,
                 )?;
                 draw_text(
                     display,
                     "recover SP",
-                    Point::new(115, 248),
+                    Point::new(115, 288),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT_DIM,
                 )?;
-
-                draw_text(
-                    display,
-                    "(Press BOOT > Rest)",
-                    Point::new(80, 285),
-                    &FONT_9X15,
-                    Rgb888::YELLOW,
-                )?;
             }
-
-            // Battery info
-            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-
-            // FPS info
-            draw_fps_info(display, Point::new(230, 360), fps)?;
 
             draw_text(
                 display,
                 "Press BOOT for Menu",
-                Point::new(90, 420),
+                Point::new(90, 440),
                 &FONT_9X15,
                 COLOR_TEXT_DIM,
             )?;
@@ -350,78 +338,49 @@ where
                     COLOR_TEXT,
                 )?;
 
-                // Hero info
-                draw_text(
-                    display,
-                    "You",
-                    Point::new(20, 60),
-                    &FONT_9X18_BOLD,
-                    COLOR_TEXT,
-                )?;
-                let mut hero_hp_str = String::<32>::new();
-                write!(
-                    hero_hp_str,
-                    "HP: {}/{}",
-                    game_state.hero.hp, game_state.hero.max_hp
-                )
-                .ok();
-                draw_text(
-                    display,
-                    &hero_hp_str,
-                    Point::new(20, 83),
-                    &FONT_9X15,
-                    COLOR_HP,
-                )?;
-                draw_bar(
-                    display,
-                    Point::new(20, 98),
-                    150,
-                    game_state.hero.hp_percent(),
-                    COLOR_HP,
-                )?;
-
-                // VS indicator
-                draw_text(display, "VS", Point::new(165, 75), &FONT_10X20, COLOR_TEXT)?;
-
-                // Enemy info
+                // Enemy name
                 let mut enemy_str = String::<32>::new();
                 write!(enemy_str, "{} Lv.{}", enemy.name, enemy.level).ok();
                 draw_text(
                     display,
                     &enemy_str,
-                    Point::new(200, 60),
+                    Point::new(100, 60),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
 
+                // Enemy HP bar
                 let mut enemy_hp_str = String::<32>::new();
                 write!(enemy_hp_str, "HP: {}/{}", enemy.hp, enemy.max_hp).ok();
                 draw_text(
                     display,
                     &enemy_hp_str,
-                    Point::new(200, 83),
+                    Point::new(105, 85),
                     &FONT_9X15,
                     COLOR_HP,
                 )?;
                 draw_bar(
                     display,
-                    Point::new(200, 98),
-                    150,
+                    Point::new(60, 100),
+                    250,
                     enemy.hp_percent(),
                     COLOR_HP,
                 )?;
 
+                // Draw monster GIF animation (centered)
+                draw_monster_gif(display, game_state, Point::new(120, 150))?;
+
                 // Progress bar
                 draw_text(
                     display,
-                    "Combat Progress",
-                    Point::new(85, 170),
+                    "Progress",
+                    Point::new(135, 330),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
                 draw_bar(
                     display,
-                    Point::new(20, 195),
+                    Point::new(20, 355),
                     328,
                     game_state.farm_progress_percent(),
                     COLOR_EXP,
@@ -433,39 +392,26 @@ where
                 draw_text(
                     display,
                     &time_str,
-                    Point::new(120, 215),
+                    Point::new(120, 375),
                     &FONT_9X15,
                     COLOR_TEXT_DIM,
                 )?;
 
                 // Potential rewards
-                draw_text(
-                    display,
-                    "Rewards:",
-                    Point::new(20, 260),
-                    &FONT_9X18_BOLD,
-                    COLOR_TEXT_DIM,
-                )?;
                 let mut reward_str = String::<32>::new();
                 write!(
                     reward_str,
-                    "EXP: {} | Zeny: {}",
+                    "Rewards: EXP {} | Zeny {}",
                     enemy.base_exp, enemy.zeny_reward
                 )
                 .ok();
                 draw_text(
                     display,
                     &reward_str,
-                    Point::new(20, 283),
+                    Point::new(30, 420),
                     &FONT_9X15,
                     COLOR_EXP,
                 )?;
-
-                // Battery info
-                draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-
-                // FPS info
-                draw_fps_info(display, Point::new(230, 360), fps)?;
             }
         }
         FarmState::Victory => {
@@ -483,15 +429,18 @@ where
                 draw_text(
                     display,
                     &enemy_str,
-                    Point::new(85, 100),
+                    Point::new(85, 60),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
 
+                // Draw dying monster GIF animation (centered)
+                draw_monster_gif(display, game_state, Point::new(120, 110))?;
+
                 draw_text(
                     display,
                     "Rewards:",
-                    Point::new(120, 150),
+                    Point::new(130, 280),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
@@ -501,7 +450,7 @@ where
                 draw_text(
                     display,
                     &exp_str,
-                    Point::new(105, 180),
+                    Point::new(115, 310),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
@@ -511,7 +460,7 @@ where
                 draw_text(
                     display,
                     &zeny_str,
-                    Point::new(105, 210),
+                    Point::new(115, 340),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
@@ -521,45 +470,42 @@ where
                     draw_text(
                         display,
                         "Items:",
-                        Point::new(120, 250),
+                        Point::new(140, 380),
                         &FONT_9X18_BOLD,
                         Rgb888::YELLOW,
                     )?;
 
-                    let mut y = 280;
+                    let mut y = 410;
                     for (_, item_name, quantity) in &game_state.last_drops {
                         let mut item_str = String::<48>::new();
                         write!(item_str, "{} x{}", item_name, quantity).ok();
                         draw_text(
                             display,
                             &item_str,
-                            Point::new(80, y),
+                            Point::new(100, y),
                             &FONT_9X15,
                             Rgb888::YELLOW,
                         )?;
                         y += 20;
+                        if y > 450 {
+                            break; // Don't overflow screen
+                        }
                     }
                 } else {
                     draw_text(
                         display,
                         "No items dropped",
-                        Point::new(90, 270),
+                        Point::new(90, 400),
                         &FONT_9X15,
                         COLOR_TEXT_DIM,
                     )?;
                 }
             }
 
-            // Battery info
-            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-
-            // FPS info
-            draw_fps_info(display, Point::new(230, 360), fps)?;
-
             draw_text(
                 display,
                 "Touch to continue",
-                Point::new(90, 420),
+                Point::new(90, 440),
                 &FONT_9X15,
                 COLOR_TEXT_DIM,
             )?;
@@ -572,12 +518,6 @@ where
                 &FONT_10X20,
                 COLOR_HP,
             )?;
-
-            // Battery info
-            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-
-            // FPS info
-            draw_fps_info(display, Point::new(230, 360), fps)?;
 
             draw_text(
                 display,
@@ -762,8 +702,8 @@ where
 pub fn draw_battle_page<D>(
     display: &mut D,
     game_state: &GameState,
-    battery_mv: u16,
-    battery_pct: u8,
+    _battery_mv: u16,
+    _battery_pct: u8,
     fps: u32,
 ) -> Result<(), D::Error>
 where
@@ -872,8 +812,6 @@ where
                 )?;
             }
 
-            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-            draw_fps_info(display, Point::new(230, 360), fps)?;
             draw_text(
                 display,
                 "Press BOOT for Menu",
@@ -884,66 +822,50 @@ where
         }
         BattleState::Playing => {
             if let Some(enemy) = &game_state.battle_enemy {
-                draw_text(
-                    display,
-                    "=== BATTLE! ===",
-                    Point::new(85, 20),
-                    &FONT_10X20,
-                    COLOR_TEXT,
-                )?;
-
-                // Enemy HP bar at top
+                // Enemy name and level at top
                 let mut enemy_str = String::<32>::new();
                 write!(enemy_str, "{} Lv.{}", enemy.name, enemy.level).ok();
                 draw_text(
                     display,
                     &enemy_str,
-                    Point::new(20, 50),
+                    Point::new(100, 60),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
 
-                let mut enemy_hp_str = String::<32>::new();
-                write!(enemy_hp_str, "HP: {}/{}", enemy.hp, enemy.max_hp).ok();
-                draw_text(
-                    display,
-                    &enemy_hp_str,
-                    Point::new(20, 70),
-                    &FONT_9X15,
-                    COLOR_HP,
-                )?;
+                // Enemy HP bar
                 draw_bar(
                     display,
-                    Point::new(20, 85),
-                    328,
+                    Point::new(60, 100),
+                    250,
                     enemy.hp_percent(),
                     COLOR_HP,
                 )?;
 
-                // Timer
+                // Timer (top right)
                 let remaining_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
                 let mut time_str = String::<16>::new();
                 write!(time_str, "{}s", remaining_sec).ok();
                 draw_text(
                     display,
                     &time_str,
-                    Point::new(315, 50),
+                    Point::new(315, 20),
                     &FONT_10X20,
                     Rgb888::YELLOW,
                 )?;
 
-                // Score and Combo
+                // Score and Combo (top area - no GIF during gameplay for performance)
                 let mut score_str = String::<48>::new();
                 write!(
                     score_str,
-                    "Hits:{} Miss:{} Combo:{}x",
+                    "Hits:{} Miss:{} x{}",
                     game_state.battle_score, game_state.battle_missed, game_state.battle_combo
                 )
                 .ok();
                 draw_text(
                     display,
                     &score_str,
-                    Point::new(20, 110),
+                    Point::new(45, 140),
                     &FONT_9X15,
                     COLOR_TEXT_DIM,
                 )?;
@@ -990,58 +912,33 @@ where
                         )
                         .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 3))
                         .draw(display)?;
-
-                        // Draw touch coordinates
-                        let mut coord_str = String::<32>::new();
-                        write!(coord_str, "({},{})", tx, ty).ok();
-                        draw_text(
-                            display,
-                            &coord_str,
-                            Point::new(20, 430),
-                            &FONT_9X15,
-                            Rgb888::WHITE,
-                        )?;
                     }
                 }
-
-                // Hero HP at bottom
-                let mut hp_str = String::<32>::new();
-                write!(hp_str, "HP: {}/{}", game_state.hero.hp, game_state.hero.max_hp).ok();
-                draw_text(
-                    display,
-                    &hp_str,
-                    Point::new(20, 370),
-                    &FONT_10X20,
-                    Rgb888::CYAN,
-                )?;
 
                 // Instructions at bottom
                 draw_text(
                     display,
-                    "Green: Hit enemy",
-                    Point::new(20, 395),
+                    "Green: Hit  Red: Block",
+                    Point::new(60, 410),
                     &FONT_9X15,
-                    Rgb888::GREEN,
-                )?;
-                draw_text(
-                    display,
-                    "Red: Block attack",
-                    Point::new(20, 415),
-                    &FONT_9X15,
-                    Rgb888::RED,
+                    COLOR_TEXT_DIM,
                 )?;
 
-                draw_fps_info(display, Point::new(230, 360), fps)?;
+                // FPS debug display
+                draw_fps_info(display, Point::new(10, 430), fps)?;
             }
         }
         BattleState::Victory => {
             draw_text(
                 display,
                 "=== VICTORY! ===",
-                Point::new(75, 80),
+                Point::new(75, 60),
                 &FONT_10X20,
                 COLOR_TEXT,
             )?;
+
+            // Draw dying monster GIF animation (centered)
+            draw_monster_gif(display, game_state, Point::new(120, 110))?;
 
             if let Some(enemy) = &game_state.battle_enemy {
                 let mut enemy_str = String::<32>::new();
@@ -1049,7 +946,7 @@ where
                 draw_text(
                     display,
                     &enemy_str,
-                    Point::new(85, 130),
+                    Point::new(85, 220),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
@@ -1060,25 +957,15 @@ where
                 draw_text(
                     display,
                     &score_str,
-                    Point::new(110, 165),
-                    &FONT_9X18_BOLD,
+                    Point::new(110, 250),
+                    &FONT_9X15,
                     COLOR_TEXT,
-                )?;
-
-                let mut missed_str = String::<32>::new();
-                write!(missed_str, "Missed: {}", game_state.battle_missed).ok();
-                draw_text(
-                    display,
-                    &missed_str,
-                    Point::new(95, 190),
-                    &FONT_9X18_BOLD,
-                    COLOR_TEXT_DIM,
                 )?;
 
                 draw_text(
                     display,
                     "Rewards:",
-                    Point::new(120, 230),
+                    Point::new(120, 285),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
@@ -1088,8 +975,8 @@ where
                 draw_text(
                     display,
                     &exp_str,
-                    Point::new(105, 260),
-                    &FONT_9X18_BOLD,
+                    Point::new(105, 310),
+                    &FONT_9X15,
                     COLOR_EXP,
                 )?;
 
@@ -1098,8 +985,8 @@ where
                 draw_text(
                     display,
                     &zeny_str,
-                    Point::new(105, 285),
-                    &FONT_9X18_BOLD,
+                    Point::new(105, 330),
+                    &FONT_9X15,
                     COLOR_EXP,
                 )?;
 
@@ -1108,12 +995,12 @@ where
                     draw_text(
                         display,
                         "Items:",
-                        Point::new(140, 315),
+                        Point::new(140, 360),
                         &FONT_9X15,
                         Rgb888::YELLOW,
                     )?;
 
-                    let mut y = 335;
+                    let mut y = 380;
                     for (_, item_name, quantity) in &game_state.last_drops {
                         let mut item_str = String::<40>::new();
                         write!(item_str, "{} x{}", item_name, quantity).ok();
@@ -1125,12 +1012,13 @@ where
                             Rgb888::YELLOW,
                         )?;
                         y += 18;
+                        if y > 410 {
+                            break; // Don't overflow screen
+                        }
                     }
                 }
             }
 
-            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-            draw_fps_info(display, Point::new(230, 360), fps)?;
             draw_text(
                 display,
                 "Touch to continue",
@@ -1143,7 +1031,7 @@ where
             draw_text(
                 display,
                 "=== DEFEATED ===",
-                Point::new(75, 80),
+                Point::new(75, 150),
                 &FONT_10X20,
                 COLOR_HP,
             )?;
@@ -1154,7 +1042,7 @@ where
             draw_text(
                 display,
                 &score_str,
-                Point::new(110, 165),
+                Point::new(110, 220),
                 &FONT_9X18_BOLD,
                 COLOR_TEXT,
             )?;
@@ -1164,7 +1052,7 @@ where
             draw_text(
                 display,
                 &missed_str,
-                Point::new(95, 190),
+                Point::new(95, 250),
                 &FONT_9X18_BOLD,
                 COLOR_HP,
             )?;
@@ -1172,20 +1060,18 @@ where
             draw_text(
                 display,
                 "You were defeated!",
-                Point::new(70, 240),
+                Point::new(70, 300),
                 &FONT_9X18_BOLD,
                 COLOR_HP,
             )?;
             draw_text(
                 display,
                 "No rewards",
-                Point::new(110, 270),
+                Point::new(110, 330),
                 &FONT_9X15,
                 COLOR_TEXT_DIM,
             )?;
 
-            draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-            draw_fps_info(display, Point::new(230, 360), fps)?;
             draw_text(
                 display,
                 "Touch to continue",
@@ -1719,6 +1605,43 @@ where
         &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;
+
+    Ok(())
+}
+
+/// Helper: Draw monster GIF animation
+fn draw_monster_gif<D>(
+    display: &mut D,
+    game_state: &GameState,
+    center_position: Point,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    let gif_data = game_state.monster_animation.gif_data();
+    let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
+
+    // Get GIF dimensions to calculate centered position
+    let gif_width = gif.width() as i32;
+    let gif_height = gif.height() as i32;
+
+    // Calculate top-left position to center the GIF at center_position
+    let top_left = Point::new(
+        center_position.x - (gif_width / 2),
+        center_position.y - (gif_height / 2),
+    );
+
+    // Get current frame
+    let frame_index = game_state.monster_animation_frame;
+    let mut current_index = 0;
+
+    for frame in gif.frames() {
+        if current_index == frame_index {
+            Image::new(&frame, top_left).draw(display)?;
+            break;
+        }
+        current_index += 1;
+    }
 
     Ok(())
 }

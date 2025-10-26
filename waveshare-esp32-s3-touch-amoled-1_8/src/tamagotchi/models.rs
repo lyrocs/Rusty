@@ -333,6 +333,28 @@ pub enum FarmState {
     Defeat,
 }
 
+/// Monster GIF animation state
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MonsterAnimation {
+    Idle,      // 0.gif - loops
+    Attacking, // 16.gif - plays once
+    Dying,     // 32.gif - plays once
+}
+
+impl MonsterAnimation {
+    pub fn gif_data(&self) -> &'static [u8] {
+        match self {
+            MonsterAnimation::Idle => include_bytes!("images/poring/0.gif"),
+            MonsterAnimation::Attacking => include_bytes!("images/poring/16.gif"),
+            MonsterAnimation::Dying => include_bytes!("images/poring/32.gif"),
+        }
+    }
+
+    pub fn should_loop(&self) -> bool {
+        matches!(self, MonsterAnimation::Idle)
+    }
+}
+
 /// Rest state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestState {
@@ -515,6 +537,10 @@ pub struct GameState {
     pub screen_on: bool,    // Screen power state (controlled by PWR button)
     pub last_drops: HeaplessVec<(u32, &'static str, u16), 4>, // Last items that dropped
     pub brightness: u8,     // Screen brightness (0-255)
+    pub monster_animation: MonsterAnimation, // Current monster animation
+    pub monster_animation_frame: usize, // Current frame in animation
+    pub monster_animation_started_ms: u32, // When current animation started
+    pub last_attack_animation_ms: u32, // When last attack animation was triggered
 }
 
 impl Default for GameState {
@@ -557,6 +583,10 @@ impl Default for GameState {
             screen_on: true,    // Screen starts on
             last_drops: HeaplessVec::new(),
             brightness: 204,    // 80% brightness by default (204/255 = 0.8)
+            monster_animation: MonsterAnimation::Idle,
+            monster_animation_frame: 0,
+            monster_animation_started_ms: 0,
+            last_attack_animation_ms: 0,
         }
     }
 }
@@ -569,6 +599,11 @@ impl GameState {
             self.farm_state = FarmState::Fighting;
             self.farm_progress = 0;
             self.current_page = GamePage::Farm;
+            // Reset animation to Idle when starting new farm
+            self.monster_animation = MonsterAnimation::Idle;
+            self.monster_animation_frame = 0;
+            self.monster_animation_started_ms = self.last_update_ms;
+            self.needs_redraw = true;
         }
     }
 
@@ -615,6 +650,10 @@ impl GameState {
         self.farm_progress = 0;
         // Set cooldown to prevent immediate re-touch (300ms)
         self.farm_touch_cooldown = 300;
+        // Reset animation to Idle
+        self.monster_animation = MonsterAnimation::Idle;
+        self.monster_animation_frame = 0;
+        self.monster_animation_started_ms = self.last_update_ms;
     }
 
     /// Initialize rest state based on current HP/SP
@@ -673,6 +712,12 @@ impl GameState {
             self.battle_elapsed = 0;
             self.battle_next_spawn = self.last_update_ms + 500; // First spawn in 500ms
             self.current_page = GamePage::Battle; // Switch to battle page
+
+            // Reset animation to Idle when starting new battle
+            self.monster_animation = MonsterAnimation::Idle;
+            self.monster_animation_frame = 0;
+            self.monster_animation_started_ms = self.last_update_ms;
+            self.needs_redraw = true;
         }
     }
 
@@ -870,5 +915,10 @@ impl GameState {
         self.battle_last_touch_y = 0;
         self.battle_last_touch_time = 0;
         self.battle_end_time = 0;
+
+        // Reset animation to Idle
+        self.monster_animation = MonsterAnimation::Idle;
+        self.monster_animation_frame = 0;
+        self.monster_animation_started_ms = self.last_update_ms;
     }
 }

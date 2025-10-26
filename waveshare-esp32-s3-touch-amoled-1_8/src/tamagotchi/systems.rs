@@ -461,6 +461,47 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     }
 }
 
+/// Helper function to update monster GIF animation
+fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32) {
+    use tinygif::Gif;
+    use embedded_graphics::pixelcolor::Rgb888;
+    use crate::tamagotchi::models::MonsterAnimation;
+
+    let gif_data = game_state.monster_animation.gif_data();
+    let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
+    let total_frames = gif.frames().count();
+
+    // Update animation frame every ~100ms (10 FPS for smooth animation)
+    let elapsed_ms = game_state.last_update_ms - game_state.monster_animation_started_ms;
+    let frame_duration_ms = 100;
+    let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
+
+    // Check if animation should loop or stop at last frame
+    if game_state.monster_animation.should_loop() {
+        // Loop animations (Idle)
+        if game_state.monster_animation_frame != target_frame {
+            game_state.monster_animation_frame = target_frame;
+            game_state.needs_redraw = true;
+        }
+    } else {
+        // Play-once animations (Attacking, Dying)
+        if game_state.monster_animation_frame < total_frames - 1 {
+            if game_state.monster_animation_frame != target_frame {
+                game_state.monster_animation_frame = target_frame.min(total_frames - 1);
+                game_state.needs_redraw = true;
+            }
+        } else {
+            // Animation finished - return to Idle if it was Attacking
+            if game_state.monster_animation == MonsterAnimation::Attacking {
+                game_state.monster_animation = MonsterAnimation::Idle;
+                game_state.monster_animation_frame = 0;
+                game_state.monster_animation_started_ms = game_state.last_update_ms;
+                game_state.needs_redraw = true;
+            }
+        }
+    }
+}
+
 /// System to update game logic (farming progress, SP regen, etc.)
 pub fn tamagotchi_update_system(
     mut rtc_res: NonSendMut<RtcResource>,
@@ -498,14 +539,60 @@ pub fn tamagotchi_update_system(
         game_state.needs_redraw = true; // Redraw when FPS updates
     }
 
-    // Update farming progress (only redraw every ~200ms for smoother animation without too much overhead)
-    if game_state.current_page == GamePage::Farm && game_state.farm_state == FarmState::Fighting {
-        let old_percent = (game_state.farm_progress * 100) / game_state.farm_duration_ms;
-        game_state.update_farm_progress(delta_ms);
-        let new_percent = (game_state.farm_progress * 100) / game_state.farm_duration_ms;
-        // Only redraw if progress bar changes by at least 1%
-        if new_percent != old_percent {
-            game_state.needs_redraw = true;
+    // Handle farm state transitions and animations
+    if game_state.current_page == GamePage::Farm {
+        match game_state.farm_state {
+            FarmState::Idle => {
+                // Ensure animation is reset to Idle when on idle page
+                use crate::tamagotchi::models::MonsterAnimation;
+                if game_state.monster_animation != MonsterAnimation::Idle {
+                    game_state.monster_animation = MonsterAnimation::Idle;
+                    game_state.monster_animation_frame = 0;
+                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.needs_redraw = true;
+                }
+            }
+            FarmState::Fighting => {
+                // Update farming progress
+                let old_percent = (game_state.farm_progress * 100) / game_state.farm_duration_ms;
+                game_state.update_farm_progress(delta_ms);
+                let new_percent = (game_state.farm_progress * 100) / game_state.farm_duration_ms;
+                // Only redraw if progress bar changes by at least 1%
+                if new_percent != old_percent {
+                    game_state.needs_redraw = true;
+                }
+
+                use crate::tamagotchi::models::MonsterAnimation;
+
+                // Trigger attack animation every 3-5 seconds (use 4 seconds)
+                let time_since_last_attack = game_state.last_update_ms.saturating_sub(game_state.last_attack_animation_ms);
+                if time_since_last_attack >= 4000 && game_state.monster_animation == MonsterAnimation::Idle {
+                    // Trigger attack animation
+                    game_state.monster_animation = MonsterAnimation::Attacking;
+                    game_state.monster_animation_frame = 0;
+                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.last_attack_animation_ms = game_state.last_update_ms;
+                    game_state.needs_redraw = true;
+                }
+
+                // Update GIF animation for fighting state
+                update_monster_animation(&mut game_state, delta_ms);
+            }
+            FarmState::Victory => {
+                // Set to dying animation when entering victory
+                use crate::tamagotchi::models::MonsterAnimation;
+                if game_state.monster_animation != MonsterAnimation::Dying {
+                    game_state.monster_animation = MonsterAnimation::Dying;
+                    game_state.monster_animation_frame = 0;
+                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.needs_redraw = true;
+                }
+                // Animate dying GIF
+                update_monster_animation(&mut game_state, delta_ms);
+            }
+            FarmState::Defeat => {
+                // No animation for defeat state
+            }
         }
     }
 
@@ -524,21 +611,53 @@ pub fn tamagotchi_update_system(
     }
 
     // Update battle progress (spawn circles, check expiration, handle damage)
-    if game_state.current_page == GamePage::Battle
-        && game_state.battle_state == BattleState::Playing
-    {
-        let old_score = game_state.battle_score;
-        let old_missed = game_state.battle_missed;
-        let old_state = game_state.battle_state;
+    if game_state.current_page == GamePage::Battle {
+        match game_state.battle_state {
+            BattleState::Idle => {
+                // Ensure animation is reset to Idle when on idle state
+                use crate::tamagotchi::models::MonsterAnimation;
+                if game_state.monster_animation != MonsterAnimation::Idle {
+                    game_state.monster_animation = MonsterAnimation::Idle;
+                    game_state.monster_animation_frame = 0;
+                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.needs_redraw = true;
+                }
+            }
+            BattleState::Playing => {
+                // Update battle mechanics
+                let old_score = game_state.battle_score;
+                let old_missed = game_state.battle_missed;
+                let old_state = game_state.battle_state;
 
-        game_state.update_battle(delta_ms);
+                game_state.update_battle(delta_ms);
 
-        // Redraw if score/missed changed or state changed
-        if game_state.battle_score != old_score
-            || game_state.battle_missed != old_missed
-            || game_state.battle_state != old_state
-        {
-            game_state.needs_redraw = true;
+                // Redraw if score/missed changed or state changed
+                if game_state.battle_score != old_score
+                    || game_state.battle_missed != old_missed
+                    || game_state.battle_state != old_state
+                {
+                    game_state.needs_redraw = true;
+                }
+
+                // NOTE: No GIF animation during battle gameplay for performance
+                // GIF rendering and animation updates are disabled during battle to maintain high FPS
+                // and responsive touch input
+            }
+            BattleState::Victory => {
+                // Set to dying animation when entering victory
+                use crate::tamagotchi::models::MonsterAnimation;
+                if game_state.monster_animation != MonsterAnimation::Dying {
+                    game_state.monster_animation = MonsterAnimation::Dying;
+                    game_state.monster_animation_frame = 0;
+                    game_state.monster_animation_started_ms = game_state.last_update_ms;
+                    game_state.needs_redraw = true;
+                }
+                // Animate dying GIF
+                update_monster_animation(&mut game_state, delta_ms);
+            }
+            BattleState::Defeat => {
+                // No animation for defeat state, keep it idle or stopped
+            }
         }
     }
 }

@@ -201,7 +201,10 @@ fn main() -> ! {
 
     // Insert display as NonSend resource
     world.insert_non_send_resource(DisplayResource { display });
-    world.insert_non_send_resource(TouchResource { touch });
+    world.insert_non_send_resource(TouchResource {
+        touch,
+        last_touch_state: false,
+    });
 
     // Insert AXP2101 PMIC resource
     world.insert_non_send_resource(Axp2101Resource { pmic });
