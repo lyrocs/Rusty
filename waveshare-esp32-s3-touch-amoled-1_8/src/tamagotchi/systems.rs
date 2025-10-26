@@ -50,6 +50,12 @@ pub fn tamagotchi_button_system(
                 game_state.init_rest_state();
             }
 
+            // Reset map monster animation when entering Map page
+            if matches!(new_page, GamePage::Map) {
+                game_state.map_monster_animation_frame = 0;
+                game_state.map_monster_animation_last_update = game_state.last_update_ms;
+            }
+
             game_state.current_page = new_page;
         } else {
             // Open menu
@@ -198,6 +204,13 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             game_state.init_rest_state();
                         }
 
+                        // Reset map monster animation when entering Map page
+                        if matches!(new_page, GamePage::Map) {
+                            game_state.map_monster_animation_frame = 0;
+                            game_state.map_monster_animation_last_update =
+                                game_state.last_update_ms;
+                        }
+
                         game_state.current_page = new_page;
                     }
                 }
@@ -258,7 +271,6 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 BattleState::Idle => {
                     // Battle should be started from Map page
                     // If we're here with Idle state, go back to map
-                    esp_println::println!("[BATTLE] No active battle, returning to map");
                     game_state.current_page = GamePage::Map;
                 }
                 BattleState::Playing => {
@@ -268,16 +280,13 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     game_state.battle_last_touch_time = game_state.last_update_ms;
 
                     // Check if touch hit any circle
-                    let hit = game_state.click_battle_circle(x as i32, y as i32);
-                    if hit {
-                        esp_println::println!("[BATTLE] Circle hit at ({}, {})", x, y);
-                    } else {
-                        esp_println::println!("[BATTLE] Touch miss at ({}, {})", x, y);
-                    }
+                    game_state.click_battle_circle(x as i32, y as i32);
                 }
                 BattleState::Victory | BattleState::Defeat => {
                     // Prevent accidental clicks - require 500ms delay after battle ends
-                    let time_since_end = game_state.last_update_ms.saturating_sub(game_state.battle_end_time);
+                    let time_since_end = game_state
+                        .last_update_ms
+                        .saturating_sub(game_state.battle_end_time);
                     if time_since_end < 500 {
                         esp_println::println!(
                             "[BATTLE] Ignoring click too soon after battle end ({}ms)",
@@ -303,11 +312,9 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                         let enemy_id = enemy_ids[enemy_index];
 
                         if let Some(enemy) = Enemy::from_id(enemy_id) {
-                            esp_println::println!("[BATTLE] Starting new battle with {}", enemy.name);
                             game_state.start_battle(enemy);
                         }
                     } else if game_state.hero.sp < 30 {
-                        esp_println::println!("[BATTLE] Not enough SP to restart battle");
                         game_state.current_page = GamePage::Map;
                     }
                 }
@@ -318,6 +325,16 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             let map_id = game_state.current_location;
             let exits = MapHelper::exits(map_id);
             let location_type = MapHelper::location_type(map_id);
+
+            // Update map monster idle animation (10 FPS = 100ms per frame)
+            let time_since_last_frame = game_state
+                .last_update_ms
+                .saturating_sub(game_state.map_monster_animation_last_update);
+            if time_since_last_frame >= 100 {
+                game_state.map_monster_animation_frame += 1;
+                game_state.map_monster_animation_last_update = game_state.last_update_ms;
+                game_state.needs_redraw = true;
+            }
 
             // Check directional navigation buttons (large border buttons)
             let mut traveled = false;
@@ -367,8 +384,8 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                         }
                     }
                     crate::tamagotchi::models::LocationType::Field => {
-                        // Check Auto Farm button (84, 210, 200x60)
-                        if x >= 84 && x <= 284 && y >= 210 && y <= 270 {
+                        // Check Auto Farm button (84, 280, 200x50)
+                        if x >= 84 && x <= 284 && y >= 280 && y <= 330 {
                             esp_println::println!("[MAP] Auto Farm selected");
                             // Spawn enemy from current map
                             let enemy_ids = MapHelper::enemies(map_id);
@@ -392,8 +409,8 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                                 game_state.needs_redraw = true;
                             }
                         }
-                        // Check Battle button (84, 280, 200x60)
-                        else if x >= 84 && x <= 284 && y >= 280 && y <= 340 {
+                        // Check Battle button (84, 335, 200x50)
+                        else if x >= 84 && x <= 284 && y >= 335 && y <= 385 {
                             esp_println::println!("[MAP] Battle selected");
 
                             // Check HP first
@@ -431,7 +448,17 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             }
         }
         GamePage::Overview => {
-            // No touch actions on overview page
+            // Rest button: x=30-180, y=370-420
+            if x >= 30 && x <= 180 && y >= 370 && y <= 420 {
+                game_state.current_page = GamePage::Rest;
+                game_state.init_rest_state();
+                game_state.needs_redraw = true;
+            }
+            // Inventory button: x=188-338, y=370-420
+            else if x >= 188 && x <= 338 && y >= 370 && y <= 420 {
+                game_state.current_page = GamePage::Inventory;
+                game_state.needs_redraw = true;
+            }
         }
         GamePage::Inventory => {
             // Go back to menu on touch
@@ -463,9 +490,9 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
 
 /// Helper function to update monster GIF animation
 fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_name: &str) {
-    use tinygif::Gif;
-    use embedded_graphics::pixelcolor::Rgb888;
     use crate::tamagotchi::models::MonsterAnimation;
+    use embedded_graphics::pixelcolor::Rgb888;
+    use tinygif::Gif;
 
     let gif_data = game_state.monster_animation.gif_data(monster_name);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
@@ -504,9 +531,9 @@ fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, monster_
 
 /// Helper function to update hero GIF animation
 fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
-    use tinygif::Gif;
-    use embedded_graphics::pixelcolor::Rgb888;
     use crate::tamagotchi::models::HeroAnimation;
+    use embedded_graphics::pixelcolor::Rgb888;
+    use tinygif::Gif;
 
     let gif_data = game_state.hero_animation.gif_data();
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
@@ -534,7 +561,8 @@ fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
         } else {
             // Animation finished - return to Idle
             if game_state.hero_animation == HeroAnimation::Attacking
-                || game_state.hero_animation == HeroAnimation::Attacked {
+                || game_state.hero_animation == HeroAnimation::Attacked
+            {
                 game_state.hero_animation = HeroAnimation::Idle;
                 game_state.hero_animation_frame = 0;
                 game_state.hero_animation_started_ms = game_state.last_update_ms;
@@ -545,10 +573,14 @@ fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
 }
 
 /// Helper function to update monster attacked animation (24.gif)
-fn update_monster_attacked_animation(game_state: &mut GameState, _delta_ms: u32, monster_name: &str) {
-    use tinygif::Gif;
-    use embedded_graphics::pixelcolor::Rgb888;
+fn update_monster_attacked_animation(
+    game_state: &mut GameState,
+    _delta_ms: u32,
+    monster_name: &str,
+) {
     use crate::tamagotchi::models::{MonsterAttackedAnimation, get_monster_attacked_gif};
+    use embedded_graphics::pixelcolor::Rgb888;
+    use tinygif::Gif;
 
     if game_state.monster_attacked_animation == MonsterAttackedAnimation::Normal {
         return; // Not being attacked
@@ -574,6 +606,69 @@ fn update_monster_attacked_animation(game_state: &mut GameState, _delta_ms: u32,
         game_state.monster_attacked_animation = MonsterAttackedAnimation::Normal;
         game_state.monster_attacked_frame = 0;
         game_state.needs_redraw = true;
+    }
+}
+
+/// Update hero and monster animations for battle based on current animation phase
+fn update_battle_animations(game_state: &mut GameState, delta_ms: u32, monster_name: &str) {
+    use crate::tamagotchi::models::{BattleAnimationPhase, HeroAnimation, MonsterAnimation};
+
+    // Set animations based on current phase
+    match game_state.battle_animation_phase {
+        BattleAnimationPhase::BothIdle => {
+            // Both on idle animation
+            if game_state.hero_animation != HeroAnimation::Idle {
+                game_state.hero_animation = HeroAnimation::Idle;
+                game_state.hero_animation_frame = 0;
+                game_state.hero_animation_started_ms = game_state.last_update_ms;
+            }
+            if game_state.monster_animation != MonsterAnimation::Idle {
+                game_state.monster_animation = MonsterAnimation::Idle;
+                game_state.monster_animation_frame = 0;
+                game_state.monster_animation_started_ms = game_state.last_update_ms;
+            }
+            // Update both idle animations
+            update_hero_animation(game_state, delta_ms);
+            update_monster_animation(game_state, delta_ms, monster_name);
+        }
+        BattleAnimationPhase::MonsterAttacking => {
+            // Monster attacks (16.gif), hero gets hit (52.gif)
+            if game_state.monster_animation != MonsterAnimation::Attacking {
+                game_state.monster_animation = MonsterAnimation::Attacking;
+                game_state.monster_animation_frame = 0;
+                game_state.monster_animation_started_ms = game_state.last_update_ms;
+            }
+            if game_state.hero_animation != HeroAnimation::Attacked {
+                game_state.hero_animation = HeroAnimation::Attacked;
+                game_state.hero_animation_frame = 0;
+                game_state.hero_animation_started_ms = game_state.last_update_ms;
+            }
+            update_hero_animation(game_state, delta_ms);
+            update_monster_animation(game_state, delta_ms, monster_name);
+        }
+        BattleAnimationPhase::HeroAttacking => {
+            // Hero attacks (84.gif), monster gets hit (24.gif)
+            if game_state.hero_animation != HeroAnimation::Attacking {
+                game_state.hero_animation = HeroAnimation::Attacking;
+                game_state.hero_animation_frame = 0;
+                game_state.hero_animation_started_ms = game_state.last_update_ms;
+            }
+            // Use monster_attacked_animation for the hit animation (24.gif)
+            use crate::tamagotchi::models::MonsterAttackedAnimation;
+            if game_state.monster_attacked_animation != MonsterAttackedAnimation::Attacked {
+                game_state.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
+                game_state.monster_attacked_frame = 0;
+                game_state.monster_attacked_started_ms = game_state.last_update_ms;
+            }
+            // Set monster to idle so it doesn't override the attacked animation
+            if game_state.monster_animation != MonsterAnimation::Idle {
+                game_state.monster_animation = MonsterAnimation::Idle;
+                game_state.monster_animation_frame = 0;
+                game_state.monster_animation_started_ms = game_state.last_update_ms;
+            }
+            update_hero_animation(game_state, delta_ms);
+            update_monster_attacked_animation(game_state, delta_ms, monster_name);
+        }
     }
 }
 
@@ -611,7 +706,14 @@ pub fn tamagotchi_update_system(
         game_state.fps = (game_state.frame_count * 1000) / fps_elapsed;
         game_state.frame_count = 0;
         game_state.last_fps_update_ms = game_state.last_update_ms;
-        game_state.needs_redraw = true; // Redraw when FPS updates
+
+        // Only redraw for FPS updates on pages where FPS changes matter (not during active gameplay)
+        // During battle, we redraw based on game events (circles, timer, etc), not FPS counter
+        if game_state.current_page != GamePage::Battle
+            || game_state.battle_state != BattleState::Playing
+        {
+            game_state.needs_redraw = true; // Redraw when FPS updates
+        }
     }
 
     // Handle farm state transitions and animations
@@ -637,12 +739,15 @@ pub fn tamagotchi_update_system(
                     game_state.needs_redraw = true;
                 }
 
-                use crate::tamagotchi::models::{MonsterAnimation, HeroAnimation, MonsterAttackedAnimation};
+                use crate::tamagotchi::models::{
+                    HeroAnimation, MonsterAnimation, MonsterAttackedAnimation,
+                };
 
                 // Ensure hero is in Idle animation during fighting
                 if game_state.hero_animation != HeroAnimation::Idle
                     && game_state.hero_animation != HeroAnimation::Attacking
-                    && game_state.hero_animation != HeroAnimation::Attacked {
+                    && game_state.hero_animation != HeroAnimation::Attacked
+                {
                     game_state.hero_animation = HeroAnimation::Idle;
                     game_state.hero_animation_frame = 0;
                     game_state.hero_animation_started_ms = game_state.last_update_ms;
@@ -650,10 +755,13 @@ pub fn tamagotchi_update_system(
                 }
 
                 // Hero attacks monster every 4 seconds (trigger both hero attacking + monster attacked)
-                let time_since_last_hero_attack = game_state.last_update_ms.saturating_sub(game_state.last_hero_attack_ms);
+                let time_since_last_hero_attack = game_state
+                    .last_update_ms
+                    .saturating_sub(game_state.last_hero_attack_ms);
                 if time_since_last_hero_attack >= 4000
                     && game_state.hero_animation == HeroAnimation::Idle
-                    && game_state.monster_attacked_animation == MonsterAttackedAnimation::Normal {
+                    && game_state.monster_attacked_animation == MonsterAttackedAnimation::Normal
+                {
                     // Hero attacks!
                     game_state.hero_animation = HeroAnimation::Attacking;
                     game_state.hero_animation_frame = 0;
@@ -669,10 +777,13 @@ pub fn tamagotchi_update_system(
                 }
 
                 // Monster attacks hero every 6 seconds (trigger both monster attacking + hero attacked)
-                let time_since_last_monster_attack = game_state.last_update_ms.saturating_sub(game_state.last_attack_animation_ms);
+                let time_since_last_monster_attack = game_state
+                    .last_update_ms
+                    .saturating_sub(game_state.last_attack_animation_ms);
                 if time_since_last_monster_attack >= 6000
                     && game_state.monster_animation == MonsterAnimation::Idle
-                    && game_state.hero_animation == HeroAnimation::Idle {
+                    && game_state.hero_animation == HeroAnimation::Idle
+                {
                     // Monster attacks!
                     game_state.monster_animation = MonsterAnimation::Attacking;
                     game_state.monster_animation_frame = 0;
@@ -764,20 +875,72 @@ pub fn tamagotchi_update_system(
                 let old_score = game_state.battle_score;
                 let old_missed = game_state.battle_missed;
                 let old_state = game_state.battle_state;
+                let old_time_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
 
                 game_state.update_battle(delta_ms);
 
-                // Redraw if score/missed changed or state changed
+                let new_time_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
+
+                // Redraw if score/missed/timer/state changed
                 if game_state.battle_score != old_score
                     || game_state.battle_missed != old_missed
                     || game_state.battle_state != old_state
+                    || new_time_sec != old_time_sec
                 {
                     game_state.needs_redraw = true;
                 }
 
-                // NOTE: No GIF animation during battle gameplay for performance
-                // GIF rendering and animation updates are disabled during battle to maintain high FPS
-                // and responsive touch input
+                // Battle animation phase cycling
+                // Sequence: BothIdle (2s) -> MonsterAttacking (1s) -> BothIdle (2s) -> HeroAttacking (1s) -> repeat
+                use crate::tamagotchi::models::BattleAnimationPhase;
+                let time_in_phase = game_state
+                    .last_update_ms
+                    .saturating_sub(game_state.battle_animation_phase_started_ms);
+
+                let phase_changed = match game_state.battle_animation_phase {
+                    BattleAnimationPhase::BothIdle => {
+                        if time_in_phase >= 2000 {
+                            // Alternate between monster attacking and hero attacking
+                            // Use frame count to alternate
+                            if (game_state.battle_elapsed / 6000) % 2 == 0 {
+                                game_state.battle_animation_phase =
+                                    BattleAnimationPhase::MonsterAttacking;
+                            } else {
+                                game_state.battle_animation_phase =
+                                    BattleAnimationPhase::HeroAttacking;
+                            }
+                            game_state.battle_animation_phase_started_ms =
+                                game_state.last_update_ms;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    BattleAnimationPhase::MonsterAttacking
+                    | BattleAnimationPhase::HeroAttacking => {
+                        if time_in_phase >= 1000 {
+                            game_state.battle_animation_phase = BattleAnimationPhase::BothIdle;
+                            game_state.battle_animation_phase_started_ms =
+                                game_state.last_update_ms;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                };
+
+                // Animation phases and updates disabled during battle for performance
+                // GIFs are not rendered during manual battle gameplay anyway
+                if phase_changed {
+                    // Don't set needs_redraw for animation phase changes since we don't render GIFs
+                    // game_state.needs_redraw = true;
+                }
+
+                // Don't update animations during battle - GIFs are not rendered for performance
+                // let monster_name = game_state.battle_enemy.as_ref().map(|e| e.name);
+                // if let Some(name) = monster_name {
+                //     update_battle_animations(&mut game_state, delta_ms, name);
+                // }
             }
             BattleState::Victory => {
                 // Set to dying animation when entering victory
@@ -829,6 +992,7 @@ pub fn tamagotchi_render_system(
 
     // Only render if something changed
     if !game_state.needs_redraw {
+        // Don't log skipped frames - too noisy
         return;
     }
 
@@ -836,6 +1000,12 @@ pub fn tamagotchi_render_system(
     if !game_state.screen_on {
         return;
     }
+
+    // Save the redraw state before clearing it
+    let should_full_redraw = game_state.needs_redraw;
+
+    // Clear the dirty flag IMMEDIATELY to prevent multiple renders for the same change
+    game_state.needs_redraw = false;
 
     // Get battery info
     let battery_mv = battery_res.voltage_mv;
@@ -847,10 +1017,7 @@ pub fn tamagotchi_render_system(
         GamePage::Overview => {
             draw_overview_page(
                 &mut display_res.display,
-                &game_state.hero,
-                battery_mv,
-                battery_pct,
-                fps,
+                &game_state,
                 game_state.save_status_msg,
             )
             .ok();
@@ -882,18 +1049,12 @@ pub fn tamagotchi_render_system(
                 battery_mv,
                 battery_pct,
                 fps,
+                should_full_redraw,
             )
             .ok();
         }
         GamePage::Map => {
-            draw_map_page(
-                &mut display_res.display,
-                &game_state,
-                battery_mv,
-                battery_pct,
-                fps,
-            )
-            .ok();
+            draw_map_page(&mut display_res.display, &game_state).ok();
         }
         GamePage::Menu => {
             // Draw the previous page first, then overlay menu
@@ -904,7 +1065,14 @@ pub fn tamagotchi_render_system(
             draw_inventory(&mut display_res.display, &game_state).ok();
         }
         GamePage::Settings => {
-            draw_settings_page(&mut display_res.display, &game_state).ok();
+            draw_settings_page(
+                &mut display_res.display,
+                &game_state,
+                battery_mv,
+                battery_pct,
+                fps,
+            )
+            .ok();
         }
     }
 
@@ -915,9 +1083,6 @@ pub fn tamagotchi_render_system(
 
     // Flush the display
     display_res.display.flush().ok();
-
-    // Clear the dirty flag
-    game_state.needs_redraw = false;
 }
 
 /// System to handle save requests with SD card persistence

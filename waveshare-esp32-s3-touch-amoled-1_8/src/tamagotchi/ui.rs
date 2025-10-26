@@ -1,5 +1,6 @@
 use core::fmt::Write;
 use embedded_graphics::{
+    image::Image,
     mono_font::{
         MonoTextStyle,
         ascii::{FONT_9X15, FONT_9X18_BOLD, FONT_10X20},
@@ -8,13 +9,12 @@ use embedded_graphics::{
     prelude::*,
     primitives::{Circle as EgCircle, Line, PrimitiveStyle, Rectangle},
     text::Text,
-    image::Image,
 };
 use heapless::String;
 use tinygif::Gif;
 
 use crate::tamagotchi::models::{
-    BattleState, CircleType, Enemy, FarmState, GameState, Hero, LocationType, MapHelper, RestState,
+    BattleState, CircleType, Enemy, FarmState, GameState, LocationType, MapHelper, RestState,
 };
 
 // Color palette inspired by Ragnarok Online
@@ -31,15 +31,14 @@ pub const COLOR_MENU_SELECT: Rgb888 = Rgb888::new(100, 150, 255);
 /// Draw the Overview page showing hero stats
 pub fn draw_overview_page<D>(
     display: &mut D,
-    hero: &Hero,
-    battery_mv: u16,
-    battery_pct: u8,
-    fps: u32,
+    game_state: &GameState,
     save_msg: Option<&str>,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
+    let hero = &game_state.hero;
+
     // Clear background
     display.clear(COLOR_BG)?;
 
@@ -52,13 +51,13 @@ where
         COLOR_TEXT,
     )?;
 
-    // Hero name and job
+    // LEFT COLUMN: Class, Level, Zeny
     let mut name_str = String::<32>::new();
-    write!(name_str, "Name: {}", hero.name).ok();
+    write!(name_str, "{}", hero.name).ok();
     draw_text(
         display,
         &name_str,
-        Point::new(20, 55),
+        Point::new(20, 60),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;
@@ -68,78 +67,76 @@ where
     draw_text(
         display,
         &job_str,
-        Point::new(20, 78),
+        Point::new(20, 85),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;
 
-    // Level
     let mut lvl_str = String::<32>::new();
-    write!(lvl_str, "Level: {}", hero.level).ok();
+    write!(lvl_str, "Lv. {}", hero.level).ok();
     draw_text(
         display,
         &lvl_str,
-        Point::new(20, 101),
+        Point::new(20, 110),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;
 
-    // HP bar
+    let mut zeny_str = String::<32>::new();
+    write!(zeny_str, "{}z", hero.zeny).ok();
+    draw_text(
+        display,
+        &zeny_str,
+        Point::new(20, 135),
+        &FONT_9X18_BOLD,
+        Rgb888::YELLOW,
+    )?;
+
+    // RIGHT COLUMN: HP, SP, EXP (compact with smaller bars)
+    // HP
     draw_text(
         display,
         "HP:",
-        Point::new(20, 140),
-        &FONT_9X18_BOLD,
+        Point::new(200, 60),
+        &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;
     let mut hp_str = String::<32>::new();
     write!(hp_str, "{}/{}", hero.hp, hero.max_hp).ok();
-    draw_text(
-        display,
-        &hp_str,
-        Point::new(65, 140),
-        &FONT_9X18_BOLD,
-        COLOR_HP,
-    )?;
+    draw_text(display, &hp_str, Point::new(235, 60), &FONT_9X15, COLOR_HP)?;
     draw_bar(
         display,
-        Point::new(20, 155),
-        328,
+        Point::new(200, 75),
+        150,
         hero.hp_percent(),
         COLOR_HP,
     )?;
 
-    // SP bar
+    // SP
     draw_text(
         display,
         "SP:",
-        Point::new(20, 185),
-        &FONT_9X18_BOLD,
+        Point::new(200, 95),
+        &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;
     let mut sp_str = String::<32>::new();
     write!(sp_str, "{}/{}", hero.sp, hero.max_sp).ok();
-    draw_text(
-        display,
-        &sp_str,
-        Point::new(65, 185),
-        &FONT_9X18_BOLD,
-        COLOR_SP,
-    )?;
+    draw_text(display, &sp_str, Point::new(235, 95), &FONT_9X15, COLOR_SP)?;
     draw_bar(
         display,
-        Point::new(20, 200),
-        328,
+        Point::new(200, 110),
+        150,
         hero.sp_percent(),
         COLOR_SP,
     )?;
 
-    // EXP bar
+    // EXP
     draw_text(
         display,
         "EXP:",
-        Point::new(20, 230),
-        &FONT_9X18_BOLD,
+        Point::new(200, 130),
+        &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;
     let mut exp_str = String::<32>::new();
@@ -147,34 +144,20 @@ where
     draw_text(
         display,
         &exp_str,
-        Point::new(75, 230),
-        &FONT_9X18_BOLD,
+        Point::new(245, 130),
+        &FONT_9X15,
         COLOR_EXP,
     )?;
     draw_bar(
         display,
-        Point::new(20, 245),
-        328,
+        Point::new(200, 145),
+        150,
         hero.exp_percent(),
         COLOR_EXP,
     )?;
 
-    // Zeny (currency)
-    let mut zeny_str = String::<32>::new();
-    write!(zeny_str, "Zeny: {} z", hero.zeny).ok();
-    draw_text(
-        display,
-        &zeny_str,
-        Point::new(20, 280),
-        &FONT_9X18_BOLD,
-        COLOR_TEXT,
-    )?;
-
-    // Battery info
-    draw_battery_info(display, Point::new(20, 360), battery_mv, battery_pct)?;
-
-    // FPS info (right after battery)
-    draw_fps_info(display, Point::new(230, 360), fps)?;
+    // CENTER: Hero GIF (sitting animation)
+    draw_hero_gif(display, game_state, Point::new(184, 280))?;
 
     // Save status message (if any)
     if let Some(msg) = save_msg {
@@ -187,13 +170,28 @@ where
         )?;
     }
 
-    // Instructions
+    // Rest button (left side, bottom area)
+    Rectangle::new(Point::new(30, 370), Size::new(150, 50))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 100)))
+        .draw(display)?;
     draw_text(
         display,
-        "Press BOOT for Menu",
-        Point::new(90, 420),
-        &FONT_9X15,
-        COLOR_TEXT_DIM,
+        "Rest",
+        Point::new(80, 390),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    // Inventory button (right side, bottom area)
+    Rectangle::new(Point::new(188, 370), Size::new(150, 50))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(150, 100, 100)))
+        .draw(display)?;
+    draw_text(
+        display,
+        "Inventory",
+        Point::new(200, 390),
+        &FONT_10X20,
+        Rgb888::WHITE,
     )?;
 
     Ok(())
@@ -205,7 +203,7 @@ pub fn draw_farm_page<D>(
     game_state: &GameState,
     _battery_mv: u16,
     _battery_pct: u8,
-    _fps: u32,
+    fps: u32,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
@@ -349,29 +347,11 @@ where
                     COLOR_TEXT,
                 )?;
 
-                // Enemy HP bar
-                let mut enemy_hp_str = String::<32>::new();
-                write!(enemy_hp_str, "HP: {}/{}", enemy.hp, enemy.max_hp).ok();
-                draw_text(
-                    display,
-                    &enemy_hp_str,
-                    Point::new(105, 85),
-                    &FONT_9X15,
-                    COLOR_HP,
-                )?;
-                draw_bar(
-                    display,
-                    Point::new(60, 100),
-                    250,
-                    enemy.hp_percent(),
-                    COLOR_HP,
-                )?;
+                // Draw hero GIF animation (middle-left, lower)
+                draw_hero_gif(display, game_state, Point::new(120, 280))?;
 
-                // Draw hero GIF animation (left side)
-                draw_hero_gif(display, game_state, Point::new(60, 200))?;
-
-                // Draw monster GIF animation with attacked state (right side)
-                draw_monster_attacked_gif(display, game_state, Point::new(180, 200), enemy.name)?;
+                // Draw monster GIF animation with attacked state (middle-right, same level)
+                draw_monster_attacked_gif(display, game_state, Point::new(260, 280), enemy.name)?;
 
                 // Progress bar
                 draw_text(
@@ -411,10 +391,13 @@ where
                 draw_text(
                     display,
                     &reward_str,
-                    Point::new(30, 420),
+                    Point::new(30, 405),
                     &FONT_9X15,
                     COLOR_EXP,
                 )?;
+
+                // FPS display at bottom
+                draw_fps_info(display, Point::new(10, 425), fps)?;
             }
         }
         FarmState::Victory => {
@@ -681,11 +664,16 @@ pub fn draw_battle_page<D>(
     _battery_mv: u16,
     _battery_pct: u8,
     fps: u32,
+    should_clear: bool,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    display.clear(COLOR_BG)?;
+    // Only clear screen when needed (entering battle or state change)
+    // During active gameplay, only clear if should_clear is true
+    if should_clear || game_state.battle_state != BattleState::Playing {
+        display.clear(COLOR_BG)?;
+    }
 
     match game_state.battle_state {
         BattleState::Idle => {
@@ -818,6 +806,8 @@ where
                     COLOR_HP,
                 )?;
 
+                // No GIF animations during manual battle for better gameplay focus
+
                 // Timer (top right)
                 let remaining_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
                 let mut time_str = String::<16>::new();
@@ -895,13 +885,13 @@ where
                 draw_text(
                     display,
                     "Green: Hit  Red: Block",
-                    Point::new(60, 410),
+                    Point::new(60, 395),
                     &FONT_9X15,
                     COLOR_TEXT_DIM,
                 )?;
 
-                // FPS debug display
-                draw_fps_info(display, Point::new(10, 430), fps)?;
+                // FPS display at bottom
+                draw_fps_info(display, Point::new(10, 415), fps)?;
             }
         }
         BattleState::Victory => {
@@ -1062,19 +1052,31 @@ where
 }
 
 /// Draw the Map/Navigation page
-pub fn draw_map_page<D>(
-    display: &mut D,
-    game_state: &GameState,
-    battery_mv: u16,
-    battery_pct: u8,
-    fps: u32,
-) -> Result<(), D::Error>
+pub fn draw_map_page<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
     display.clear(COLOR_BG)?;
 
     let map_id = game_state.current_location;
+
+    // Draw map background image if available
+    if let Some(map_bg_data) = crate::tamagotchi::models::get_map_background(map_id) {
+        let gif = Gif::<Rgb888>::from_slice(map_bg_data).expect("Failed to parse map GIF");
+
+        // Get GIF dimensions
+        let gif_width = gif.width() as i32;
+        let gif_height = gif.height() as i32;
+
+        // Center the background on screen (368x448 display)
+        let top_left = Point::new((368 - gif_width) / 2, (448 - gif_height) / 2);
+
+        // Render first (and only) frame of the map GIF
+        if let Some(frame) = gif.frames().next() {
+            Image::new(&frame, top_left).draw(display)?;
+        }
+    }
+
     let location_type = MapHelper::location_type(map_id);
 
     // Title with location name
@@ -1082,86 +1084,33 @@ where
     write!(title, "=== {} ===", MapHelper::name(map_id)).ok();
     draw_text(display, &title, Point::new(60, 20), &FONT_10X20, COLOR_TEXT)?;
 
-    // Location type indicator
-    let type_str = match location_type {
-        LocationType::City => "[CITY]",
-        LocationType::Field => "[FIELD]",
-    };
-    let type_color = match location_type {
-        LocationType::City => Rgb888::YELLOW,
-        LocationType::Field => Rgb888::RED,
-    };
-    draw_text(
-        display,
-        type_str,
-        Point::new(145, 50),
-        &FONT_9X18_BOLD,
-        type_color,
-    )?;
-
-    // Draw directional navigation buttons on screen borders (large buttons)
+    // Draw directional navigation indicators (blue circles at borders)
     let exits = MapHelper::exits(map_id);
     for exit in exits {
         match exit.direction {
             "North" => {
-                // Top button - almost full width
-                Rectangle::new(Point::new(10, 0), Size::new(348, 40))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                // Top circle
+                EgCircle::new(Point::new(164, 5), 30)
+                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
                     .draw(display)?;
-                Rectangle::new(Point::new(10, 0), Size::new(348, 40))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
-                    .draw(display)?;
-                draw_text(
-                    display,
-                    "NORTH",
-                    Point::new(154, 18),
-                    &FONT_10X20,
-                    COLOR_TEXT,
-                )?;
             }
             "South" => {
-                // Bottom button - almost full width
-                Rectangle::new(Point::new(10, 408), Size::new(348, 40))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                // Bottom circle
+                EgCircle::new(Point::new(164, 413), 30)
+                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
                     .draw(display)?;
-                Rectangle::new(Point::new(10, 408), Size::new(348, 40))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
-                    .draw(display)?;
-                draw_text(
-                    display,
-                    "SOUTH",
-                    Point::new(154, 426),
-                    &FONT_10X20,
-                    COLOR_TEXT,
-                )?;
             }
             "West" => {
-                // Left button - almost full height
-                Rectangle::new(Point::new(0, 45), Size::new(50, 358))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                // Left circle
+                EgCircle::new(Point::new(10, 209), 30)
+                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
                     .draw(display)?;
-                Rectangle::new(Point::new(0, 45), Size::new(50, 358))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
-                    .draw(display)?;
-                // Rotated text effect with vertical letters
-                draw_text(display, "W", Point::new(17, 170), &FONT_10X20, COLOR_TEXT)?;
-                draw_text(display, "E", Point::new(17, 200), &FONT_10X20, COLOR_TEXT)?;
-                draw_text(display, "S", Point::new(17, 230), &FONT_10X20, COLOR_TEXT)?;
-                draw_text(display, "T", Point::new(17, 260), &FONT_10X20, COLOR_TEXT)?;
             }
             "East" => {
-                // Right button - almost full height
-                Rectangle::new(Point::new(318, 45), Size::new(50, 358))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                // Right circle
+                EgCircle::new(Point::new(328, 209), 30)
+                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
                     .draw(display)?;
-                Rectangle::new(Point::new(318, 45), Size::new(50, 358))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_MENU_SELECT, 3))
-                    .draw(display)?;
-                // Rotated text effect with vertical letters
-                draw_text(display, "E", Point::new(335, 170), &FONT_10X20, COLOR_TEXT)?;
-                draw_text(display, "A", Point::new(335, 200), &FONT_10X20, COLOR_TEXT)?;
-                draw_text(display, "S", Point::new(335, 230), &FONT_10X20, COLOR_TEXT)?;
-                draw_text(display, "T", Point::new(335, 260), &FONT_10X20, COLOR_TEXT)?;
             }
             _ => {}
         }
@@ -1228,59 +1177,79 @@ where
             }
         }
         LocationType::Field => {
-            // Show monster info and actions (from JSON)
+            // Show monster GIF animations on the map
             let enemy_ids = MapHelper::enemies(map_id);
             if !enemy_ids.is_empty() {
-                // Monster list
-                draw_text(
-                    display,
-                    "Monsters:",
-                    Point::new(120, 85),
-                    &FONT_9X18_BOLD,
-                    COLOR_TEXT,
-                )?;
-                for (i, &enemy_id) in enemy_ids.iter().enumerate() {
+                // Display up to 4 monsters with their GIF animations
+                for (i, &enemy_id) in enemy_ids.iter().enumerate().take(4) {
                     if let Some(enemy) = Enemy::from_id(enemy_id) {
-                        let y = 110 + i as i32 * 22;
-                        let mut monster_str = String::<32>::new();
-                        write!(monster_str, "{} (Lv {})", enemy.name, enemy.level).ok();
+                        // Calculate position for monsters (2x2 grid in center)
+                        let col = i % 2;
+                        let row = i / 2;
+                        let x = 90 + col as i32 * 100;
+                        let y = 140 + row as i32 * 100;
+                        let center = Point::new(x, y);
+
+                        // Draw monster name in black with white background above GIF
+                        let name_x = center.x - (enemy.name.len() as i32 * 9) / 2;
+                        let name_y = center.y - 40;
+
+                        // Draw white background rectangle for name
+                        // Note: text y position is at baseline, so background must start higher
+                        let name_width = enemy.name.len() as i32 * 9;
+                        let bg_padding = 3;
+                        let font_height = 18; // FONT_9X18_BOLD height
+                        Rectangle::new(
+                            Point::new(name_x - bg_padding, name_y - font_height - bg_padding + 2),
+                            Size::new(
+                                (name_width + bg_padding * 2) as u32,
+                                (font_height + bg_padding * 2) as u32,
+                            ),
+                        )
+                        .into_styled(PrimitiveStyle::with_fill(Rgb888::WHITE))
+                        .draw(display)?;
+
+                        // Draw black text on top
                         draw_text(
                             display,
-                            &monster_str,
-                            Point::new(130, y),
-                            &FONT_9X15,
-                            COLOR_TEXT_DIM,
+                            enemy.name,
+                            Point::new(name_x, name_y),
+                            &FONT_9X18_BOLD,
+                            Rgb888::BLACK,
                         )?;
+
+                        // Draw monster idle GIF (0.gif)
+                        draw_map_monster_gif(display, game_state, center, enemy.name)?;
                     }
                 }
 
-                // Action buttons (centered, large)
+                // Action buttons (centered, higher to leave space for bottom navigation)
                 // Auto Farm button
-                Rectangle::new(Point::new(84, 210), Size::new(200, 60))
+                Rectangle::new(Point::new(84, 280), Size::new(200, 50))
                     .into_styled(PrimitiveStyle::with_fill(Rgb888::new(50, 100, 50)))
                     .draw(display)?;
-                Rectangle::new(Point::new(84, 210), Size::new(200, 60))
+                Rectangle::new(Point::new(84, 280), Size::new(200, 50))
                     .into_styled(PrimitiveStyle::with_stroke(Rgb888::GREEN, 3))
                     .draw(display)?;
                 draw_text(
                     display,
                     "AUTO FARM",
-                    Point::new(115, 235),
+                    Point::new(115, 300),
                     &FONT_9X18_BOLD,
                     Rgb888::WHITE,
                 )?;
 
                 // Battle button
-                Rectangle::new(Point::new(84, 280), Size::new(200, 60))
+                Rectangle::new(Point::new(84, 335), Size::new(200, 50))
                     .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
                     .draw(display)?;
-                Rectangle::new(Point::new(84, 280), Size::new(200, 60))
+                Rectangle::new(Point::new(84, 335), Size::new(200, 50))
                     .into_styled(PrimitiveStyle::with_stroke(Rgb888::RED, 3))
                     .draw(display)?;
                 draw_text(
                     display,
                     "BATTLE",
-                    Point::new(140, 305),
+                    Point::new(140, 355),
                     &FONT_9X18_BOLD,
                     Rgb888::WHITE,
                 )?;
@@ -1288,19 +1257,9 @@ where
         }
     }
 
-    // Battery and FPS at bottom
-    draw_battery_info(display, Point::new(10, 355), battery_mv, battery_pct)?;
-    draw_fps_info(display, Point::new(240, 365), fps)?;
-
     // Status message (for SP/HP warnings)
     if let Some(msg) = game_state.save_status_msg {
-        draw_text(
-            display,
-            msg,
-            Point::new(60, 390),
-            &FONT_10X20,
-            Rgb888::RED,
-        )?;
+        draw_text(display, msg, Point::new(60, 390), &FONT_10X20, Rgb888::RED)?;
     }
 
     Ok(())
@@ -1485,7 +1444,13 @@ where
 }
 
 /// Draw the settings page with brightness slider
-pub fn draw_settings_page<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
+pub fn draw_settings_page<D>(
+    display: &mut D,
+    game_state: &GameState,
+    battery_mv: u16,
+    battery_pct: u8,
+    fps: u32,
+) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
@@ -1511,7 +1476,12 @@ where
 
     // Brightness value display
     let mut brightness_str = String::<16>::new();
-    write!(brightness_str, "{}%", (game_state.brightness as u32 * 100) / 255).ok();
+    write!(
+        brightness_str,
+        "{}%",
+        (game_state.brightness as u32 * 100) / 255
+    )
+    .ok();
     draw_text(
         display,
         &brightness_str,
@@ -1573,11 +1543,26 @@ where
         COLOR_TEXT_DIM,
     )?;
 
+    // System Info section at bottom (Battery and FPS)
+    draw_text(
+        display,
+        "System Info",
+        Point::new(125, 360),
+        &FONT_9X18_BOLD,
+        COLOR_TEXT_DIM,
+    )?;
+
+    // Battery info
+    draw_battery_info(display, Point::new(20, 380), battery_mv, battery_pct)?;
+
+    // FPS info (right side)
+    draw_fps_info(display, Point::new(230, 380), fps)?;
+
     // Footer
     draw_text(
         display,
         "Touch bottom to go back",
-        Point::new(65, 440),
+        Point::new(65, 420),
         &FONT_9X15,
         COLOR_TEXT_DIM,
     )?;
@@ -1623,6 +1608,51 @@ where
     Ok(())
 }
 
+/// Helper: Draw monster idle GIF (0.gif) on map page
+fn draw_map_monster_gif<D>(
+    display: &mut D,
+    game_state: &GameState,
+    center_position: Point,
+    monster_name: &str,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    // Get idle animation GIF (0.gif) for the monster
+    let gif_data = crate::tamagotchi::models::MonsterAnimation::Idle.gif_data(monster_name);
+    let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
+
+    // Get GIF dimensions to calculate centered position
+    let gif_width = gif.width() as i32;
+    let gif_height = gif.height() as i32;
+
+    // Calculate top-left position to center the GIF at center_position
+    let top_left = Point::new(
+        center_position.x - (gif_width / 2),
+        center_position.y - (gif_height / 2),
+    );
+
+    // Get current frame from map animation frame counter
+    // Count total frames first to wrap properly
+    let total_frames = gif.frames().count();
+    if total_frames == 0 {
+        return Ok(());
+    }
+
+    let frame_index = game_state.map_monster_animation_frame % total_frames;
+    let mut current_index = 0;
+
+    for frame in gif.frames() {
+        if current_index == frame_index {
+            Image::new(&frame, top_left).draw(display)?;
+            break;
+        }
+        current_index += 1;
+    }
+
+    Ok(())
+}
+
 /// Helper: Draw hero GIF animation
 fn draw_hero_gif<D>(
     display: &mut D,
@@ -1635,14 +1665,16 @@ where
     let gif_data = game_state.hero_animation.gif_data();
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
 
-    // Get GIF dimensions to calculate centered position
+    // Get GIF dimensions
     let gif_width = gif.width() as i32;
     let gif_height = gif.height() as i32;
 
-    // Calculate top-left position to center the GIF at center_position
+    // Calculate top-left position to align by bottom
+    // center_position is treated as the bottom-center anchor point
+    // This ensures smooth transitions between different-sized animations (36.gif vs 84.gif)
     let top_left = Point::new(
-        center_position.x - (gif_width / 2),
-        center_position.y - (gif_height / 2),
+        center_position.x - (gif_width / 2), // Center horizontally
+        center_position.y - gif_height,      // Align by bottom
     );
 
     // Get current frame
@@ -1727,11 +1759,12 @@ where
         Rgb888::RED
     };
 
+    // Position value to the right of the label (FPS: is 4 chars * 9px = 36px + 5px spacing)
     draw_text(
         display,
         &fps_str,
-        position + Point::new(0, 20),
-        &FONT_9X15,
+        position + Point::new(45, 0),
+        &FONT_9X18_BOLD,
         fps_color,
     )?;
 

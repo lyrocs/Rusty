@@ -2,7 +2,6 @@
   {
     "id": 1,
     "name": "Prontera",
-    "north": 4,
     "south": 2,
     "east": 5,
     "west": 3,
@@ -20,12 +19,6 @@
     "name": "Prontera West",
     "east": 1,
     "enemies": [1004, 1051]
-  },
-  {
-    "id": 4,
-    "name": "Prontera North",
-    "south": 1,
-    "enemies": [1051, 1007]
   },
   {
     "id": 5,

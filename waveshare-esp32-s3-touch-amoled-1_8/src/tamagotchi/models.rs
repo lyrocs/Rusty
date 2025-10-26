@@ -51,7 +51,7 @@ pub struct Hero {
     pub max_hp: u16,
     pub sp: u16,
     pub max_sp: u16,
-    pub zeny: u32, // Currency
+    pub zeny: u32,            // Currency
     pub inventory: Inventory, // Item inventory
 }
 
@@ -130,7 +130,12 @@ impl Hero {
             if item.id == id {
                 // Stack the item
                 item.quantity = item.quantity.saturating_add(quantity);
-                esp_println::println!("[INVENTORY] Added {} x{} (total: {})", name, quantity, item.quantity);
+                esp_println::println!(
+                    "[INVENTORY] Added {} x{} (total: {})",
+                    name,
+                    quantity,
+                    item.quantity
+                );
                 return true;
             }
         }
@@ -360,7 +365,10 @@ impl MonsterAnimation {
 
             // Default fallback to Poring if monster not found
             _ => {
-                esp_println::println!("[WARNING] No GIF found for monster '{}', using Poring", monster_name);
+                esp_println::println!(
+                    "[WARNING] No GIF found for monster '{}', using Poring",
+                    monster_name
+                );
                 match self {
                     MonsterAnimation::Idle => include_bytes!("images/poring/0.gif"),
                     MonsterAnimation::Attacking => include_bytes!("images/poring/16.gif"),
@@ -383,7 +391,10 @@ pub fn get_monster_attacked_gif(monster_name: &str) -> &'static [u8] {
         "poring" => include_bytes!("images/poring/24.gif"),
         "fabre" => include_bytes!("images/fabre/24.gif"),
         _ => {
-            esp_println::println!("[WARNING] No attacked GIF found for monster '{}', using Poring", monster_name);
+            esp_println::println!(
+                "[WARNING] No attacked GIF found for monster '{}', using Poring",
+                monster_name
+            );
             include_bytes!("images/poring/24.gif")
         }
     }
@@ -420,6 +431,26 @@ impl HeroAnimation {
     }
 }
 
+/// Get map background GIF by map ID
+/// Map backgrounds are single-frame GIFs stored in images/map/
+///
+/// To add a new map:
+/// 1. Add map data to maps.json with a unique ID
+/// 2. Create a GIF file named with the map ID: images/map/{id}.gif
+/// 3. Add a match arm below: id => include_bytes!("images/map/{id}.gif")
+pub fn get_map_background(map_id: u32) -> Option<&'static [u8]> {
+    match map_id {
+        1 => Some(include_bytes!("images/map/1.gif")), // Prontera
+        2 => Some(include_bytes!("images/map/2.gif")), // Prontera South
+        3 => Some(include_bytes!("images/map/3.gif")), // Prontera West
+        5 => Some(include_bytes!("images/map/5.gif")), // Prontera East
+        _ => {
+            esp_println::println!("[WARNING] No background image found for map ID {}", map_id);
+            None
+        }
+    }
+}
+
 /// Rest state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestState {
@@ -434,6 +465,14 @@ pub enum BattleState {
     Playing, // Active gameplay
     Victory, // Won the game
     Defeat,  // Lost the game
+}
+
+/// Battle animation phase for manual fighting
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BattleAnimationPhase {
+    BothIdle,         // Both hero and monster idle
+    MonsterAttacking, // Monster attacks (16.gif), hero gets hit (52.gif)
+    HeroAttacking,    // Hero attacks (84.gif), monster gets hit (24.gif)
 }
 
 /// Circle type for Whac-A-Mole game
@@ -574,8 +613,8 @@ pub struct GameState {
     pub farm_duration_ms: u32,    // 60000 ms = 1 minute
     pub farm_touch_cooldown: u32, // Cooldown in ms to prevent immediate re-touch
     pub rest_state: RestState,
-    pub rest_progress: u32,                    // Progress in milliseconds
-    pub sp_regen_rate: u16,                    // SP per second while resting
+    pub rest_progress: u32,                  // Progress in milliseconds
+    pub sp_regen_rate: u16,                  // SP per second while resting
     pub menu_selection: u8, // 0 = Overview, 1 = Farm, 2 = Rest, 3 = Battle, 4 = Save
     pub battle_state: BattleState, // Current battle state
     pub battle_enemy: Option<Enemy>, // Enemy being fought
@@ -591,6 +630,8 @@ pub struct GameState {
     pub battle_last_touch_y: i32, // Last touch Y position for debug display
     pub battle_last_touch_time: u32, // When last touch occurred (for fade out)
     pub battle_end_time: u32, // When battle ended (for preventing accidental clicks)
+    pub battle_animation_phase: BattleAnimationPhase, // Current animation phase
+    pub battle_animation_phase_started_ms: u32, // When current phase started
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -613,6 +654,8 @@ pub struct GameState {
     pub hero_animation_started_ms: u32, // When current hero animation started
     pub last_attack_animation_ms: u32, // When last attack animation was triggered (for timing)
     pub last_hero_attack_ms: u32, // When hero last attacked (for triggering hero attack anim)
+    pub map_monster_animation_frame: usize, // Current frame for monster idle animations on map page
+    pub map_monster_animation_last_update: u32, // Last time map monster animation was updated
 }
 
 impl Default for GameState {
@@ -644,6 +687,8 @@ impl Default for GameState {
             battle_last_touch_y: 0,
             battle_last_touch_time: 0,
             battle_end_time: 0,
+            battle_animation_phase: BattleAnimationPhase::BothIdle,
+            battle_animation_phase_started_ms: 0,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,
@@ -654,7 +699,7 @@ impl Default for GameState {
             needs_redraw: true, // Start with needing a redraw
             screen_on: true,    // Screen starts on
             last_drops: HeaplessVec::new(),
-            brightness: 204,    // 80% brightness by default (204/255 = 0.8)
+            brightness: 204, // 80% brightness by default (204/255 = 0.8)
             monster_animation: MonsterAnimation::Idle,
             monster_animation_frame: 0,
             monster_animation_started_ms: 0,
@@ -666,6 +711,8 @@ impl Default for GameState {
             hero_animation_started_ms: 0,
             last_attack_animation_ms: 0,
             last_hero_attack_ms: 0,
+            map_monster_animation_frame: 0,
+            map_monster_animation_last_update: 0,
         }
     }
 }
@@ -833,7 +880,6 @@ impl GameState {
         // Check if enemy is defeated
         if let Some(enemy) = &self.battle_enemy {
             if enemy.hp == 0 {
-                esp_println::println!("[BATTLE] Enemy defeated! Ending battle early.");
                 self.complete_battle();
                 return;
             }
@@ -850,6 +896,7 @@ impl GameState {
             let rng = (self.last_update_ms % 255) as u8;
             self.spawn_battle_circle(rng);
             self.battle_next_spawn = self.last_update_ms + self.battle_spawn_interval;
+            self.needs_redraw = true; // Redraw when new circle spawns
         }
 
         // Check for expired circles
@@ -865,7 +912,6 @@ impl GameState {
                             10
                         };
                         self.hero.hp = self.hero.hp.saturating_sub(damage);
-                        esp_println::println!("[BATTLE] Missed red circle! Took {} damage", damage);
                         self.battle_missed += 1;
                         // Reset combo on missing red circle
                         self.battle_combo = 0;
@@ -873,13 +919,12 @@ impl GameState {
                         // Missed green circle - counts as miss and resets combo
                         self.battle_missed += 1;
                         self.battle_combo = 0;
-                        esp_println::println!("[BATTLE] Missed green circle! Combo reset");
                     }
                     *circle = None;
+                    self.needs_redraw = true; // Redraw when circle expires
 
                     // Check for defeat (hero HP reaches 0)
                     if self.hero.hp == 0 {
-                        esp_println::println!("[BATTLE] Hero defeated! HP = 0");
                         self.battle_state = BattleState::Defeat;
                         return;
                     }
@@ -907,7 +952,8 @@ impl GameState {
 
                                 // Combo multiplier: 1.0x at combo 1, increases by 0.2x per combo
                                 // Caps at 3.0x (combo 11+)
-                                let combo_multiplier = (1.0 + (self.battle_combo - 1) as f32 * 0.2).min(3.0);
+                                let combo_multiplier =
+                                    (1.0 + (self.battle_combo - 1) as f32 * 0.2).min(3.0);
                                 let damage = (base_damage as f32 * combo_multiplier) as u16;
 
                                 enemy.hp = enemy.hp.saturating_sub(damage);
@@ -921,7 +967,6 @@ impl GameState {
 
                                 // Check if enemy is defeated
                                 if enemy.hp == 0 {
-                                    esp_println::println!("[BATTLE] Enemy HP reached 0! Victory!");
                                     enemy_defeated = true;
                                 }
                             }
@@ -929,10 +974,14 @@ impl GameState {
                         CircleType::BadTarget => {
                             // Blocked enemy attack - doesn't increase or decrease combo
                             self.battle_score += 1;
-                            esp_println::println!("[BATTLE] Blocked red attack! Combo maintained at {}", self.battle_combo);
+                            esp_println::println!(
+                                "[BATTLE] Blocked red attack! Combo maintained at {}",
+                                self.battle_combo
+                            );
                         }
                     }
                     *circle = None;
+                    self.needs_redraw = true; // Redraw when circle is clicked
 
                     // Complete battle after modifying circles
                     if enemy_defeated {
