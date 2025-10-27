@@ -1792,13 +1792,25 @@ impl GameState {
                 rng_value,
             );
 
-            hero.hp = hero.hp.saturating_sub(damage);
-            self.jrpg_damage_dealt = damage;
+            // Store combat result for UI display
+            self.jrpg_last_combat_result = combat_result;
 
-            // Reset combo on player damage
+            // Only apply damage and reset combo if attack hit
             if combat_result != CombatResult::Miss {
+                hero.hp = hero.hp.saturating_sub(damage);
+                self.jrpg_damage_dealt = damage;
+
+                // Reset combo on player damage
                 self.jrpg_combo_count = 0;
                 self.jrpg_combo_ready = false;
+
+                // Hero hit animation (only when hit)
+                self.hero_animation = HeroAnimation::Attacked;
+                self.hero_animation_frame = 0;
+                self.hero_animation_started_ms = self.gif_animation_clock_ms;
+            } else {
+                // Miss - no damage
+                self.jrpg_damage_dealt = 0;
             }
 
             // Set damage animation position (near hero at x=240, y=150)
@@ -1813,18 +1825,13 @@ impl GameState {
                 CombatResult::Normal => "",
             };
 
-            esp_println::println!("[JRPG] Enemy dealt {} damage{}. Hero HP: {}/{}",
+            esp_println::println!("[JRPG] Enemy attack: {} damage{}. Hero HP: {}/{}",
                 damage, result_str, hero.hp, hero.max_hp);
 
-            // Set monster attack animation
+            // Set monster attack animation (always plays even on miss)
             self.monster_animation = MonsterAnimation::Attacking;
             self.monster_animation_frame = 0;
             self.monster_animation_started_ms = self.gif_animation_clock_ms;
-
-            // Hero hit animation
-            self.hero_animation = HeroAnimation::Attacked;
-            self.hero_animation_frame = 0;
-            self.hero_animation_started_ms = self.gif_animation_clock_ms;
 
             self.needs_redraw = true;
         }
