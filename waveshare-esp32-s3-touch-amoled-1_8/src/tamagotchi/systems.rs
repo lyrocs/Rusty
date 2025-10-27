@@ -9,7 +9,7 @@ use crate::tamagotchi::models::{
 };
 use crate::tamagotchi::ui::{
     draw_battle_page, draw_farm_page, draw_inventory, draw_jrpg_battle_page, draw_map_page,
-    draw_menu, draw_overview_page, draw_rest_page, draw_settings_page,
+    draw_menu, draw_overview_page, draw_rest_page, draw_settings_page, draw_stats_page,
 };
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
@@ -448,14 +448,19 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             }
         }
         GamePage::Overview => {
-            // Rest button: x=30-180, y=370-420
-            if x >= 30 && x <= 180 && y >= 370 && y <= 420 {
+            // Rest button: x=14-124, y=370-420
+            if x >= 14 && x <= 124 && y >= 370 && y <= 420 {
                 game_state.current_page = GamePage::Rest;
                 game_state.init_rest_state();
                 game_state.needs_redraw = true;
             }
-            // Inventory button: x=188-338, y=370-420
-            else if x >= 188 && x <= 338 && y >= 370 && y <= 420 {
+            // Stats button: x=130-240, y=370-420
+            else if x >= 130 && x <= 240 && y >= 370 && y <= 420 {
+                game_state.current_page = GamePage::Stats;
+                game_state.needs_redraw = true;
+            }
+            // Inventory button: x=246-356, y=370-420
+            else if x >= 246 && x <= 356 && y >= 370 && y <= 420 {
                 game_state.current_page = GamePage::Inventory;
                 game_state.needs_redraw = true;
             }
@@ -464,6 +469,56 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             // Go back to menu on touch
             game_state.current_page = GamePage::Menu;
             game_state.needs_redraw = true;
+        }
+        GamePage::Stats => {
+            // 6 stat increase buttons (2 columns x 3 rows): x=20-170 (left), x=190-340 (right)
+            // Buttons are now 70px tall (2x original)
+            // STR button (top left): x=20-170, y=110-180
+            if x >= 20 && x <= 170 && y >= 110 && y <= 180 {
+                if game_state.hero.increase_stat("STR") {
+                    game_state.needs_redraw = true;
+                }
+            }
+            // AGI button (middle left): x=20-170, y=185-255
+            else if x >= 20 && x <= 170 && y >= 185 && y <= 255 {
+                if game_state.hero.increase_stat("AGI") {
+                    game_state.needs_redraw = true;
+                }
+            }
+            // VIT button (bottom left): x=20-170, y=260-330
+            else if x >= 20 && x <= 170 && y >= 260 && y <= 330 {
+                if game_state.hero.increase_stat("VIT") {
+                    game_state.needs_redraw = true;
+                }
+            }
+            // INT button (top right): x=190-340, y=110-180
+            else if x >= 190 && x <= 340 && y >= 110 && y <= 180 {
+                if game_state.hero.increase_stat("INT") {
+                    game_state.needs_redraw = true;
+                }
+            }
+            // DEX button (middle right): x=190-340, y=185-255
+            else if x >= 190 && x <= 340 && y >= 185 && y <= 255 {
+                if game_state.hero.increase_stat("DEX") {
+                    game_state.needs_redraw = true;
+                }
+            }
+            // LUK button (bottom right): x=190-340, y=260-330
+            else if x >= 190 && x <= 340 && y >= 260 && y <= 330 {
+                if game_state.hero.increase_stat("LUK") {
+                    game_state.needs_redraw = true;
+                }
+            }
+            // Reset button (bottom center): x=90-270, y=345-390
+            else if x >= 90 && x <= 270 && y >= 345 && y <= 390 {
+                game_state.hero.reset_stats();
+                game_state.needs_redraw = true;
+            }
+            // Back button (bottom): x=100-260, y=400-440
+            else if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
+                game_state.current_page = GamePage::Overview;
+                game_state.needs_redraw = true;
+            }
         }
         GamePage::Settings => {
             // Brightness slider area: x=40-320, y=180-200 (horizontal bar)
@@ -1376,6 +1431,9 @@ pub fn tamagotchi_render_system(
         }
         GamePage::Inventory => {
             draw_inventory(&mut display_res.display, &game_state).ok();
+        }
+        GamePage::Stats => {
+            draw_stats_page(&mut display_res.display, &game_state).ok();
         }
         GamePage::Settings => {
             draw_settings_page(

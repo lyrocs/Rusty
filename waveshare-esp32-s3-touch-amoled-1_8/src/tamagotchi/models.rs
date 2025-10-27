@@ -38,6 +38,7 @@ pub enum GamePage {
     Menu,
     Inventory, // Item inventory
     Settings,  // Settings page (brightness, etc.)
+    Stats,     // Character stats allocation page
 }
 
 /// Hero character data
@@ -54,6 +55,17 @@ pub struct Hero {
     pub max_sp: u16,
     pub zeny: u32,            // Currency
     pub inventory: Inventory, // Item inventory
+
+    // Base stats (allocatable)
+    pub base_str: u16,  // Strength (affects ATK)
+    pub base_agi: u16,  // Agility (affects evasion, double attack, ASPD)
+    pub base_vit: u16,  // Vitality (affects HP)
+    pub base_int: u16,  // Intelligence (affects SP, magic damage, healing)
+    pub base_dex: u16,  // Dexterity (affects accuracy, skill damage)
+    pub base_luk: u16,  // Luck (affects critical rate)
+
+    // Stat points available for allocation
+    pub stat_points: u16,
 }
 
 impl Hero {
@@ -70,6 +82,17 @@ impl Hero {
             max_sp: 50,
             zeny: 0,
             inventory: HeaplessVec::new(),
+
+            // Starting base stats (1 in each)
+            base_str: 1,
+            base_agi: 1,
+            base_vit: 1,
+            base_int: 1,
+            base_dex: 1,
+            base_luk: 1,
+
+            // Starting stat points (level 1 = 0 points, gain 3 per level)
+            stat_points: 0,
         }
     }
 
@@ -88,7 +111,10 @@ impl Hero {
         self.level += 1;
         self.exp -= self.exp_to_next_level;
 
-        // Increase stats
+        // Grant stat points (3 per level like Ragnarok Online)
+        self.stat_points += 3;
+
+        // Increase base stats
         self.max_hp += 10;
         self.max_sp += 5;
         self.hp = self.max_hp;
@@ -122,6 +148,59 @@ impl Hero {
     /// Regenerate SP while resting
     pub fn regenerate_sp(&mut self, amount: u16) {
         self.sp = (self.sp + amount).min(self.max_sp);
+    }
+
+    /// Add a stat point to a specific stat
+    pub fn increase_stat(&mut self, stat_name: &str) -> bool {
+        if self.stat_points == 0 {
+            return false;
+        }
+
+        match stat_name {
+            "STR" => self.base_str += 1,
+            "AGI" => self.base_agi += 1,
+            "VIT" => {
+                self.base_vit += 1;
+                self.max_hp += 10; // VIT increases HP
+                self.hp = self.max_hp;
+            },
+            "INT" => {
+                self.base_int += 1;
+                self.max_sp += 5; // INT increases SP
+                self.sp = self.max_sp;
+            },
+            "DEX" => self.base_dex += 1,
+            "LUK" => self.base_luk += 1,
+            _ => return false,
+        }
+
+        self.stat_points -= 1;
+        true
+    }
+
+    /// Reset all stats (refund all spent stat points)
+    pub fn reset_stats(&mut self) {
+        let total_stats = self.base_str + self.base_agi + self.base_vit +
+                          self.base_int + self.base_dex + self.base_luk;
+        let starting_stats = 6; // 1 in each stat
+        let spent_points = total_stats - starting_stats;
+
+        // Reset to base values
+        self.base_str = 1;
+        self.base_agi = 1;
+        self.base_vit = 1;
+        self.base_int = 1;
+        self.base_dex = 1;
+        self.base_luk = 1;
+
+        // Refund points
+        self.stat_points += spent_points;
+
+        // Reset HP/SP to base values (level-based only)
+        self.max_hp = 100 + ((self.level - 1) * 10);
+        self.max_sp = 50 + ((self.level - 1) * 5);
+        self.hp = self.max_hp;
+        self.sp = self.max_sp;
     }
 
     /// Add item to inventory (stacks if same item exists)
@@ -279,6 +358,18 @@ impl Hero {
             max_sp,
             zeny,
             inventory: Inventory::new(),
+
+            // Initialize base stats (1 in each + 3 per level from level 2+)
+            base_str: 1,
+            base_agi: 1,
+            base_vit: 1,
+            base_int: 1,
+            base_dex: 1,
+            base_luk: 1,
+
+            // Calculate available stat points based on level
+            // Level 1 = 0 points, Level 2+ = (level - 1) * 3 points
+            stat_points: if level > 1 { (level - 1) * 3 } else { 0 },
         })
     }
 }
@@ -1537,7 +1628,7 @@ impl GameState {
         // Load skills for hero's job
         let hero_skills = JrpgSkill::get_skills_for_job(self.hero.job);
 
-        // Create hero combatant from current hero stats
+        // Create hero combatant from current hero stats (using base stats)
         self.jrpg_hero_combatant = Some(JrpgCombatant {
             name: self.hero.name,
             level: self.hero.level,
@@ -1545,13 +1636,13 @@ impl GameState {
             max_hp: self.hero.max_hp,
             sp: self.hero.sp,
             max_sp: self.hero.max_sp,
-            attack: 10 + (self.hero.level * 2), // Base attack + level scaling
-            defense: 5 + self.hero.level,       // Base defense + level scaling
-            // New stats
-            agility: 5 + self.hero.level,       // Base AGI + level scaling
-            luck: 5 + (self.hero.level / 2),    // Base LUK + level scaling
-            intelligence: 5 + self.hero.level,  // Base INT + level scaling
-            dexterity: 5 + self.hero.level,     // Base DEX + level scaling
+            attack: 10 + (self.hero.base_str * 2), // STR affects ATK
+            defense: 5 + self.hero.base_vit,       // VIT affects DEF
+            // Stats from base stats
+            agility: self.hero.base_agi,           // Direct AGI
+            luck: self.hero.base_luk,              // Direct LUK
+            intelligence: self.hero.base_int,      // Direct INT
+            dexterity: self.hero.base_dex,         // Direct DEX
             active_effects: heapless::Vec::new(),
             available_skills: hero_skills,
         });
