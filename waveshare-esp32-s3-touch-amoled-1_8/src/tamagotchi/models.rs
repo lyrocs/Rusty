@@ -503,9 +503,8 @@ pub enum JrpgBattleAction {
 /// JRPG Battle Menu Selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JrpgBattleMenu {
-    Main,      // Main menu: Attack, Skill, Item, Defend, Run
+    Main,      // Main menu: Attack, Skill, Run
     Skills,    // Skill selection submenu
-    Items,     // Item selection submenu
 }
 
 /// JRPG Battle Combatant (for both hero and enemy)
@@ -519,7 +518,334 @@ pub struct JrpgCombatant {
     pub max_sp: u16,
     pub attack: u16,
     pub defense: u16,
-    pub is_defending: bool, // Defending reduces damage by 50%
+
+    // New stats for improved combat
+    pub agility: u16,      // For double attack chance
+    pub luck: u16,         // For critical/lucky hits
+    pub intelligence: u16, // For magic damage
+    pub dexterity: u16,    // For accuracy (future)
+
+    // Active status effects (max 8 active effects)
+    pub active_effects: heapless::Vec<ActiveStatusEffect, 8>,
+
+    // Available skills (max 3 skills)
+    pub available_skills: heapless::Vec<JrpgSkill, 3>,
+}
+
+/// Skill type classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillType {
+    Physical,
+    Magic,
+    Buff,
+    Debuff,
+    Healing,
+    Utility,
+}
+
+/// Skill effects
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillEffect {
+    Damage(u16),           // Base damage
+    Heal(u16),             // Heal amount
+    Stun(u8),              // Stun for X turns
+    Poison(u16, u8),       // Damage per turn, duration
+    BuffAtk(u16, u8),      // Increase ATK by X%, duration
+    BuffDef(u16, u8),      // Increase DEF by X%, duration
+    BuffAgi(u16, u8),      // Increase AGI by X%, duration
+    DebuffAtk(u16, u8),    // Decrease ATK by X%, duration
+    DebuffDef(u16, u8),    // Decrease DEF by X%, duration
+    Steal(u16, u16),       // Min/max zeny to steal
+    MultiHit(u8),          // Number of hits
+    DodgeNext,             // Dodge next attack
+}
+
+/// JRPG Skill
+#[derive(Debug, Clone, Copy)]
+pub struct JrpgSkill {
+    pub id: u16,
+    pub name: &'static str,
+    pub sp_cost: u16,
+    pub skill_type: SkillType,
+    pub power: u16,              // Damage multiplier (150 = 150%)
+    pub effect: Option<SkillEffect>,
+    pub duration: u8,            // For buffs/debuffs
+}
+
+/// Status effect type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusEffectType {
+    Poison,
+    Stun,
+    Slow,
+    Burn,
+    Freeze,
+    Blind,
+    AtkBuff,
+    DefBuff,
+    AgiBuff,
+    AtkDebuff,
+    DefDebuff,
+    AgiDebuff,
+    Blessing,
+    DodgeNext,
+}
+
+/// Active status effect on a combatant
+#[derive(Debug, Clone, Copy)]
+pub struct ActiveStatusEffect {
+    pub effect_type: StatusEffectType,
+    pub duration: u8,     // Turns remaining
+    pub power: u16,       // Effect strength (%)
+}
+
+/// Combat result for displaying effects
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombatResult {
+    Normal,
+    Critical,
+    Lucky,
+    Miss,
+}
+
+/// Skill database - skills available per job
+impl JrpgSkill {
+    /// Get skills for Swordsman job
+    pub const fn get_swordsman_skills() -> [JrpgSkill; 3] {
+        [
+            // Bash - High damage single target
+            JrpgSkill {
+                id: 1,
+                name: "Bash",
+                sp_cost: 8,
+                skill_type: SkillType::Physical,
+                power: 150, // 150% ATK damage
+                effect: Some(SkillEffect::Stun(1)), // 10% stun chance handled in code
+                duration: 1,
+            },
+            // Provoke - Debuff enemy DEF, buff own ATK
+            JrpgSkill {
+                id: 2,
+                name: "Provoke",
+                sp_cost: 5,
+                skill_type: SkillType::Debuff,
+                power: 0, // No damage
+                effect: Some(SkillEffect::DebuffDef(30, 3)), // -30% DEF for 3 turns
+                duration: 3,
+            },
+            // Magnum Break - Medium damage
+            JrpgSkill {
+                id: 3,
+                name: "Magnum Break",
+                sp_cost: 15,
+                skill_type: SkillType::Physical,
+                power: 120, // 120% ATK damage
+                effect: None, // Just damage
+                duration: 0,
+            },
+        ]
+    }
+
+    /// Get skills for Mage job
+    pub const fn get_mage_skills() -> [JrpgSkill; 3] {
+        [
+            // Fire Bolt - High INT-based magic damage
+            JrpgSkill {
+                id: 10,
+                name: "Fire Bolt",
+                sp_cost: 12,
+                skill_type: SkillType::Magic,
+                power: 200, // INT × 2
+                effect: None,
+                duration: 0,
+            },
+            // Cold Bolt - INT-based magic damage with slow
+            JrpgSkill {
+                id: 11,
+                name: "Cold Bolt",
+                sp_cost: 12,
+                skill_type: SkillType::Magic,
+                power: 180, // INT × 1.8
+                effect: Some(SkillEffect::BuffAgi(50, 2)), // Implemented as slow (reduce AGI)
+                duration: 2,
+            },
+            // Lightning Bolt - Highest INT-based magic damage with stun
+            JrpgSkill {
+                id: 12,
+                name: "Lightning Bolt",
+                sp_cost: 12,
+                skill_type: SkillType::Magic,
+                power: 220, // INT × 2.2
+                effect: Some(SkillEffect::Stun(1)), // 10% stun chance
+                duration: 1,
+            },
+        ]
+    }
+
+    /// Get skills for Archer job
+    pub const fn get_archer_skills() -> [JrpgSkill; 3] {
+        [
+            // Double Strafe - Attack twice
+            JrpgSkill {
+                id: 20,
+                name: "Double Strafe",
+                sp_cost: 10,
+                skill_type: SkillType::Physical,
+                power: 100, // 100% ATK × 2 hits
+                effect: Some(SkillEffect::MultiHit(2)),
+                duration: 0,
+            },
+            // Arrow Shower - Area damage
+            JrpgSkill {
+                id: 21,
+                name: "Arrow Shower",
+                sp_cost: 15,
+                skill_type: SkillType::Physical,
+                power: 80, // 80% ATK
+                effect: None,
+                duration: 0,
+            },
+            // Improve Concentration - Buff AGI and DEX
+            JrpgSkill {
+                id: 22,
+                name: "Concentration",
+                sp_cost: 8,
+                skill_type: SkillType::Buff,
+                power: 0,
+                effect: Some(SkillEffect::BuffAgi(30, 3)), // +30% AGI for 3 turns
+                duration: 3,
+            },
+        ]
+    }
+
+    /// Get skills for Thief job
+    pub const fn get_thief_skills() -> [JrpgSkill; 3] {
+        [
+            // Steal - Steal Zeny from enemy
+            JrpgSkill {
+                id: 30,
+                name: "Steal",
+                sp_cost: 10,
+                skill_type: SkillType::Utility,
+                power: 0,
+                effect: Some(SkillEffect::Steal(10, 50)), // 10-50z
+                duration: 0,
+            },
+            // Hiding - Dodge next attack and counter
+            JrpgSkill {
+                id: 31,
+                name: "Hiding",
+                sp_cost: 12,
+                skill_type: SkillType::Utility,
+                power: 80, // Counter for 80% ATK
+                effect: Some(SkillEffect::DodgeNext),
+                duration: 1,
+            },
+            // Envenom - Poison damage over time
+            JrpgSkill {
+                id: 32,
+                name: "Envenom",
+                sp_cost: 15,
+                skill_type: SkillType::Physical,
+                power: 120, // 120% ATK
+                effect: Some(SkillEffect::Poison(5, 3)), // 5 dmg/turn for 3 turns
+                duration: 3,
+            },
+        ]
+    }
+
+    /// Get skills for Acolyte job
+    pub const fn get_acolyte_skills() -> [JrpgSkill; 3] {
+        [
+            // Heal - Restore HP
+            JrpgSkill {
+                id: 40,
+                name: "Heal",
+                sp_cost: 13,
+                skill_type: SkillType::Healing,
+                power: 300, // INT × 3
+                effect: Some(SkillEffect::Heal(0)), // Amount calculated in code
+                duration: 0,
+            },
+            // Blessing - Buff all stats
+            JrpgSkill {
+                id: 41,
+                name: "Blessing",
+                sp_cost: 10,
+                skill_type: SkillType::Buff,
+                power: 0,
+                effect: Some(SkillEffect::BuffAtk(20, 4)), // +20% ATK/DEF for 4 turns
+                duration: 4,
+            },
+            // Divine Protection - Reduce damage taken
+            JrpgSkill {
+                id: 42,
+                name: "Divine Protect",
+                sp_cost: 12,
+                skill_type: SkillType::Buff,
+                power: 0,
+                effect: Some(SkillEffect::BuffDef(40, 2)), // +40% DEF for 2 turns
+                duration: 2,
+            },
+        ]
+    }
+
+    /// Get skills for Merchant job
+    pub const fn get_merchant_skills() -> [JrpgSkill; 3] {
+        [
+            // Mammonite - Spend Zeny for high damage
+            JrpgSkill {
+                id: 50,
+                name: "Mammonite",
+                sp_cost: 8,
+                skill_type: SkillType::Physical,
+                power: 180, // 180% ATK (costs 50z)
+                effect: None,
+                duration: 0,
+            },
+            // Discount - Steal item (implemented as Zeny)
+            JrpgSkill {
+                id: 51,
+                name: "Discount",
+                sp_cost: 5,
+                skill_type: SkillType::Utility,
+                power: 0,
+                effect: Some(SkillEffect::Steal(20, 100)), // 20-100z
+                duration: 0,
+            },
+            // Enlarge Weight - Increase max HP temporarily
+            JrpgSkill {
+                id: 52,
+                name: "Enlarge Weight",
+                sp_cost: 10,
+                skill_type: SkillType::Buff,
+                power: 0,
+                effect: Some(SkillEffect::BuffDef(20, 3)), // +20% DEF (HP increase) for 3 turns
+                duration: 3,
+            },
+        ]
+    }
+
+    /// Get skills for a specific job
+    pub fn get_skills_for_job(job: &str) -> heapless::Vec<JrpgSkill, 3> {
+        let mut skills = heapless::Vec::new();
+
+        let skill_array = match job {
+            "Swordsman" => Self::get_swordsman_skills(),
+            "Mage" => Self::get_mage_skills(),
+            "Archer" => Self::get_archer_skills(),
+            "Thief" => Self::get_thief_skills(),
+            "Acolyte" => Self::get_acolyte_skills(),
+            "Merchant" => Self::get_merchant_skills(),
+            _ => Self::get_swordsman_skills(), // Default to Swordsman
+        };
+
+        for skill in skill_array.iter() {
+            let _ = skills.push(*skill);
+        }
+
+        skills
+    }
 }
 
 /// Circle type for Whac-A-Mole game
@@ -692,6 +1018,11 @@ pub struct GameState {
     pub jrpg_damage_x: i32,                    // X position for damage text
     pub jrpg_damage_y: i32,                    // Y position for damage text
     pub jrpg_action_animation_timer: u32,      // Timer for action animations
+    pub jrpg_combo_count: u8,                  // Current combo count (hits in a row)
+    pub jrpg_combo_ready: bool,                // Combo attack available (3 hits)
+    pub jrpg_last_combat_result: CombatResult, // Last attack result (normal/crit/lucky)
+    pub jrpg_skill_menu_selection: u8,         // Selected skill in skill menu (0-2)
+    pub jrpg_selected_skill_index: Option<usize>, // Index of skill being used
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -763,6 +1094,11 @@ impl Default for GameState {
             jrpg_damage_x: 0,
             jrpg_damage_y: 0,
             jrpg_action_animation_timer: 0,
+            jrpg_combo_count: 0,
+            jrpg_combo_ready: false,
+            jrpg_last_combat_result: CombatResult::Normal,
+            jrpg_skill_menu_selection: 0,
+            jrpg_selected_skill_index: None,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,
@@ -793,20 +1129,60 @@ impl Default for GameState {
     }
 }
 
-/// Calculate damage for JRPG battles
-fn calculate_jrpg_damage(attacker_atk: u16, defender_def: u16, is_defending: bool) -> u16 {
+/// Calculate damage for JRPG battles with variance, crits, lucky strikes, and miss chance
+fn calculate_jrpg_damage(
+    attacker_atk: u16,
+    attacker_luck: u16,
+    attacker_dex: u16,
+    defender_def: u16,
+    defender_agi: u16,
+    rng_value: u8, // 0-255 random value
+) -> (u16, CombatResult) {
+    // Calculate hit chance based on DEX vs AGI
+    // Base hit rate: 80%
+    // +1% hit per 5 DEX difference
+    // -1% hit per 5 AGI difference
+    let dex_bonus = (attacker_dex as i32) / 5;
+    let agi_penalty = (defender_agi as i32) / 5;
+    let hit_rate = 80 + dex_bonus - agi_penalty;
+    let hit_rate = hit_rate.clamp(20, 95) as u16; // Min 20%, Max 95%
+
+    // Check if attack hits
+    let hit_roll = (rng_value as u16 * 100) / 255;
+    if hit_roll >= hit_rate {
+        // Miss!
+        return (0, CombatResult::Miss);
+    }
+
+    // Base damage calculation
     let base_damage = if attacker_atk > defender_def {
         attacker_atk - (defender_def / 2)
     } else {
         1 // Minimum damage
     };
 
-    // Defending reduces damage by 50%
-    if is_defending {
-        base_damage / 2
+    // Apply damage variance (±20%)
+    // Use rng_value to get variance between 80% and 120%
+    let variance_percent = 80 + ((rng_value as u32 * 40) / 255) as u16; // 80-120%
+    let varied_damage = ((base_damage as u32 * variance_percent as u32) / 100) as u16;
+
+    // Calculate crit chance (base 5% + luck bonus)
+    let crit_chance = 5 + (attacker_luck / 20); // Each 20 luck = +1% crit
+    let crit_roll = (rng_value as u16 * 100) / 255;
+
+    let (final_damage, combat_result) = if crit_roll < 2 {
+        // 2% chance for Lucky Strike (200% damage, ignores DEF)
+        (attacker_atk * 2, CombatResult::Lucky)
+    } else if crit_roll < (2 + crit_chance) {
+        // Critical hit (140% damage, ignores DEF)
+        let crit_damage = ((attacker_atk as u32 * 140) / 100) as u16;
+        (crit_damage, CombatResult::Critical)
     } else {
-        base_damage
-    }
+        // Normal hit with variance
+        (varied_damage.max(1), CombatResult::Normal)
+    };
+
+    (final_damage.max(1), combat_result)
 }
 
 impl GameState {
@@ -1158,6 +1534,9 @@ impl GameState {
     pub fn start_jrpg_battle(&mut self, enemy: Enemy) {
         esp_println::println!("[JRPG] Starting battle with {}", enemy.name);
 
+        // Load skills for hero's job
+        let hero_skills = JrpgSkill::get_skills_for_job(self.hero.job);
+
         // Create hero combatant from current hero stats
         self.jrpg_hero_combatant = Some(JrpgCombatant {
             name: self.hero.name,
@@ -1168,7 +1547,13 @@ impl GameState {
             max_sp: self.hero.max_sp,
             attack: 10 + (self.hero.level * 2), // Base attack + level scaling
             defense: 5 + self.hero.level,       // Base defense + level scaling
-            is_defending: false,
+            // New stats
+            agility: 5 + self.hero.level,       // Base AGI + level scaling
+            luck: 5 + (self.hero.level / 2),    // Base LUK + level scaling
+            intelligence: 5 + self.hero.level,  // Base INT + level scaling
+            dexterity: 5 + self.hero.level,     // Base DEX + level scaling
+            active_effects: heapless::Vec::new(),
+            available_skills: hero_skills,
         });
 
         // Create enemy combatant
@@ -1181,7 +1566,13 @@ impl GameState {
             max_sp: 0,
             attack: enemy.attack,
             defense: enemy.defense,
-            is_defending: false,
+            // Enemy stats based on level
+            agility: enemy.level,
+            luck: enemy.level / 2,
+            intelligence: enemy.level,
+            dexterity: enemy.level,
+            active_effects: heapless::Vec::new(),
+            available_skills: heapless::Vec::new(), // Enemies don't use skills yet
         });
 
         // Store original enemy for rewards
@@ -1212,16 +1603,53 @@ impl GameState {
     /// Execute player attack in JRPG battle
     pub fn jrpg_player_attack(&mut self) {
         if let (Some(hero), Some(enemy)) = (&self.jrpg_hero_combatant, &mut self.jrpg_enemy_combatant) {
-            let damage = calculate_jrpg_damage(hero.attack, enemy.defense, enemy.is_defending);
+            // Generate random value for damage calculation
+            let rng_value = (self.last_update_ms.wrapping_add(self.gif_animation_clock_ms) % 255) as u8;
+
+            // Check for double attack (AGI-based)
+            let double_attack_chance = (hero.agility / 10).min(30); // Max 30% at AGI 300+
+            let double_attack_roll = (rng_value as u16 * 100) / 255;
+            let is_double_attack = double_attack_roll < double_attack_chance;
+
+            // Calculate damage with variance, crits, lucky strikes, and miss chance
+            let (damage, combat_result) = calculate_jrpg_damage(
+                hero.attack,
+                hero.luck,
+                hero.dexterity,
+                enemy.defense,
+                enemy.agility,
+                rng_value,
+            );
+
             enemy.hp = enemy.hp.saturating_sub(damage);
             self.jrpg_damage_dealt = damage;
+            self.jrpg_last_combat_result = combat_result;
+
+            // Update combo counter
+            if combat_result != CombatResult::Miss {
+                self.jrpg_combo_count = self.jrpg_combo_count.saturating_add(1);
+                if self.jrpg_combo_count >= 3 {
+                    self.jrpg_combo_ready = true;
+                }
+            } else {
+                self.jrpg_combo_count = 0;
+                self.jrpg_combo_ready = false;
+            }
 
             // Set damage animation position (near enemy at x=80, y=150)
             self.jrpg_damage_animation_timer = 1000; // 1 second animation
             self.jrpg_damage_x = 80 + 32; // Center of enemy GIF (64x64)
             self.jrpg_damage_y = 150 + 20; // Slightly below center
 
-            esp_println::println!("[JRPG] Hero dealt {} damage. Enemy HP: {}/{}", damage, enemy.hp, enemy.max_hp);
+            let result_str = match combat_result {
+                CombatResult::Critical => " CRITICAL!",
+                CombatResult::Lucky => " LUCKY STRIKE!",
+                CombatResult::Miss => " MISS!",
+                CombatResult::Normal => "",
+            };
+
+            esp_println::println!("[JRPG] Hero dealt {} damage{} (Combo: {}). Enemy HP: {}/{}",
+                damage, result_str, self.jrpg_combo_count, enemy.hp, enemy.max_hp);
 
             // Set attack animation
             self.hero_animation = HeroAnimation::Attacking;
@@ -1233,24 +1661,69 @@ impl GameState {
             self.monster_attacked_frame = 0;
             self.monster_attacked_started_ms = self.gif_animation_clock_ms;
 
-            enemy.is_defending = false; // Reset defense
             self.needs_redraw = true;
+
+            // Handle double attack
+            if is_double_attack && enemy.hp > 0 {
+                // Second hit with different RNG
+                let rng_value2 = (rng_value.wrapping_add(self.jrpg_combo_count)) % 255;
+                let (damage2, _combat_result2) = calculate_jrpg_damage(
+                    hero.attack,
+                    hero.luck,
+                    hero.dexterity,
+                    enemy.defense,
+                    enemy.agility,
+                    rng_value2,
+                );
+
+                enemy.hp = enemy.hp.saturating_sub(damage2);
+                self.jrpg_damage_dealt += damage2; // Add to total damage display
+
+                esp_println::println!("[JRPG] Double Attack! Hero dealt additional {} damage. Enemy HP: {}/{}",
+                    damage2, enemy.hp, enemy.max_hp);
+            }
         }
     }
 
     /// Execute enemy attack in JRPG battle
     pub fn jrpg_enemy_attack(&mut self) {
         if let (Some(enemy), Some(hero)) = (&self.jrpg_enemy_combatant, &mut self.jrpg_hero_combatant) {
-            let damage = calculate_jrpg_damage(enemy.attack, hero.defense, hero.is_defending);
+            // Generate random value for damage calculation
+            let rng_value = (self.last_update_ms.wrapping_add(self.gif_animation_clock_ms * 2) % 255) as u8;
+
+            // Calculate damage with variance, crits, lucky strikes, and miss chance
+            let (damage, combat_result) = calculate_jrpg_damage(
+                enemy.attack,
+                enemy.luck,
+                enemy.dexterity,
+                hero.defense,
+                hero.agility,
+                rng_value,
+            );
+
             hero.hp = hero.hp.saturating_sub(damage);
             self.jrpg_damage_dealt = damage;
+
+            // Reset combo on player damage
+            if combat_result != CombatResult::Miss {
+                self.jrpg_combo_count = 0;
+                self.jrpg_combo_ready = false;
+            }
 
             // Set damage animation position (near hero at x=240, y=150)
             self.jrpg_damage_animation_timer = 1000; // 1 second animation
             self.jrpg_damage_x = 240 + 32; // Center of hero GIF (64x64)
             self.jrpg_damage_y = 150 + 20; // Slightly below center
 
-            esp_println::println!("[JRPG] Enemy dealt {} damage. Hero HP: {}/{}", damage, hero.hp, hero.max_hp);
+            let result_str = match combat_result {
+                CombatResult::Critical => " CRITICAL!",
+                CombatResult::Lucky => " LUCKY STRIKE!",
+                CombatResult::Miss => " MISS!",
+                CombatResult::Normal => "",
+            };
+
+            esp_println::println!("[JRPG] Enemy dealt {} damage{}. Hero HP: {}/{}",
+                damage, result_str, hero.hp, hero.max_hp);
 
             // Set monster attack animation
             self.monster_animation = MonsterAnimation::Attacking;
@@ -1262,18 +1735,177 @@ impl GameState {
             self.hero_animation_frame = 0;
             self.hero_animation_started_ms = self.gif_animation_clock_ms;
 
-            hero.is_defending = false; // Reset defense after turn
             self.needs_redraw = true;
         }
     }
 
-    /// Player defends (reduces next damage by 50%)
-    pub fn jrpg_player_defend(&mut self) {
-        if let Some(hero) = &mut self.jrpg_hero_combatant {
-            hero.is_defending = true;
-            esp_println::println!("[JRPG] Hero is defending");
-            self.needs_redraw = true;
+    /// Execute player skill in JRPG battle
+    pub fn jrpg_player_use_skill(&mut self, skill_index: usize) {
+        // First, get skill and validate
+        let skill = if let Some(hero) = &self.jrpg_hero_combatant {
+            if skill_index >= hero.available_skills.len() {
+                esp_println::println!("[JRPG] Invalid skill index");
+                return;
+            }
+
+            let skill = hero.available_skills[skill_index];
+
+            // Check SP cost
+            if hero.sp < skill.sp_cost {
+                esp_println::println!("[JRPG] Not enough SP! Need {}, have {}", skill.sp_cost, hero.sp);
+                self.jrpg_battle_message = Some("Not enough SP!");
+                self.jrpg_battle_message_timer = 2000;
+                self.needs_redraw = true;
+                return;
+            }
+
+            skill
+        } else {
+            return;
+        };
+
+        // Consume SP
+        if let Some(hero_mut) = &mut self.jrpg_hero_combatant {
+            hero_mut.sp = hero_mut.sp.saturating_sub(skill.sp_cost);
         }
+
+        // Get hero stats needed for calculations (copied values)
+        let (hero_attack, hero_luck, hero_intelligence) = if let Some(hero) = &self.jrpg_hero_combatant {
+            (hero.attack, hero.luck, hero.intelligence)
+        } else {
+            return;
+        };
+
+        // Check if enemy exists
+        if self.jrpg_enemy_combatant.is_none() {
+            return;
+        }
+
+        // Generate random value for skill execution
+        let rng_value = (self.last_update_ms.wrapping_add(self.gif_animation_clock_ms) % 255) as u8;
+
+        esp_println::println!("[JRPG] Hero uses skill: {} (SP cost: {})", skill.name, skill.sp_cost);
+
+        // Execute skill based on type
+        match skill.skill_type {
+            SkillType::Physical => {
+                // Physical skill: use ATK with skill power multiplier
+                let skill_damage = ((hero_attack as u32 * skill.power as u32) / 100) as u16;
+
+                // Get enemy defense for damage calculation
+                let enemy_def = if let Some(enemy) = &self.jrpg_enemy_combatant {
+                    enemy.defense
+                } else {
+                    return;
+                };
+
+                // Skills never miss - calculate damage directly without miss check
+                let base_damage = if skill_damage > enemy_def {
+                    skill_damage - (enemy_def / 2)
+                } else {
+                    1
+                };
+
+                // Apply damage variance (±20%)
+                let variance_percent = 80 + ((rng_value as u32 * 40) / 255) as u16;
+                let varied_damage = ((base_damage as u32 * variance_percent as u32) / 100) as u16;
+
+                // Calculate crit chance (skills can still crit)
+                let crit_chance = 5 + (hero_luck / 20);
+                let crit_roll = (rng_value as u16 * 100) / 255;
+
+                let (damage, combat_result) = if crit_roll < 2 {
+                    (skill_damage * 2, CombatResult::Lucky)
+                } else if crit_roll < (2 + crit_chance) {
+                    let crit_damage = ((skill_damage as u32 * 140) / 100) as u16;
+                    (crit_damage, CombatResult::Critical)
+                } else {
+                    (varied_damage.max(1), CombatResult::Normal)
+                };
+
+                // Apply damage to enemy
+                if let Some(enemy) = &mut self.jrpg_enemy_combatant {
+                    enemy.hp = enemy.hp.saturating_sub(damage);
+                    esp_println::println!("[JRPG] Skill dealt {} damage. Enemy HP: {}/{}", damage, enemy.hp, enemy.max_hp);
+                }
+
+                self.jrpg_damage_dealt = damage;
+                self.jrpg_last_combat_result = combat_result;
+
+                // Update combo
+                if combat_result != CombatResult::Miss {
+                    self.jrpg_combo_count = self.jrpg_combo_count.saturating_add(1);
+                    if self.jrpg_combo_count >= 3 {
+                        self.jrpg_combo_ready = true;
+                    }
+                } else {
+                    self.jrpg_combo_count = 0;
+                    self.jrpg_combo_ready = false;
+                }
+            },
+            SkillType::Magic => {
+                // Magic skill: use INT with skill power multiplier (ignores DEF)
+                let magic_damage = ((hero_intelligence as u32 * skill.power as u32) / 100) as u16;
+                // Apply variance
+                let variance_percent = 80 + ((rng_value as u32 * 40) / 255) as u16;
+                let damage = ((magic_damage as u32 * variance_percent as u32) / 100) as u16;
+
+                // Apply damage to enemy
+                if let Some(enemy) = &mut self.jrpg_enemy_combatant {
+                    enemy.hp = enemy.hp.saturating_sub(damage);
+                    esp_println::println!("[JRPG] Magic dealt {} damage. Enemy HP: {}/{}", damage, enemy.hp, enemy.max_hp);
+                }
+
+                self.jrpg_damage_dealt = damage;
+                self.jrpg_last_combat_result = CombatResult::Normal;
+            },
+            SkillType::Healing => {
+                // Heal skill: restore HP
+                if let Some(hero_mut) = &mut self.jrpg_hero_combatant {
+                    let heal_amount = ((hero_intelligence as u32 * skill.power as u32) / 100) as u16;
+                    let old_hp = hero_mut.hp;
+                    hero_mut.hp = (hero_mut.hp + heal_amount).min(hero_mut.max_hp);
+                    let actual_heal = hero_mut.hp - old_hp;
+
+                    self.jrpg_damage_dealt = actual_heal;
+                    self.jrpg_last_combat_result = CombatResult::Normal;
+
+                    esp_println::println!("[JRPG] Healed {} HP. Hero HP: {}/{}", actual_heal, hero_mut.hp, hero_mut.max_hp);
+                }
+            },
+            SkillType::Buff | SkillType::Debuff | SkillType::Utility => {
+                // Apply effect (buffs/debuffs/utility)
+                esp_println::println!("[JRPG] Skill effect applied: {:?}", skill.effect);
+                self.jrpg_damage_dealt = 0;
+                self.jrpg_last_combat_result = CombatResult::Normal;
+            },
+        }
+
+        // Set damage animation position
+        if skill.skill_type == SkillType::Healing {
+            // Heal animation on hero
+            self.jrpg_damage_x = 240 + 32;
+            self.jrpg_damage_y = 150 + 20;
+        } else {
+            // Damage animation on enemy
+            self.jrpg_damage_x = 80 + 32;
+            self.jrpg_damage_y = 150 + 20;
+        }
+        self.jrpg_damage_animation_timer = 1000;
+
+        // Set attack animation
+        self.hero_animation = HeroAnimation::Attacking;
+        self.hero_animation_frame = 0;
+        self.hero_animation_started_ms = self.gif_animation_clock_ms;
+
+        // Enemy hit animation (if damage skill)
+        if skill.skill_type == SkillType::Physical || skill.skill_type == SkillType::Magic {
+            self.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
+            self.monster_attacked_frame = 0;
+            self.monster_attacked_started_ms = self.gif_animation_clock_ms;
+        }
+
+        self.needs_redraw = true;
     }
 
     /// Try to run from battle (50% chance)
