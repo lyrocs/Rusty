@@ -32,8 +32,9 @@ pub enum GamePage {
     Overview,
     Farm,
     Rest,
-    Battle, // Whac-A-Mole mini-game
-    Map,    // Navigation and world map
+    Battle,     // Whac-A-Mole mini-game
+    JrpgBattle, // Turn-based JRPG battle
+    Map,        // Navigation and world map
     Menu,
     Inventory, // Item inventory
     Settings,  // Settings page (brightness, etc.)
@@ -475,6 +476,52 @@ pub enum BattleAnimationPhase {
     HeroAttacking,    // Hero attacks (84.gif), monster gets hit (24.gif)
 }
 
+/// JRPG Battle State - Turn-based combat
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JrpgBattleState {
+    Start,           // Battle start - show enemy encounter
+    PlayerTurn,      // Player choosing action
+    PlayerAction,    // Player action animation
+    EnemyTurn,       // Enemy choosing action (auto)
+    EnemyAction,     // Enemy action animation
+    Victory,         // Battle won
+    Defeat,          // Battle lost
+    Fleeing,         // Running away animation
+    Escaped,         // Successfully escaped
+}
+
+/// JRPG Battle Action
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JrpgBattleAction {
+    Attack,    // Basic attack
+    Skill,     // Use skill (costs SP)
+    Item,      // Use item
+    Defend,    // Reduce damage taken
+    Run,       // Try to flee
+}
+
+/// JRPG Battle Menu Selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JrpgBattleMenu {
+    Main,      // Main menu: Attack, Skill, Item, Defend, Run
+    Skills,    // Skill selection submenu
+    Items,     // Item selection submenu
+}
+
+/// JRPG Battle Combatant (for both hero and enemy)
+#[derive(Debug, Clone)]
+pub struct JrpgCombatant {
+    pub name: &'static str,
+    pub level: u16,
+    pub hp: u16,
+    pub max_hp: u16,
+    pub sp: u16,
+    pub max_sp: u16,
+    pub attack: u16,
+    pub defense: u16,
+    pub is_defending: bool, // Defending reduces damage by 50%
+}
+
 /// Circle type for Whac-A-Mole game
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircleType {
@@ -632,6 +679,19 @@ pub struct GameState {
     pub battle_end_time: u32, // When battle ended (for preventing accidental clicks)
     pub battle_animation_phase: BattleAnimationPhase, // Current animation phase
     pub battle_animation_phase_started_ms: u32, // When current phase started
+    // JRPG Battle state
+    pub jrpg_battle_state: JrpgBattleState,    // Current JRPG battle state
+    pub jrpg_battle_menu: JrpgBattleMenu,      // Current menu
+    pub jrpg_menu_selection: u8,               // Current menu item selected (0-4)
+    pub jrpg_hero_combatant: Option<JrpgCombatant>, // Hero battle stats
+    pub jrpg_enemy_combatant: Option<JrpgCombatant>, // Enemy battle stats
+    pub jrpg_battle_message: Option<&'static str>, // Battle message (e.g., "Hero attacks!")
+    pub jrpg_battle_message_timer: u32,        // How long to show message
+    pub jrpg_damage_dealt: u16,                // Last damage dealt (for display)
+    pub jrpg_damage_animation_timer: u32,      // Timer for damage text animation (0-1000ms)
+    pub jrpg_damage_x: i32,                    // X position for damage text
+    pub jrpg_damage_y: i32,                    // Y position for damage text
+    pub jrpg_action_animation_timer: u32,      // Timer for action animations
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -691,6 +751,18 @@ impl Default for GameState {
             battle_end_time: 0,
             battle_animation_phase: BattleAnimationPhase::BothIdle,
             battle_animation_phase_started_ms: 0,
+            jrpg_battle_state: JrpgBattleState::Start,
+            jrpg_battle_menu: JrpgBattleMenu::Main,
+            jrpg_menu_selection: 0,
+            jrpg_hero_combatant: None,
+            jrpg_enemy_combatant: None,
+            jrpg_battle_message: None,
+            jrpg_battle_message_timer: 0,
+            jrpg_damage_dealt: 0,
+            jrpg_damage_animation_timer: 0,
+            jrpg_damage_x: 0,
+            jrpg_damage_y: 0,
+            jrpg_action_animation_timer: 0,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,
@@ -721,7 +793,35 @@ impl Default for GameState {
     }
 }
 
+/// Calculate damage for JRPG battles
+fn calculate_jrpg_damage(attacker_atk: u16, defender_def: u16, is_defending: bool) -> u16 {
+    let base_damage = if attacker_atk > defender_def {
+        attacker_atk - (defender_def / 2)
+    } else {
+        1 // Minimum damage
+    };
+
+    // Defending reduces damage by 50%
+    if is_defending {
+        base_damage / 2
+    } else {
+        base_damage
+    }
+}
+
 impl GameState {
+    /// Roll for item drop based on enemy ID
+    fn roll_item_drop(&self, enemy_id: u32, _rng_value: u8) -> Option<(u32, &'static str)> {
+        // Simple item drop table based on enemy
+        match enemy_id {
+            1002 => Some((512, "Apple")),           // Poring drops Apple
+            1007 => Some((705, "Clover")),          // Fabre drops Clover
+            1004 => Some((518, "Honey")),           // Hornet drops Honey
+            1051 => Some((955, "Worm Peeling")),   // Thief Bug drops Worm Peeling
+            _ => None,
+        }
+    }
+
     /// Start farming with a new enemy
     pub fn start_farming(&mut self, enemy: Enemy) {
         if self.hero.use_sp(20) {
@@ -1052,5 +1152,186 @@ impl GameState {
         self.monster_animation = MonsterAnimation::Idle;
         self.monster_animation_frame = 0;
         self.monster_animation_started_ms = self.gif_animation_clock_ms;
+    }
+
+    /// Start JRPG battle with an enemy
+    pub fn start_jrpg_battle(&mut self, enemy: Enemy) {
+        esp_println::println!("[JRPG] Starting battle with {}", enemy.name);
+
+        // Create hero combatant from current hero stats
+        self.jrpg_hero_combatant = Some(JrpgCombatant {
+            name: self.hero.name,
+            level: self.hero.level,
+            hp: self.hero.hp,
+            max_hp: self.hero.max_hp,
+            sp: self.hero.sp,
+            max_sp: self.hero.max_sp,
+            attack: 10 + (self.hero.level * 2), // Base attack + level scaling
+            defense: 5 + self.hero.level,       // Base defense + level scaling
+            is_defending: false,
+        });
+
+        // Create enemy combatant
+        self.jrpg_enemy_combatant = Some(JrpgCombatant {
+            name: enemy.name,
+            level: enemy.level,
+            hp: enemy.hp,
+            max_hp: enemy.max_hp,
+            sp: 0,       // Enemies don't use SP for now
+            max_sp: 0,
+            attack: enemy.attack,
+            defense: enemy.defense,
+            is_defending: false,
+        });
+
+        // Store original enemy for rewards
+        self.battle_enemy = Some(enemy);
+
+        // Set initial state - start directly in PlayerTurn so menu is visible
+        self.jrpg_battle_state = JrpgBattleState::PlayerTurn;
+        self.jrpg_battle_menu = JrpgBattleMenu::Main;
+        self.jrpg_menu_selection = 0;
+        self.jrpg_battle_message = None; // No message at start
+        self.jrpg_battle_message_timer = 0;
+        self.jrpg_damage_dealt = 0;
+        self.jrpg_action_animation_timer = 0;
+
+        // Switch to JRPG battle page
+        self.current_page = GamePage::JrpgBattle;
+        self.needs_redraw = true;
+
+        // Set animations to idle
+        self.hero_animation = HeroAnimation::Idle;
+        self.hero_animation_frame = 0;
+        self.hero_animation_started_ms = self.gif_animation_clock_ms;
+        self.monster_animation = MonsterAnimation::Idle;
+        self.monster_animation_frame = 0;
+        self.monster_animation_started_ms = self.gif_animation_clock_ms;
+    }
+
+    /// Execute player attack in JRPG battle
+    pub fn jrpg_player_attack(&mut self) {
+        if let (Some(hero), Some(enemy)) = (&self.jrpg_hero_combatant, &mut self.jrpg_enemy_combatant) {
+            let damage = calculate_jrpg_damage(hero.attack, enemy.defense, enemy.is_defending);
+            enemy.hp = enemy.hp.saturating_sub(damage);
+            self.jrpg_damage_dealt = damage;
+
+            // Set damage animation position (near enemy at x=80, y=150)
+            self.jrpg_damage_animation_timer = 1000; // 1 second animation
+            self.jrpg_damage_x = 80 + 32; // Center of enemy GIF (64x64)
+            self.jrpg_damage_y = 150 + 20; // Slightly below center
+
+            esp_println::println!("[JRPG] Hero dealt {} damage. Enemy HP: {}/{}", damage, enemy.hp, enemy.max_hp);
+
+            // Set attack animation
+            self.hero_animation = HeroAnimation::Attacking;
+            self.hero_animation_frame = 0;
+            self.hero_animation_started_ms = self.gif_animation_clock_ms;
+
+            // Enemy hit animation
+            self.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
+            self.monster_attacked_frame = 0;
+            self.monster_attacked_started_ms = self.gif_animation_clock_ms;
+
+            enemy.is_defending = false; // Reset defense
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Execute enemy attack in JRPG battle
+    pub fn jrpg_enemy_attack(&mut self) {
+        if let (Some(enemy), Some(hero)) = (&self.jrpg_enemy_combatant, &mut self.jrpg_hero_combatant) {
+            let damage = calculate_jrpg_damage(enemy.attack, hero.defense, hero.is_defending);
+            hero.hp = hero.hp.saturating_sub(damage);
+            self.jrpg_damage_dealt = damage;
+
+            // Set damage animation position (near hero at x=240, y=150)
+            self.jrpg_damage_animation_timer = 1000; // 1 second animation
+            self.jrpg_damage_x = 240 + 32; // Center of hero GIF (64x64)
+            self.jrpg_damage_y = 150 + 20; // Slightly below center
+
+            esp_println::println!("[JRPG] Enemy dealt {} damage. Hero HP: {}/{}", damage, hero.hp, hero.max_hp);
+
+            // Set monster attack animation
+            self.monster_animation = MonsterAnimation::Attacking;
+            self.monster_animation_frame = 0;
+            self.monster_animation_started_ms = self.gif_animation_clock_ms;
+
+            // Hero hit animation
+            self.hero_animation = HeroAnimation::Attacked;
+            self.hero_animation_frame = 0;
+            self.hero_animation_started_ms = self.gif_animation_clock_ms;
+
+            hero.is_defending = false; // Reset defense after turn
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Player defends (reduces next damage by 50%)
+    pub fn jrpg_player_defend(&mut self) {
+        if let Some(hero) = &mut self.jrpg_hero_combatant {
+            hero.is_defending = true;
+            esp_println::println!("[JRPG] Hero is defending");
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Try to run from battle (50% chance)
+    pub fn jrpg_try_run(&mut self) -> bool {
+        let rng = (self.last_update_ms % 100) as u8;
+        let success = rng < 50; // 50% chance
+
+        if success {
+            self.jrpg_battle_state = JrpgBattleState::Escaped;
+            esp_println::println!("[JRPG] Escaped successfully");
+        } else {
+            esp_println::println!("[JRPG] Failed to escape");
+        }
+
+        self.needs_redraw = true;
+        success
+    }
+
+    /// End JRPG battle and return to map
+    pub fn end_jrpg_battle(&mut self) {
+        // Sync hero HP/SP back to main hero
+        if let Some(hero_combatant) = &self.jrpg_hero_combatant {
+            self.hero.hp = hero_combatant.hp;
+            self.hero.sp = hero_combatant.sp;
+        }
+
+        // Award rewards on victory
+        if self.jrpg_battle_state == JrpgBattleState::Victory {
+            if let Some(enemy) = &self.battle_enemy {
+                self.hero.add_exp(enemy.base_exp);
+                self.hero.add_zeny(enemy.zeny_reward);
+
+                // Roll for item drops
+                let rng_value = (self.last_update_ms % 255) as u8;
+                let drop_rate = 30; // 30% drop chance
+                if rng_value < drop_rate {
+                    if let Some((item_id, item_name)) = self.roll_item_drop(enemy.id, rng_value) {
+                        let quantity = 1;
+                        self.hero.add_item(item_id, item_name, quantity);
+                    }
+                }
+
+                esp_println::println!(
+                    "[JRPG] Victory! Gained {} EXP, {} Zeny",
+                    enemy.base_exp, enemy.zeny_reward
+                );
+            }
+        }
+
+        // Clean up battle state
+        self.jrpg_hero_combatant = None;
+        self.jrpg_enemy_combatant = None;
+        self.battle_enemy = None;
+        self.jrpg_battle_message = None;
+        self.jrpg_menu_selection = 0;
+
+        // Return to map
+        self.current_page = GamePage::Map;
+        self.needs_redraw = true;
     }
 }

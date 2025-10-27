@@ -1870,3 +1870,211 @@ where
 
     Ok(())
 }
+
+/// Draw JRPG turn-based battle page
+pub fn draw_jrpg_battle_page<D>(
+    display: &mut D,
+    game_state: &GameState,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    use crate::tamagotchi::models::{JrpgBattleState, JrpgBattleMenu};
+
+    display.clear(COLOR_BG)?;
+
+    // Get combatants
+    let hero = game_state.jrpg_hero_combatant.as_ref();
+    let enemy = game_state.jrpg_enemy_combatant.as_ref();
+
+    if hero.is_none() || enemy.is_none() {
+        draw_text(display, "Battle Error!", Point::new(100, 224), &FONT_10X20, Rgb888::RED)?;
+        return Ok(());
+    }
+
+    let hero = hero.unwrap();
+    let enemy = enemy.unwrap();
+
+    // === TOP: Enemy Info ===
+    // Enemy name
+    draw_text(display, enemy.name, Point::new(20, 20), &FONT_10X20, COLOR_TEXT)?;
+
+    // Enemy level
+    let mut enemy_level_str = String::<16>::new();
+    write!(enemy_level_str, "Lv.{}", enemy.level).ok();
+    draw_text(display, &enemy_level_str, Point::new(20, 45), &FONT_9X15, COLOR_TEXT_DIM)?;
+
+    // Enemy HP bar
+    draw_text(display, "HP:", Point::new(140, 45), &FONT_9X15, COLOR_TEXT_DIM)?;
+    let enemy_hp_percent = (enemy.hp as u32 * 100) / enemy.max_hp as u32;
+    let enemy_hp_color = if enemy_hp_percent > 50 {
+        Rgb888::GREEN
+    } else if enemy_hp_percent > 25 {
+        Rgb888::YELLOW
+    } else {
+        Rgb888::RED
+    };
+    draw_bar(display, Point::new(180, 45), 150, enemy_hp_percent as u8, enemy_hp_color)?;
+
+    // Enemy HP value
+    let mut enemy_hp_str = String::<32>::new();
+    write!(enemy_hp_str, "{}/{}", enemy.hp, enemy.max_hp).ok();
+    draw_text(display, &enemy_hp_str, Point::new(180, 65), &FONT_9X15, enemy_hp_color)?;
+
+    // === CENTER: Battle GIFs ===
+    // Draw enemy GIF (left side)
+    draw_monster_gif(display, game_state, Point::new(80, 150), enemy.name)?;
+
+    // Draw hero GIF (right side)
+    draw_hero_gif(display, game_state, Point::new(240, 150))?;
+
+    // Draw monster attacked overlay if active
+    if game_state.monster_attacked_animation != crate::tamagotchi::models::MonsterAttackedAnimation::Normal {
+        draw_monster_attacked_gif(display, game_state, Point::new(80, 150), enemy.name)?;
+    }
+
+    // === BOTTOM: Hero Info ===
+    // Hero name and level
+    let mut hero_info = String::<32>::new();
+    write!(hero_info, "{} Lv.{}", hero.name, hero.level).ok();
+    draw_text(display, &hero_info, Point::new(20, 250), &FONT_9X18_BOLD, COLOR_TEXT)?;
+
+    // Hero HP
+    draw_text(display, "HP:", Point::new(20, 275), &FONT_9X15, COLOR_TEXT_DIM)?;
+    let hero_hp_percent = (hero.hp as u32 * 100) / hero.max_hp as u32;
+    let hero_hp_color = if hero_hp_percent > 50 {
+        Rgb888::GREEN
+    } else if hero_hp_percent > 25 {
+        Rgb888::YELLOW
+    } else {
+        Rgb888::RED
+    };
+    draw_bar(display, Point::new(60, 275), 130, hero_hp_percent as u8, hero_hp_color)?;
+
+    let mut hero_hp_str = String::<32>::new();
+    write!(hero_hp_str, "{}/{}", hero.hp, hero.max_hp).ok();
+    draw_text(display, &hero_hp_str, Point::new(60, 295), &FONT_9X15, hero_hp_color)?;
+
+    // Hero SP
+    draw_text(display, "SP:", Point::new(200, 275), &FONT_9X15, COLOR_TEXT_DIM)?;
+    let hero_sp_percent = (hero.sp as u32 * 100) / hero.max_sp as u32;
+    draw_bar(display, Point::new(240, 275), 110, hero_sp_percent as u8, Rgb888::CYAN)?;
+
+    let mut hero_sp_str = String::<32>::new();
+    write!(hero_sp_str, "{}/{}", hero.sp, hero.max_sp).ok();
+    draw_text(display, &hero_sp_str, Point::new(240, 295), &FONT_9X15, Rgb888::CYAN)?;
+
+    // === Battle Message (if any) ===
+    if let Some(msg) = game_state.jrpg_battle_message {
+        // Message box background
+        Rectangle::new(Point::new(60, 105), Size::new(248, 35))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 40, 60)))
+            .draw(display)?;
+        Rectangle::new(Point::new(60, 105), Size::new(248, 35))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 2))
+            .draw(display)?;
+
+        // Message text (centered)
+        let text_x = 184 - ((msg.len() as i32 * 9) / 2); // Center text
+        draw_text(display, msg, Point::new(text_x, 115), &FONT_9X18_BOLD, Rgb888::WHITE)?;
+    }
+
+    // === Floating Damage Text Animation ===
+    if game_state.jrpg_damage_dealt > 0 && game_state.jrpg_damage_animation_timer > 0 {
+        // Calculate animation progress (0.0 to 1.0)
+        let progress = 1.0 - (game_state.jrpg_damage_animation_timer as f32 / 1000.0);
+
+        // Float up by 40 pixels over the animation
+        let float_offset = (progress * 40.0) as i32;
+        let damage_y = game_state.jrpg_damage_y - float_offset;
+
+        // Fade out alpha (simulate with color brightness)
+        let alpha_factor = 1.0 - progress;
+        let red_value = (255.0 * alpha_factor) as u8;
+        let damage_color = Rgb888::new(red_value, 0, 0);
+
+        // Draw damage text
+        let mut dmg_str = String::<16>::new();
+        write!(dmg_str, "-{}", game_state.jrpg_damage_dealt).ok();
+
+        // Draw text centered on damage position
+        let text_width = dmg_str.len() as i32 * 10; // FONT_10X20 width
+        let text_x = game_state.jrpg_damage_x - (text_width / 2);
+        draw_text(display, &dmg_str, Point::new(text_x, damage_y), &FONT_10X20, damage_color)?;
+    }
+
+    // === Action Menu (during player turn) ===
+    if game_state.jrpg_battle_state == JrpgBattleState::PlayerTurn {
+        match game_state.jrpg_battle_menu {
+            JrpgBattleMenu::Main => {
+                // Main menu: 3x2 grid (3 buttons per row, 2 rows)
+                // Row 0: Attack, Skill, Item
+                // Row 1: Defend, Run, (empty)
+                let options = ["Attack", "Skill", "Item", "Defend", "Run", ""];
+                let button_width = 110;
+                let button_height = 50;
+                let spacing_x = 12;
+                let spacing_y = 10;
+                let start_x = 14;
+                let start_y = 320;
+
+                for (i, option) in options.iter().enumerate() {
+                    if option.is_empty() {
+                        continue; // Skip empty slot
+                    }
+
+                    let row = i / 3;
+                    let col = i % 3;
+                    let x = start_x + col as i32 * (button_width + spacing_x);
+                    let y = start_y + row as i32 * (button_height + spacing_y);
+
+                    let is_selected = game_state.jrpg_menu_selection == i as u8;
+
+                    // Button background
+                    let bg_color = if is_selected {
+                        Rgb888::new(80, 80, 120) // Highlighted
+                    } else {
+                        Rgb888::new(50, 50, 80) // Normal
+                    };
+
+                    Rectangle::new(Point::new(x, y), Size::new(button_width as u32, button_height as u32))
+                        .into_styled(PrimitiveStyle::with_fill(bg_color))
+                        .draw(display)?;
+
+                    // Button border
+                    let border_color = if is_selected {
+                        Rgb888::YELLOW
+                    } else {
+                        COLOR_TEXT
+                    };
+                    let border_width = if is_selected { 3 } else { 2 };
+
+                    Rectangle::new(Point::new(x, y), Size::new(button_width as u32, button_height as u32))
+                        .into_styled(PrimitiveStyle::with_stroke(border_color, border_width))
+                        .draw(display)?;
+
+                    // Button text (centered)
+                    let text_color = if is_selected { Rgb888::YELLOW } else { Rgb888::WHITE };
+                    let text_x = x + (button_width / 2) - ((option.len() as i32 * 9) / 2);
+                    let text_y = y + (button_height / 2) - 9;
+                    draw_text(display, option, Point::new(text_x, text_y), &FONT_9X18_BOLD, text_color)?;
+                }
+            }
+            JrpgBattleMenu::Skills => {
+                // Skills submenu (placeholder for now)
+                draw_text(display, "Skills (Coming Soon)", Point::new(50, 330), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+                draw_text(display, "Press anywhere to go back", Point::new(50, 360), &FONT_9X15, COLOR_TEXT_DIM)?;
+            }
+            JrpgBattleMenu::Items => {
+                // Items submenu (placeholder for now)
+                draw_text(display, "Items (Coming Soon)", Point::new(50, 330), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+                draw_text(display, "Press anywhere to go back", Point::new(50, 360), &FONT_9X15, COLOR_TEXT_DIM)?;
+            }
+        }
+    }
+
+    // Battle end states (Victory/Defeat/Escaped) are handled by automatic transition
+    // No modal messages needed - user can see result through animations and returning to map
+
+    Ok(())
+}
