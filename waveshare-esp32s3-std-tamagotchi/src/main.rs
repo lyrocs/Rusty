@@ -6,6 +6,9 @@
 // - Multithreading on dual cores
 // - Thread-safe hardware access
 
+// Add ESP-IDF app descriptor
+esp_idf_svc::sys::esp_app_desc!();
+
 mod hal;
 mod drivers;
 mod types;
