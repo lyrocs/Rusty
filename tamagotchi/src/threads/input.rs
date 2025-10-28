@@ -38,8 +38,9 @@ pub fn spawn_input_thread(
                     }
                 }
 
-                // Sleep for ~8ms (120Hz polling rate)
-                thread::sleep(Duration::from_millis(8));
+                // Sleep longer to avoid watchdog issues on ESP32
+                // Reduced polling rate but ensures IDLE task can run
+                thread::sleep(Duration::from_millis(50));
             }
 
             log::info!("Input thread stopped");

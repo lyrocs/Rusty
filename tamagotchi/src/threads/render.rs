@@ -25,6 +25,8 @@ pub fn spawn_render_thread(
             let mut front_buffer = FrameBuffer::new(240, 280);
             let mut back_buffer = FrameBuffer::new(240, 280);
 
+            let mut frame_count = 0u64;
+
             while running.load(Ordering::Relaxed) {
                 // Process all pending render commands
                 let mut should_present = false;
@@ -53,6 +55,8 @@ pub fn spawn_render_thread(
 
                 // Present the frame if requested
                 if should_present {
+                    frame_count += 1;
+
                     // Swap buffers
                     std::mem::swap(&mut front_buffer, &mut back_buffer);
 
@@ -66,10 +70,15 @@ pub fn spawn_render_thread(
                             front_buffer.height
                         ).ok();
                     }
+
+                    if frame_count % 60 == 0 {
+                        log::info!("Rendered {} frames", frame_count);
+                    }
                 }
 
-                // Yield to avoid busy-waiting
-                thread::yield_now();
+                // Sleep longer to avoid starving the watchdog
+                // The ESP32 IDLE task needs time to run
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
 
             log::info!("Render thread stopped");

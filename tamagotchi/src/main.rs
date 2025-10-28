@@ -41,6 +41,11 @@ fn main() -> Result<()> {
     // Initialize ESP-IDF logging
     esp_idf_svc::log::EspLogger::initialize_default();
 
+    // Feed the watchdog to prevent timeout during initialization
+    unsafe {
+        esp_idf_svc::sys::esp_task_wdt_reset();
+    }
+
     log::info!("=== ESP32-S3 Tamagotchi STD Version ===");
     log::info!("Phase 1: Proof of Concept");
 
@@ -88,15 +93,26 @@ fn main() -> Result<()> {
     log::info!("Starting main game loop...");
 
     // Run the game loop for a limited time (proof of concept)
-    let loop_duration = Duration::from_secs(10);
+    let loop_duration = Duration::from_secs(60); // Extended to 60 seconds for testing
     let start_time = std::time::Instant::now();
 
+    let mut frame_count = 0u64;
     while start_time.elapsed() < loop_duration {
         // Update ECS systems
         app.update();
 
-        // Target 60 FPS (16.67ms per frame)
-        thread::sleep(Duration::from_millis(16));
+        frame_count += 1;
+        if frame_count % 20 == 0 {
+            log::info!("Main loop frame: {}", frame_count);
+            // Feed watchdog periodically
+            unsafe {
+                esp_idf_svc::sys::esp_task_wdt_reset();
+            }
+        }
+
+        // Longer sleep to ensure IDLE task can run
+        // This is temporary until we properly configure thread affinity
+        thread::sleep(Duration::from_millis(50));
     }
 
     // Graceful shutdown
