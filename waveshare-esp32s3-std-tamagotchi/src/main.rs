@@ -36,11 +36,11 @@ use crate::threads::{
 };
 
 fn main() -> Result<()> {
-    // Initialize ESP-IDF
-    esp_idf_hal::sys::link_patches();
+    // Initialize ESP-IDF - link_patches is called by esp-idf-svc
+    esp_idf_svc::sys::link_patches();
 
-    // Initialize logging
-    env_logger::init();
+    // Initialize ESP-IDF logging
+    esp_idf_svc::log::EspLogger::initialize_default();
 
     log::info!("=== ESP32-S3 Tamagotchi STD Version ===");
     log::info!("Phase 1: Proof of Concept");
