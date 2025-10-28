@@ -1,5 +1,8 @@
 use bevy_ecs::prelude::*;
+use core::fmt::Write;
 use ft3x68_rs::{TouchPoint, TouchState};
+use heapless::String;
+use heapless::Vec as HeaplessVec;
 
 use crate::ecs::resources::{
     BatteryResource, ButtonResource, DisplayResource, RtcResource, SdCardResource, TouchResource,
@@ -8,8 +11,9 @@ use crate::tamagotchi::models::{
     BattleState, Enemy, FarmState, GamePage, GameState, MapHelper, RestState,
 };
 use crate::tamagotchi::ui::{
-    draw_battle_page, draw_farm_page, draw_inventory, draw_jrpg_battle_page, draw_map_page,
-    draw_menu, draw_overview_page, draw_rest_page, draw_settings_page, draw_stats_page,
+    draw_battle_page, draw_equipment_page, draw_farm_page, draw_inventory, draw_jrpg_battle_page,
+    draw_map_page, draw_menu, draw_overview_page, draw_quests_page, draw_rest_page,
+    draw_settings_page, draw_stats_page,
 };
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
@@ -194,7 +198,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             0 => GamePage::Overview,
                             1 => GamePage::Rest,
                             2 => GamePage::Map,
-                            3 => GamePage::Inventory,
+                            3 => GamePage::Quests,
                             4 => GamePage::Settings,
                             _ => GamePage::Overview,
                         };
@@ -321,6 +325,119 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             }
         }
         GamePage::Map => {
+            // Handle equipment selection menu if open (intercepts all other touches)
+            if game_state.equipment_selection_open {
+                // Equipment slot buttons: x=50, width=268, height=50
+                // Button 1 (Weapon): y=130
+                // Button 2 (Armor): y=190
+                // Button 3 (Accessory): y=250
+                // Cancel button: x=120, y=310, width=128, height=40
+
+                let slots = [
+                    (130, crate::tamagotchi::models::EquipmentSlot::Weapon, "Weapon"),
+                    (190, crate::tamagotchi::models::EquipmentSlot::Armor, "Armor"),
+                    (250, crate::tamagotchi::models::EquipmentSlot::Accessory, "Accessory"),
+                ];
+
+                // Check equipment slot buttons
+                for (btn_y, slot, slot_name) in slots.iter() {
+                    if x >= 50 && x <= 318 && y >= *btn_y as u16 && y <= (*btn_y + 50) as u16 {
+                        // Check if equipment exists in this slot
+                        if game_state.hero.get_equipment(*slot).is_some() {
+                            esp_println::println!("[REFINERY] Selected {} for refinement", slot_name);
+                            // Close equipment selection and open refine popup
+                            game_state.equipment_selection_open = false;
+                            game_state.refine_popup_open = true;
+                            game_state.refine_slot = Some(*slot);
+                            game_state.refine_result_message = None;
+                            game_state.needs_redraw = true;
+                        } else {
+                            esp_println::println!("[REFINERY] No equipment in {} slot", slot_name);
+                            // Could show a message here
+                        }
+                        return;
+                    }
+                }
+
+                // Check Cancel button
+                if x >= 120 && x <= 248 && y >= 310 && y <= 350 {
+                    esp_println::println!("[REFINERY] Cancel equipment selection");
+                    game_state.equipment_selection_open = false;
+                    game_state.needs_redraw = true;
+                    return;
+                }
+
+                // Don't process any other touches while equipment selection is open
+                return;
+            }
+
+            // Handle refine popup if open (intercepts all other touches)
+            if game_state.refine_popup_open {
+                if let Some(slot) = game_state.refine_slot {
+                    // Check if there's a result message (showing success/failure)
+                    if game_state.refine_result_message.is_some() {
+                        // Only show Close button during result display
+                        // Close button: x=120, y=300, size 128x40
+                        if x >= 120 && x <= 248 && y >= 300 && y <= 340 {
+                            esp_println::println!("[REFINE] Close button clicked");
+                            game_state.refine_popup_open = false;
+                            game_state.refine_slot = None;
+                            game_state.refine_result_message = None;
+                            game_state.refine_result_timer = 0;
+                            game_state.needs_redraw = true;
+                        }
+                    } else {
+                        // Normal refine popup buttons
+                        // REFINE button: x=50, y=300, size 128x40
+                        if x >= 50 && x <= 178 && y >= 300 && y <= 340 {
+                            esp_println::println!("[REFINE] Attempting to refine {:?}", slot);
+
+                            // Use touch coords as RNG seed
+                            let rng_value = x.wrapping_add(y) as u8;
+
+                            match game_state.hero.refine_equipment(slot, rng_value) {
+                                Ok((success, new_level)) => {
+                                    if success {
+                                        let mut msg = String::<64>::new();
+                                        write!(msg, "Success! Now +{}", new_level).ok();
+                                        game_state.refine_result_message = Some("Refinement Success!");
+                                        esp_println::println!("[REFINE] Success! New level: +{}", new_level);
+
+                                        // Update quest progress - equipment refined
+                                        crate::tamagotchi::quest_system::update_quest_progress(
+                                            game_state,
+                                            crate::tamagotchi::models::QuestAction::EquipmentRefined,
+                                        );
+                                    } else {
+                                        game_state.refine_result_message = Some("Refinement Failed!");
+                                        esp_println::println!("[REFINE] Failed! Level now: +{}", new_level);
+                                    }
+                                    game_state.refine_result_timer = game_state.last_update_ms;
+                                    game_state.needs_redraw = true;
+                                }
+                                Err(err) => {
+                                    esp_println::println!("[REFINE] Error: {}", err);
+                                    game_state.refine_result_message = Some(err);
+                                    game_state.refine_result_timer = game_state.last_update_ms;
+                                    game_state.needs_redraw = true;
+                                }
+                            }
+                        }
+                        // Cancel button: x=208, y=300, size 128x40
+                        else if x >= 208 && x <= 336 && y >= 300 && y <= 340 {
+                            esp_println::println!("[REFINE] Cancel button clicked");
+                            game_state.refine_popup_open = false;
+                            game_state.refine_slot = None;
+                            game_state.refine_result_message = None;
+                            game_state.refine_result_timer = 0;
+                            game_state.needs_redraw = true;
+                        }
+                    }
+                }
+                // Don't process any other map touches while popup is open
+                return;
+            }
+
             // Map navigation with border buttons and center actions
             let map_id = game_state.current_location;
             let exits = MapHelper::exits(map_id);
@@ -378,7 +495,13 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                                     && y <= (btn_y + 60) as u16
                                 {
                                     esp_println::println!("[MAP] Selected NPC: {}", npc);
-                                    // TODO: Implement NPC interactions
+                                    // Handle Refinery NPC
+                                    if *npc == "Refinery" {
+                                        // Open equipment selection menu
+                                        game_state.equipment_selection_open = true;
+                                        game_state.needs_redraw = true;
+                                    }
+                                    // TODO: Implement other NPC interactions
                                 }
                             }
                         }
@@ -448,20 +571,27 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             }
         }
         GamePage::Overview => {
-            // Rest button: x=14-124, y=370-420
-            if x >= 14 && x <= 124 && y >= 370 && y <= 420 {
+            // Row 1: Rest and Stats
+            // Rest button: x=14-179, y=350-395
+            if x >= 14 && x <= 179 && y >= 350 && y <= 395 {
                 game_state.current_page = GamePage::Rest;
                 game_state.init_rest_state();
                 game_state.needs_redraw = true;
             }
-            // Stats button: x=130-240, y=370-420
-            else if x >= 130 && x <= 240 && y >= 370 && y <= 420 {
+            // Stats button: x=189-354, y=350-395
+            else if x >= 189 && x <= 354 && y >= 350 && y <= 395 {
                 game_state.current_page = GamePage::Stats;
                 game_state.needs_redraw = true;
             }
-            // Inventory button: x=246-356, y=370-420
-            else if x >= 246 && x <= 356 && y >= 370 && y <= 420 {
-                game_state.current_page = GamePage::Inventory;
+            // Row 2: Equipment and Items
+            // Equipment button: x=14-179, y=403-448
+            else if x >= 14 && x <= 179 && y >= 403 && y <= 448 {
+                game_state.current_page = GamePage::Equipment;
+                game_state.needs_redraw = true;
+            }
+            // Quests button: x=189-354, y=403-448
+            else if x >= 189 && x <= 354 && y >= 403 && y <= 448 {
+                game_state.current_page = GamePage::Quests;
                 game_state.needs_redraw = true;
             }
         }
@@ -518,6 +648,70 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             else if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
                 game_state.current_page = GamePage::Overview;
                 game_state.needs_redraw = true;
+            }
+        }
+        GamePage::Equipment => {
+            // Back button: x=100-260, y=400-440
+            if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
+                game_state.current_page = GamePage::Overview;
+                game_state.needs_redraw = true;
+            }
+        }
+        GamePage::Quests => {
+            // Back button: x=100-260, y=400-440
+            if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
+                game_state.current_page = GamePage::Overview;
+                game_state.needs_redraw = true;
+                return;
+            }
+
+            // Check for CLAIM button clicks on quest cards
+            // Quest cards start at y=60, height=80, spacing=8
+            // CLAIM button: x=250-348, offset from card top: y+10 to y+70
+
+            // Find which quest was clicked (if any)
+            let start_index = game_state.quest_page_scroll as usize;
+            let mut quest_to_claim: Option<u32> = None;
+
+            // Filter active quests (not claimed) and check for clicks
+            let mut card_index = 0;
+            let mut card_y = 60i32;
+
+            for active_quest in game_state.active_quests.iter() {
+                if active_quest.claimed {
+                    continue;
+                }
+
+                if card_index < start_index {
+                    card_index += 1;
+                    continue;
+                }
+
+                if card_index >= start_index + 4 {
+                    break;
+                }
+
+                // Check if clicking on CLAIM button for this quest
+                if active_quest.completed
+                    && x >= 250
+                    && x <= 348
+                    && y >= (card_y + 10) as u16
+                    && y <= (card_y + 70) as u16
+                {
+                    quest_to_claim = Some(active_quest.quest_id);
+                    break;
+                }
+
+                card_y += 88; // card_height (80) + spacing (8)
+                card_index += 1;
+            }
+
+            // Claim quest if one was clicked
+            if let Some(quest_id) = quest_to_claim {
+                esp_println::println!("[QUEST] Claiming quest ID: {}", quest_id);
+                crate::tamagotchi::quest_system::claim_quest_reward(game_state, quest_id);
+                game_state.needs_redraw = true;
+                return;
             }
         }
         GamePage::Settings => {
@@ -1432,8 +1626,14 @@ pub fn tamagotchi_render_system(
         GamePage::Inventory => {
             draw_inventory(&mut display_res.display, &game_state).ok();
         }
+        GamePage::Quests => {
+            draw_quests_page(&mut display_res.display, &game_state).ok();
+        }
         GamePage::Stats => {
             draw_stats_page(&mut display_res.display, &game_state).ok();
+        }
+        GamePage::Equipment => {
+            draw_equipment_page(&mut display_res.display, &game_state).ok();
         }
         GamePage::Settings => {
             draw_settings_page(

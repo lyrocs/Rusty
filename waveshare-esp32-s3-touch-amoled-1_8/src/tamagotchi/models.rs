@@ -2,6 +2,7 @@ use bevy_ecs::prelude::*;
 use core::fmt::Write;
 use heapless::String;
 use heapless::Vec as HeaplessVec;
+use serde::Deserialize;
 
 // Game data functions are re-exported from tamagotchi::game_data
 use crate::tamagotchi::{
@@ -36,9 +37,382 @@ pub enum GamePage {
     JrpgBattle, // Turn-based JRPG battle
     Map,        // Navigation and world map
     Menu,
-    Inventory, // Item inventory
-    Settings,  // Settings page (brightness, etc.)
-    Stats,     // Character stats allocation page
+    Inventory,  // Item inventory
+    Quests,     // Quest list and management
+    Settings,   // Settings page (brightness, etc.)
+    Stats,      // Character stats allocation page
+    Equipment,  // Equipment management page
+}
+
+/// Equipment slot types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EquipmentSlot {
+    Weapon,
+    Armor,
+    Accessory,
+}
+
+/// Equipment types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EquipmentType {
+    // Weapons
+    Sword,
+    Staff,
+    Bow,
+    Dagger,
+    Axe,
+    Mace,
+    Knife,
+
+    // Armor
+    ClothArmor,
+    LeatherArmor,
+    PlateArmor,
+    Robe,
+    Suit,
+    Vest,
+
+    // Accessories
+    Ring,
+    Necklace,
+    Earring,
+    Gloves,
+    Coin,
+    Bag,
+}
+
+/// Equipment item
+#[derive(Debug, Clone)]
+pub struct Equipment {
+    pub id: u16,
+    pub name: &'static str,
+    pub equipment_type: EquipmentType,
+    pub slot: EquipmentSlot,
+
+    // Level requirement
+    pub level_req: u16,
+    pub job_req: Option<&'static str>, // None = all jobs
+
+    // Base stats (before refinement)
+    pub atk_bonus: u16,
+    pub def_bonus: u16,
+    pub hp_bonus: u16,
+    pub sp_bonus: u16,
+
+    // Stat bonuses
+    pub str_bonus: i16, // Can be negative (heavy armor penalty)
+    pub agi_bonus: i16,
+    pub vit_bonus: i16,
+    pub int_bonus: i16,
+    pub dex_bonus: i16,
+    pub luk_bonus: i16,
+
+    // Special bonuses
+    pub crit_rate_bonus: u16, // +X% crit rate
+    pub aspd_bonus: u16,      // +X% double attack chance
+
+    // Refinement data
+    pub refine_level: u8,  // 0 to 10 (+0 to +10)
+    pub max_refine: u8,    // Usually 10
+
+    // Upgrade path (evolution)
+    pub can_upgrade: bool,
+    pub upgrade_level_req: u16,   // Level needed to upgrade
+    pub upgrade_cost: u32,        // Zeny cost
+    pub upgrades_to: Option<u16>, // Equipment ID it upgrades to
+}
+
+impl Equipment {
+    /// Create starter weapon for Novice
+    pub const fn starter_weapon_novice() -> Self {
+        Equipment {
+            id: 1000,
+            name: "Rusty Knife",
+            equipment_type: EquipmentType::Knife,
+            slot: EquipmentSlot::Weapon,
+            level_req: 1,
+            job_req: None,
+            atk_bonus: 8,
+            def_bonus: 0,
+            hp_bonus: 0,
+            sp_bonus: 0,
+            str_bonus: 0,
+            agi_bonus: 0,
+            vit_bonus: 0,
+            int_bonus: 0,
+            dex_bonus: 0,
+            luk_bonus: 0,
+            crit_rate_bonus: 0,
+            aspd_bonus: 0,
+            refine_level: 0,
+            max_refine: 10,
+            can_upgrade: true,
+            upgrade_level_req: 10,
+            upgrade_cost: 500,
+            upgrades_to: Some(1001),
+        }
+    }
+
+    /// Create starter armor for Novice
+    pub const fn starter_armor_novice() -> Self {
+        Equipment {
+            id: 2000,
+            name: "Cotton Shirt",
+            equipment_type: EquipmentType::ClothArmor,
+            slot: EquipmentSlot::Armor,
+            level_req: 1,
+            job_req: None,
+            atk_bonus: 0,
+            def_bonus: 5,
+            hp_bonus: 10,
+            sp_bonus: 0,
+            str_bonus: 0,
+            agi_bonus: 0,
+            vit_bonus: 1,
+            int_bonus: 0,
+            dex_bonus: 0,
+            luk_bonus: 0,
+            crit_rate_bonus: 0,
+            aspd_bonus: 0,
+            refine_level: 0,
+            max_refine: 10,
+            can_upgrade: true,
+            upgrade_level_req: 10,
+            upgrade_cost: 500,
+            upgrades_to: Some(2001),
+        }
+    }
+
+    /// Create starter accessory for Novice
+    pub const fn starter_accessory_novice() -> Self {
+        Equipment {
+            id: 3000,
+            name: "Wooden Ring",
+            equipment_type: EquipmentType::Ring,
+            slot: EquipmentSlot::Accessory,
+            level_req: 1,
+            job_req: None,
+            atk_bonus: 0,
+            def_bonus: 0,
+            hp_bonus: 5,
+            sp_bonus: 5,
+            str_bonus: 1,
+            agi_bonus: 0,
+            vit_bonus: 0,
+            int_bonus: 0,
+            dex_bonus: 0,
+            luk_bonus: 0,
+            crit_rate_bonus: 0,
+            aspd_bonus: 0,
+            refine_level: 0,
+            max_refine: 10,
+            can_upgrade: true,
+            upgrade_level_req: 10,
+            upgrade_cost: 500,
+            upgrades_to: Some(3001),
+        }
+    }
+
+    /// Get refine bonus based on slot and refine level
+    pub fn get_refine_bonus(&self) -> u16 {
+        match self.slot {
+            EquipmentSlot::Weapon => self.refine_level as u16 * 2,  // +2 ATK per level
+            EquipmentSlot::Armor => self.refine_level as u16 * 1,   // +1 DEF per level
+            EquipmentSlot::Accessory => self.refine_level as u16 * 1, // +1 to primary stat
+        }
+    }
+
+    /// Get total ATK including refine bonus
+    pub fn total_atk(&self) -> u16 {
+        if self.slot == EquipmentSlot::Weapon {
+            self.atk_bonus + self.get_refine_bonus()
+        } else {
+            self.atk_bonus
+        }
+    }
+
+    /// Get total DEF including refine bonus
+    pub fn total_def(&self) -> u16 {
+        if self.slot == EquipmentSlot::Armor {
+            self.def_bonus + self.get_refine_bonus()
+        } else {
+            self.def_bonus
+        }
+    }
+
+    /// Calculate refine cost based on current level
+    pub fn refine_cost(&self) -> u32 {
+        100 * (self.refine_level as u32 + 1)
+    }
+
+    /// Calculate refine success rate based on current level
+    pub fn refine_success_rate(&self) -> u8 {
+        match self.refine_level {
+            0..=3 => 100,  // +0 to +3: 100% safe
+            4 => 100,      // +4: still safe
+            5..=6 => 80,   // +5 to +6: 80%
+            7 => 80,       // +7: 80%
+            8 => 60,       // +8: 60%
+            9 => 40,       // +9: 40%
+            _ => 0,        // +10: cannot refine further
+        }
+    }
+
+    /// Check if equipment can be refined further
+    pub fn can_refine(&self) -> bool {
+        self.refine_level < self.max_refine
+    }
+
+    /// Check if current refine level is risky (can drop on failure)
+    pub fn is_risky_refine(&self) -> bool {
+        self.refine_level >= 5
+    }
+}
+
+// ============================================================================
+// Quest System Structures
+// ============================================================================
+
+/// Quest types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum QuestType {
+    Story,
+    Daily,
+    Achievement,
+}
+
+/// Quest objective (flat structure for no-std JSON parsing)
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct QuestObjective {
+    #[serde(rename = "type")]
+    pub objective_type: &'static str,
+    #[serde(default)]
+    pub enemy_id: u32, // For KillMonster (0 = any)
+    #[serde(default)]
+    pub item_id: u32, // For CollectItem
+    #[serde(default)]
+    pub count: u16, // For KillMonster, CollectItem, RefineEquipment, CompleteBattles
+    #[serde(default)]
+    pub level: u16, // For ReachLevel
+    #[serde(default)]
+    pub amount: u32, // For EarnZeny
+}
+
+/// Quest rewards
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuestReward {
+    pub base_exp: u32,
+    pub job_exp: u32,
+    pub zeny: u32,
+    #[serde(default)]
+    pub items: HeaplessVec<(u32, u16), 4>, // (item_id, quantity)
+}
+
+/// Quest definition (from JSON)
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuestData {
+    pub id: u32,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub quest_type: QuestType,
+    pub min_level: u16,
+    pub max_level: u16, // 0 = no max
+    #[serde(default)]
+    pub objectives: HeaplessVec<QuestObjective, 4>,
+    pub rewards: QuestReward,
+}
+
+/// Active quest progress (runtime state in GameState)
+#[derive(Debug, Clone)]
+pub struct ActiveQuest {
+    pub quest_id: u32,
+    pub started_at: u32, // timestamp (ms)
+    pub progress: HeaplessVec<u16, 4>, // progress per objective
+    pub completed: bool,
+    pub claimed: bool,
+}
+
+impl ActiveQuest {
+    pub fn new(quest_id: u32, objective_count: usize, started_at: u32) -> Self {
+        let mut progress = HeaplessVec::new();
+        for _ in 0..objective_count {
+            progress.push(0).ok();
+        }
+        Self {
+            quest_id,
+            started_at,
+            progress,
+            completed: false,
+            claimed: false,
+        }
+    }
+}
+
+/// Quest action events for updating quest progress
+#[derive(Debug, Clone, Copy)]
+pub enum QuestAction {
+    MonsterKilled { enemy_id: u32 },
+    ItemCollected { item_id: u32, count: u16 },
+    LevelReached { level: u16 },
+    ZenyEarned { amount: u32 },
+    EquipmentRefined,
+    BattleCompleted,
+}
+
+impl Hero {
+    /// Get equipment reference for a specific slot
+    pub fn get_equipment(&self, slot: EquipmentSlot) -> Option<&Equipment> {
+        match slot {
+            EquipmentSlot::Weapon => Some(&self.equipped_weapon),
+            EquipmentSlot::Armor => Some(&self.equipped_armor),
+            EquipmentSlot::Accessory => Some(&self.equipped_accessory),
+        }
+    }
+
+    /// Attempt to refine equipment in a specific slot
+    /// Returns (success, new_refine_level)
+    pub fn refine_equipment(&mut self, slot: EquipmentSlot, rng_value: u8) -> Result<(bool, u8), &'static str> {
+        let equipment = match slot {
+            EquipmentSlot::Weapon => &mut self.equipped_weapon,
+            EquipmentSlot::Armor => &mut self.equipped_armor,
+            EquipmentSlot::Accessory => &mut self.equipped_accessory,
+        };
+
+        // Check if can refine
+        if !equipment.can_refine() {
+            return Err("Max refine level reached");
+        }
+
+        // Check cost
+        let cost = equipment.refine_cost();
+        if self.zeny < cost {
+            return Err("Not enough Zeny");
+        }
+
+        // Deduct cost
+        self.zeny -= cost;
+
+        // Calculate success
+        let success_rate = equipment.refine_success_rate();
+        let roll = (rng_value as u16 * 100) / 255;
+        let success = roll < success_rate as u16;
+
+        let old_level = equipment.refine_level;
+
+        if success {
+            // Success: increase refine level
+            equipment.refine_level += 1;
+            Ok((true, equipment.refine_level))
+        } else {
+            // Failure
+            if equipment.is_risky_refine() {
+                // Risky refine: drop 1 level on failure
+                equipment.refine_level = equipment.refine_level.saturating_sub(1);
+            }
+            // Safe refine: no penalty
+            Ok((false, equipment.refine_level))
+        }
+    }
 }
 
 /// Hero character data
@@ -66,6 +440,11 @@ pub struct Hero {
 
     // Stat points available for allocation
     pub stat_points: u16,
+
+    // Equipped items (3 slots)
+    pub equipped_weapon: Equipment,
+    pub equipped_armor: Equipment,
+    pub equipped_accessory: Equipment,
 }
 
 impl Hero {
@@ -93,6 +472,11 @@ impl Hero {
 
             // Starting stat points (level 1 = 0 points, gain 3 per level)
             stat_points: 0,
+
+            // Starting equipment (Novice gear)
+            equipped_weapon: Equipment::starter_weapon_novice(),
+            equipped_armor: Equipment::starter_armor_novice(),
+            equipped_accessory: Equipment::starter_accessory_novice(),
         }
     }
 
@@ -370,6 +754,11 @@ impl Hero {
             // Calculate available stat points based on level
             // Level 1 = 0 points, Level 2+ = (level - 1) * 3 points
             stat_points: if level > 1 { (level - 1) * 3 } else { 0 },
+
+            // Starter equipment (loaded saves get default Novice gear)
+            equipped_weapon: Equipment::starter_weapon_novice(),
+            equipped_armor: Equipment::starter_armor_novice(),
+            equipped_accessory: Equipment::starter_accessory_novice(),
         })
     }
 }
@@ -1114,6 +1503,17 @@ pub struct GameState {
     pub jrpg_last_combat_result: CombatResult, // Last attack result (normal/crit/lucky)
     pub jrpg_skill_menu_selection: u8,         // Selected skill in skill menu (0-2)
     pub jrpg_selected_skill_index: Option<usize>, // Index of skill being used
+    // Equipment refinement UI state
+    pub equipment_selection_open: bool,         // Whether equipment selection menu is shown
+    pub refine_popup_open: bool,                // Whether refine popup is shown
+    pub refine_slot: Option<EquipmentSlot>,     // Which slot is being refined
+    pub refine_result_message: Option<&'static str>, // Result message (success/failure)
+    pub refine_result_timer: u32,               // How long to show result (0-2000ms)
+    // Quest system state
+    pub active_quests: HeaplessVec<ActiveQuest, 16>, // Currently active quests
+    pub completed_quest_ids: HeaplessVec<u32, 64>, // IDs of all completed quests
+    pub daily_quest_refresh_time: u32,          // When daily quests last refreshed (ms)
+    pub quest_page_scroll: u8,                  // Scroll position in quest list (0-255)
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -1190,6 +1590,17 @@ impl Default for GameState {
             jrpg_last_combat_result: CombatResult::Normal,
             jrpg_skill_menu_selection: 0,
             jrpg_selected_skill_index: None,
+            // Equipment refinement UI state
+            equipment_selection_open: false,
+            refine_popup_open: false,
+            refine_slot: None,
+            refine_result_message: None,
+            refine_result_timer: 0,
+            // Quest system state
+            active_quests: HeaplessVec::new(),
+            completed_quest_ids: HeaplessVec::new(),
+            daily_quest_refresh_time: 0,
+            quest_page_scroll: 0,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,
@@ -1318,13 +1729,30 @@ impl GameState {
     /// Complete farming and award rewards
     fn complete_farming(&mut self) {
         if let Some(enemy) = &self.current_enemy {
+            let enemy_id = enemy.id;
+            let zeny_earned = enemy.zeny_reward;
+
             self.hero.add_exp(enemy.base_exp);
-            self.hero.add_zeny(enemy.zeny_reward);
+            self.hero.add_zeny(zeny_earned);
             self.farm_state = FarmState::Victory;
+
+            // Update quest progress - monster killed
+            crate::tamagotchi::quest_system::update_quest_progress(
+                self,
+                QuestAction::MonsterKilled { enemy_id },
+            );
+
+            // Update quest progress - zeny earned
+            crate::tamagotchi::quest_system::update_quest_progress(
+                self,
+                QuestAction::ZenyEarned {
+                    amount: zeny_earned,
+                },
+            );
 
             // Roll for item drops
             let rng_value = (self.last_update_ms % 255) as u8;
-            let drops = crate::tamagotchi::game_data::roll_drops(enemy.id, rng_value);
+            let drops = crate::tamagotchi::game_data::roll_drops(enemy_id, rng_value);
 
             // Clear previous drops and store new ones
             self.last_drops.clear();
@@ -1628,21 +2056,46 @@ impl GameState {
         // Load skills for hero's job
         let hero_skills = JrpgSkill::get_skills_for_job(self.hero.job);
 
-        // Create hero combatant from current hero stats (using base stats)
+        // Get equipment bonuses
+        let weapon = &self.hero.equipped_weapon;
+        let armor = &self.hero.equipped_armor;
+        let accessory = &self.hero.equipped_accessory;
+
+        // Calculate total stats with equipment bonuses
+        let total_str = self.hero.base_str as i16 + weapon.str_bonus + armor.str_bonus + accessory.str_bonus;
+        let total_agi = self.hero.base_agi as i16 + weapon.agi_bonus + armor.agi_bonus + accessory.agi_bonus;
+        let total_vit = self.hero.base_vit as i16 + weapon.vit_bonus + armor.vit_bonus + accessory.vit_bonus;
+        let total_int = self.hero.base_int as i16 + weapon.int_bonus + armor.int_bonus + accessory.int_bonus;
+        let total_dex = self.hero.base_dex as i16 + weapon.dex_bonus + armor.dex_bonus + accessory.dex_bonus;
+        let total_luk = self.hero.base_luk as i16 + weapon.luk_bonus + armor.luk_bonus + accessory.luk_bonus;
+
+        // Calculate ATK with equipment
+        let weapon_atk = weapon.total_atk();
+        let total_atk = 10 + (total_str.max(0) as u16 * 2) + weapon_atk;
+
+        // Calculate DEF with equipment
+        let armor_def = armor.total_def();
+        let total_def = 5 + total_vit.max(0) as u16 + armor_def;
+
+        // Calculate max HP/SP with equipment
+        let equipment_hp = armor.hp_bonus;
+        let equipment_sp = weapon.sp_bonus + accessory.sp_bonus;
+
+        // Create hero combatant from current hero stats + equipment
         self.jrpg_hero_combatant = Some(JrpgCombatant {
             name: self.hero.name,
             level: self.hero.level,
             hp: self.hero.hp,
-            max_hp: self.hero.max_hp,
+            max_hp: self.hero.max_hp + equipment_hp,
             sp: self.hero.sp,
-            max_sp: self.hero.max_sp,
-            attack: 10 + (self.hero.base_str * 2), // STR affects ATK
-            defense: 5 + self.hero.base_vit,       // VIT affects DEF
-            // Stats from base stats
-            agility: self.hero.base_agi,           // Direct AGI
-            luck: self.hero.base_luk,              // Direct LUK
-            intelligence: self.hero.base_int,      // Direct INT
-            dexterity: self.hero.base_dex,         // Direct DEX
+            max_sp: self.hero.max_sp + equipment_sp,
+            attack: total_atk,
+            defense: total_def,
+            // Stats with equipment bonuses
+            agility: total_agi.max(0) as u16,
+            luck: total_luk.max(0) as u16,
+            intelligence: total_int.max(0) as u16,
+            dexterity: total_dex.max(0) as u16,
             active_effects: heapless::Vec::new(),
             available_skills: hero_skills,
         });
@@ -2032,15 +2485,42 @@ impl GameState {
 
         // Award rewards on victory
         if self.jrpg_battle_state == JrpgBattleState::Victory {
-            if let Some(enemy) = &self.battle_enemy {
-                self.hero.add_exp(enemy.base_exp);
-                self.hero.add_zeny(enemy.zeny_reward);
+            // Extract enemy data before borrowing self mutably
+            let (enemy_id, base_exp, zeny_earned) = if let Some(enemy) = &self.battle_enemy {
+                (enemy.id, enemy.base_exp, enemy.zeny_reward)
+            } else {
+                (0, 0, 0)
+            };
+
+            if enemy_id > 0 {
+                self.hero.add_exp(base_exp);
+                self.hero.add_zeny(zeny_earned);
+
+                // Update quest progress - monster killed
+                crate::tamagotchi::quest_system::update_quest_progress(
+                    self,
+                    QuestAction::MonsterKilled { enemy_id },
+                );
+
+                // Update quest progress - battle completed
+                crate::tamagotchi::quest_system::update_quest_progress(
+                    self,
+                    QuestAction::BattleCompleted,
+                );
+
+                // Update quest progress - zeny earned
+                crate::tamagotchi::quest_system::update_quest_progress(
+                    self,
+                    QuestAction::ZenyEarned {
+                        amount: zeny_earned,
+                    },
+                );
 
                 // Roll for item drops
                 let rng_value = (self.last_update_ms % 255) as u8;
                 let drop_rate = 30; // 30% drop chance
                 if rng_value < drop_rate {
-                    if let Some((item_id, item_name)) = self.roll_item_drop(enemy.id, rng_value) {
+                    if let Some((item_id, item_name)) = self.roll_item_drop(enemy_id, rng_value) {
                         let quantity = 1;
                         self.hero.add_item(item_id, item_name, quantity);
                     }
@@ -2048,7 +2528,7 @@ impl GameState {
 
                 esp_println::println!(
                     "[JRPG] Victory! Gained {} EXP, {} Zeny",
-                    enemy.base_exp, enemy.zeny_reward
+                    base_exp, zeny_earned
                 );
             }
         }

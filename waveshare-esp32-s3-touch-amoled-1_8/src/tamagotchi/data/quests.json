@@ -1,0 +1,267 @@
+[
+  {
+    "id": 1,
+    "name": "Novice Hunter",
+    "description": "Defeat 5 Porings to prove your strength",
+    "quest_type": "Daily",
+    "min_level": 1,
+    "max_level": 10,
+    "objectives": [
+      {
+        "type": "KillMonster",
+        "enemy_id": 1002,
+        "count": 5
+      }
+    ],
+    "rewards": {
+      "base_exp": 100,
+      "job_exp": 50,
+      "zeny": 500,
+      "items": []
+    }
+  },
+  {
+    "id": 2,
+    "name": "Training Montage",
+    "description": "Complete 10 battles to sharpen your skills",
+    "quest_type": "Daily",
+    "min_level": 1,
+    "max_level": 15,
+    "objectives": [
+      {
+        "type": "CompleteBattles",
+        "count": 10
+      }
+    ],
+    "rewards": {
+      "base_exp": 150,
+      "job_exp": 75,
+      "zeny": 750,
+      "items": []
+    }
+  },
+  {
+    "id": 3,
+    "name": "Treasure Hunter",
+    "description": "Earn 1000 Zeny from your adventures",
+    "quest_type": "Daily",
+    "min_level": 1,
+    "max_level": 10,
+    "objectives": [
+      {
+        "type": "EarnZeny",
+        "amount": 1000
+      }
+    ],
+    "rewards": {
+      "base_exp": 120,
+      "job_exp": 60,
+      "zeny": 500,
+      "items": []
+    }
+  },
+  {
+    "id": 10,
+    "name": "Intermediate Hunter",
+    "description": "Defeat 10 Hornets",
+    "quest_type": "Daily",
+    "min_level": 11,
+    "max_level": 20,
+    "objectives": [
+      {
+        "type": "KillMonster",
+        "enemy_id": 1004,
+        "count": 10
+      }
+    ],
+    "rewards": {
+      "base_exp": 300,
+      "job_exp": 150,
+      "zeny": 1500,
+      "items": []
+    }
+  },
+  {
+    "id": 11,
+    "name": "Equipment Enthusiast",
+    "description": "Refine equipment 3 times",
+    "quest_type": "Daily",
+    "min_level": 11,
+    "max_level": 25,
+    "objectives": [
+      {
+        "type": "RefineEquipment",
+        "count": 3
+      }
+    ],
+    "rewards": {
+      "base_exp": 250,
+      "job_exp": 125,
+      "zeny": 1000,
+      "items": []
+    }
+  },
+  {
+    "id": 12,
+    "name": "Experience Seeker",
+    "description": "Complete 15 battles",
+    "quest_type": "Daily",
+    "min_level": 11,
+    "max_level": 25,
+    "objectives": [
+      {
+        "type": "CompleteBattles",
+        "count": 15
+      }
+    ],
+    "rewards": {
+      "base_exp": 400,
+      "job_exp": 200,
+      "zeny": 2000,
+      "items": []
+    }
+  },
+  {
+    "id": 100,
+    "name": "Monster Slayer I",
+    "description": "Defeat 100 monsters of any type",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "KillMonster",
+        "enemy_id": 0,
+        "count": 100
+      }
+    ],
+    "rewards": {
+      "base_exp": 1000,
+      "job_exp": 500,
+      "zeny": 5000,
+      "items": []
+    }
+  },
+  {
+    "id": 101,
+    "name": "Monster Slayer II",
+    "description": "Defeat 500 monsters of any type",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "KillMonster",
+        "enemy_id": 0,
+        "count": 500
+      }
+    ],
+    "rewards": {
+      "base_exp": 5000,
+      "job_exp": 2500,
+      "zeny": 25000,
+      "items": []
+    }
+  },
+  {
+    "id": 102,
+    "name": "Poring Exterminator",
+    "description": "Defeat 50 Porings",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "KillMonster",
+        "enemy_id": 1002,
+        "count": 50
+      }
+    ],
+    "rewards": {
+      "base_exp": 500,
+      "job_exp": 250,
+      "zeny": 2500,
+      "items": [[909, 10]]
+    }
+  },
+  {
+    "id": 103,
+    "name": "Rich Adventurer I",
+    "description": "Earn 10,000 Zeny total",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "EarnZeny",
+        "amount": 10000
+      }
+    ],
+    "rewards": {
+      "base_exp": 800,
+      "job_exp": 400,
+      "zeny": 5000,
+      "items": []
+    }
+  },
+  {
+    "id": 104,
+    "name": "Master Refiner",
+    "description": "Successfully refine equipment to +5",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "RefineEquipment",
+        "count": 5
+      }
+    ],
+    "rewards": {
+      "base_exp": 600,
+      "job_exp": 300,
+      "zeny": 3000,
+      "items": []
+    }
+  },
+  {
+    "id": 105,
+    "name": "Battle Veteran",
+    "description": "Complete 100 battles",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "CompleteBattles",
+        "count": 100
+      }
+    ],
+    "rewards": {
+      "base_exp": 1500,
+      "job_exp": 750,
+      "zeny": 7500,
+      "items": []
+    }
+  },
+  {
+    "id": 106,
+    "name": "Level 20 Hero",
+    "description": "Reach character level 20",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "objectives": [
+      {
+        "type": "ReachLevel",
+        "level": 20
+      }
+    ],
+    "rewards": {
+      "base_exp": 2000,
+      "job_exp": 1000,
+      "zeny": 10000,
+      "items": []
+    }
+  }
+]

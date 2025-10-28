@@ -264,6 +264,7 @@ fn get_npc_name(npc_id: u32) -> &'static str {
         1001 => "Items Trader",
         1002 => "Equipment Trader",
         1003 => "Skill Trader",
+        1004 => "Refinery",
         _ => "Unknown NPC",
     }
 }

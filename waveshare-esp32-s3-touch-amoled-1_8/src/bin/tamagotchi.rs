@@ -233,6 +233,10 @@ fn main() -> ! {
             game_state.hero.level
         );
     }
+
+    // Initialize quest system (auto-start achievements and daily quests)
+    esp32_conways_game_of_life_rs::tamagotchi::quest_system::initialize_quest_system(&mut game_state);
+
     world.insert_resource(game_state);
 
     // Insert SD card resource
