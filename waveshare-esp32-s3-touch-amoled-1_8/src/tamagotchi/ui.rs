@@ -2347,22 +2347,77 @@ where
         }
     }
 
-    // Back button
-    Rectangle::new(Point::new(100, 400), Size::new(160, 40))
+    // Navigation buttons at bottom
+    // Up arrow button (left) - only show if not at start
+    if game_state.quest_page_scroll > 0 {
+        Rectangle::new(Point::new(10, 400), Size::new(70, 40))
+            .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+            .draw(display)?;
+
+        Rectangle::new(Point::new(10, 400), Size::new(70, 40))
+            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+            .draw(display)?;
+
+        // Draw up arrow (^)
+        draw_text(
+            display,
+            "^",
+            Point::new(35, 422),
+            &FONT_10X20,
+            COLOR_TEXT,
+        )?;
+        draw_text(
+            display,
+            "UP",
+            Point::new(28, 434),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    }
+
+    // Back button (center)
+    Rectangle::new(Point::new(134, 400), Size::new(100, 40))
         .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
         .draw(display)?;
 
-    Rectangle::new(Point::new(100, 400), Size::new(160, 40))
+    Rectangle::new(Point::new(134, 400), Size::new(100, 40))
         .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
         .draw(display)?;
 
     draw_text(
         display,
         "BACK",
-        Point::new(155, 422),
+        Point::new(153, 422),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;
+
+    // Down arrow button (right) - only show if more quests below
+    if !active_quests.is_empty() && (game_state.quest_page_scroll as usize + 4) < active_quests.len() {
+        Rectangle::new(Point::new(288, 400), Size::new(70, 40))
+            .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+            .draw(display)?;
+
+        Rectangle::new(Point::new(288, 400), Size::new(70, 40))
+            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+            .draw(display)?;
+
+        // Draw down arrow (v)
+        draw_text(
+            display,
+            "v",
+            Point::new(313, 422),
+            &FONT_10X20,
+            COLOR_TEXT,
+        )?;
+        draw_text(
+            display,
+            "DOWN",
+            Point::new(297, 434),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    }
 
     Ok(())
 }

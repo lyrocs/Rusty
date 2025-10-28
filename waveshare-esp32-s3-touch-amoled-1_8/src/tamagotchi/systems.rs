@@ -658,10 +658,38 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             }
         }
         GamePage::Quests => {
-            // Back button: x=100-260, y=400-440
-            if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
+            // UP arrow button: x=10-80, y=400-440
+            if x >= 10 && x <= 80 && y >= 400 && y <= 440 {
+                if game_state.quest_page_scroll > 0 {
+                    game_state.quest_page_scroll -= 1;
+                    game_state.needs_redraw = true;
+                    esp_println::println!("[QUEST] Scrolled up to {}", game_state.quest_page_scroll);
+                }
+                return;
+            }
+
+            // Back button (center): x=134-234, y=400-440
+            if x >= 134 && x <= 234 && y >= 400 && y <= 440 {
                 game_state.current_page = GamePage::Overview;
                 game_state.needs_redraw = true;
+                return;
+            }
+
+            // DOWN arrow button: x=288-358, y=400-440
+            if x >= 288 && x <= 358 && y >= 400 && y <= 440 {
+                // Count total unclaimed quests
+                let total_quests = game_state
+                    .active_quests
+                    .iter()
+                    .filter(|q| !q.claimed)
+                    .count();
+
+                // Check if we can scroll down (more than 4 quests and not at bottom)
+                if total_quests > 4 && (game_state.quest_page_scroll as usize + 4) < total_quests {
+                    game_state.quest_page_scroll += 1;
+                    game_state.needs_redraw = true;
+                    esp_println::println!("[QUEST] Scrolled down to {}", game_state.quest_page_scroll);
+                }
                 return;
             }
 
