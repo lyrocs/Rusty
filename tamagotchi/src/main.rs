@@ -41,11 +41,6 @@ fn main() -> Result<()> {
     // Initialize ESP-IDF logging
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    // Feed the watchdog to prevent timeout during initialization
-    unsafe {
-        esp_idf_svc::sys::esp_task_wdt_reset();
-    }
-
     log::info!("=== ESP32-S3 Tamagotchi STD Version ===");
     log::info!("Phase 1: Proof of Concept");
 
@@ -104,10 +99,6 @@ fn main() -> Result<()> {
         frame_count += 1;
         if frame_count % 20 == 0 {
             log::info!("Main loop frame: {}", frame_count);
-            // Feed watchdog periodically
-            unsafe {
-                esp_idf_svc::sys::esp_task_wdt_reset();
-            }
         }
 
         // Longer sleep to ensure IDLE task can run
