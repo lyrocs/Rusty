@@ -5,9 +5,11 @@ pub mod touch;
 pub mod storage;
 pub mod button;
 pub mod power;
+pub mod gpio_expander;
 
 pub use display::Sh8601DisplayDriver;
 pub use touch::Ft3168TouchDriver;
 pub use storage::SdCardStorage;
 pub use button::Esp32ButtonDriver;
 pub use power::Axp2101PowerDriver;
+pub use gpio_expander::Tca9554Driver;

@@ -61,6 +61,9 @@ embedded-sdmmc = "0.8.1"
 embedded-hal = "1.0.0"
 embedded-hal-bus = "0.2"
 
+# Note: sh8601-rs and ft3x68-rs depend on esp-hal (no_std) which conflicts
+# with esp-idf-svc (std). We'll implement our own drivers using esp-idf-svc HAL
+
 
 
 

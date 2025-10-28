@@ -25,6 +25,39 @@ pub fn spawn_render_thread(
             let mut front_buffer = FrameBuffer::new(240, 280);
             let mut back_buffer = FrameBuffer::new(240, 280);
 
+            // Draw test pattern on startup
+            log::info!("Drawing test pattern...");
+            back_buffer.clear();
+            // Red rectangle
+            back_buffer.draw_rect(10, 10, 60, 60, 255, 0, 0);
+            // Green rectangle
+            back_buffer.draw_rect(80, 10, 60, 60, 0, 255, 0);
+            // Blue rectangle
+            back_buffer.draw_rect(150, 10, 60, 60, 0, 0, 255);
+            // Yellow rectangle
+            back_buffer.draw_rect(10, 80, 60, 60, 255, 255, 0);
+            // Cyan rectangle
+            back_buffer.draw_rect(80, 80, 60, 60, 0, 255, 255);
+            // Magenta rectangle
+            back_buffer.draw_rect(150, 80, 60, 60, 255, 0, 255);
+            // White rectangle
+            back_buffer.draw_rect(10, 150, 220, 60, 255, 255, 255);
+
+            // Display the test pattern
+            if let Some(mut display_driver) = display.try_lock() {
+                log::info!("Sending test pattern to display...");
+                match display_driver.draw_buffer(
+                    &back_buffer.data,
+                    0,
+                    0,
+                    back_buffer.width,
+                    back_buffer.height
+                ) {
+                    Ok(_) => log::info!("Test pattern displayed successfully"),
+                    Err(e) => log::error!("Failed to display test pattern: {:?}", e),
+                }
+            }
+
             let mut frame_count = 0u64;
 
             while running.load(Ordering::Relaxed) {
