@@ -5,10 +5,10 @@
 /// Monster GIF animation state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonsterAnimation {
-    Idle,      // 0.gif - loops
-    Attacking, // 16.gif - plays once
-    Attacked,  // 24.gif - plays once (when monster takes damage)
-    Dying,     // 32.gif - plays once
+    Idle,      // 6.gif - loops
+    Attacking, // 22.gif - plays once
+    Attacked,  // 30.gif - plays once (when monster takes damage)
+    Dying,     // 38.gif - plays once
 }
 
 impl MonsterAnimation {
@@ -19,16 +19,28 @@ impl MonsterAnimation {
 
         match (monster_lower.as_str(), self) {
             // Poring animations
-            ("poring", MonsterAnimation::Idle) => include_bytes!("../../assets/images/poring/0.gif"),
-            ("poring", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/poring/16.gif"),
-            ("poring", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/poring/24.gif"),
-            ("poring", MonsterAnimation::Dying) => include_bytes!("../../assets/images/poring/32.gif"),
+            ("poring", MonsterAnimation::Idle) => include_bytes!("../../assets/images/poring/6.gif"),
+            ("poring", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/poring/22.gif"),
+            ("poring", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/poring/30.gif"),
+            ("poring", MonsterAnimation::Dying) => include_bytes!("../../assets/images/poring/38.gif"),
 
             // Fabre animations
-            ("fabre", MonsterAnimation::Idle) => include_bytes!("../../assets/images/fabre/0.gif"),
-            ("fabre", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/fabre/16.gif"),
-            ("fabre", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/fabre/24.gif"),
-            ("fabre", MonsterAnimation::Dying) => include_bytes!("../../assets/images/fabre/32.gif"),
+            ("fabre", MonsterAnimation::Idle) => include_bytes!("../../assets/images/fabre/6.gif"),
+            ("fabre", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/fabre/22.gif"),
+            ("fabre", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/fabre/30.gif"),
+            ("fabre", MonsterAnimation::Dying) => include_bytes!("../../assets/images/fabre/38.gif"),
+
+            // Hornet animations
+            ("hornet", MonsterAnimation::Idle) => include_bytes!("../../assets/images/hornet/6.gif"),
+            ("hornet", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/hornet/22.gif"),
+            ("hornet", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/hornet/30.gif"),
+            ("hornet", MonsterAnimation::Dying) => include_bytes!("../../assets/images/hornet/38.gif"),
+
+            // Thief Bug animations
+            ("thief bug", MonsterAnimation::Idle) => include_bytes!("../../assets/images/thief_bug/6.gif"),
+            ("thief bug", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/thief_bug/22.gif"),
+            ("thief bug", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/thief_bug/30.gif"),
+            ("thief bug", MonsterAnimation::Dying) => include_bytes!("../../assets/images/thief_bug/38.gif"),
 
             // Default fallback to Poring if monster not found
             _ => {
@@ -37,10 +49,10 @@ impl MonsterAnimation {
                     monster_name
                 );
                 match self {
-                    MonsterAnimation::Idle => include_bytes!("../../assets/images/poring/0.gif"),
-                    MonsterAnimation::Attacking => include_bytes!("../../assets/images/poring/16.gif"),
-                    MonsterAnimation::Attacked => include_bytes!("../../assets/images/poring/24.gif"),
-                    MonsterAnimation::Dying => include_bytes!("../../assets/images/poring/32.gif"),
+                    MonsterAnimation::Idle => include_bytes!("../../assets/images/poring/6.gif"),
+                    MonsterAnimation::Attacking => include_bytes!("../../assets/images/poring/22.gif"),
+                    MonsterAnimation::Attacked => include_bytes!("../../assets/images/poring/30.gif"),
+                    MonsterAnimation::Dying => include_bytes!("../../assets/images/poring/38.gif"),
                 }
             }
         }
