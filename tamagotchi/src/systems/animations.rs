@@ -1,5 +1,4 @@
 /// Animation helper functions for battle and character animations
-
 use crate::core::GameState;
 
 /// Helper function to update monster GIF animation
@@ -13,10 +12,11 @@ pub fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, mons
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse GIF");
     let total_frames = gif.frames().count();
 
-    // Use global animation clock for synchronized updates (100ms per frame)
-    let elapsed_ms = game_state.gif_animation_clock_ms
+    // Use global animation clock for synchronized updates (150ms per frame for smoother animations)
+    let elapsed_ms = game_state
+        .gif_animation_clock_ms
         .wrapping_sub(game_state.monster_animation_started_ms);
-    let frame_duration_ms = 100;
+    let frame_duration_ms = 150;
     let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
 
     // Only update and redraw if frame actually changed
@@ -56,10 +56,11 @@ pub fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
     let total_frames = gif.frames().count();
 
-    // Use global animation clock for synchronized updates (100ms per frame)
-    let elapsed_ms = game_state.gif_animation_clock_ms
+    // Use global animation clock for synchronized updates (150ms per frame for smoother animations)
+    let elapsed_ms = game_state
+        .gif_animation_clock_ms
         .wrapping_sub(game_state.hero_animation_started_ms);
-    let frame_duration_ms = 100;
+    let frame_duration_ms = 150;
     let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
 
     // Only update and redraw if frame actually changed
@@ -109,10 +110,11 @@ pub fn update_monster_attacked_animation(
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse attacked GIF");
     let total_frames = gif.frames().count();
 
-    // Use global animation clock for synchronized updates (100ms per frame)
-    let elapsed_ms = game_state.gif_animation_clock_ms
+    // Use global animation clock for synchronized updates (150ms per frame for smoother animations)
+    let elapsed_ms = game_state
+        .gif_animation_clock_ms
         .wrapping_sub(game_state.monster_attacked_started_ms);
-    let frame_duration_ms = 100;
+    let frame_duration_ms = 150;
     let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
 
     // Play once and return to Normal - only update and redraw if frame actually changed
