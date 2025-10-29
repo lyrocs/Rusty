@@ -813,20 +813,13 @@ fn handle_settings_touch(game_state: &mut GameState, x: u16, y: u16) {
 
 /// Handle JRPG Battle page touches
 fn handle_jrpg_battle_touch(game_state: &mut GameState, x: u16, y: u16) {
-    use crate::combat::{JrpgBattleState, JrpgBattleMenu};
+    use crate::combat::{JrpgBattleState};
 
     match game_state.jrpg_battle_state {
         JrpgBattleState::PlayerTurn => {
-            match game_state.jrpg_battle_menu {
-                JrpgBattleMenu::Main => {
-                    handle_jrpg_main_menu_touch(game_state, x, y);
-                }
-                JrpgBattleMenu::Skills => {
-                    handle_jrpg_skills_menu_touch(game_state, x, y);
-                }
-            }
+            handle_jrpg_action_buttons_touch(game_state, x, y);
         }
-        JrpgBattleState::Victory | JrpgBattleState::Defeat | JrpgBattleState::Escaped => {
+        JrpgBattleState::Victory | JrpgBattleState::Defeat => {
             // Tap to exit battle
             game_state.end_jrpg_battle();
         }
@@ -836,145 +829,81 @@ fn handle_jrpg_battle_touch(game_state: &mut GameState, x: u16, y: u16) {
     }
 }
 
-/// Handle JRPG main menu touches (Attack, Skill, Run)
-fn handle_jrpg_main_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
-    use crate::combat::{JrpgBattleMenu, JrpgBattleState};
+/// Handle JRPG action button touches (Attack + 3 Skills)
+fn handle_jrpg_action_buttons_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::combat::JrpgBattleState;
 
-    // 3 buttons in a row layout (Attack, Skill, Run)
-    // Button dimensions match UI: 110x60, spacing 12, start at (14, 360)
-    let button_width = 110;
+    // Get number of available skills
+    let num_skills = if let Some(hero) = &game_state.jrpg_hero_combatant {
+        hero.available_skills.len()
+    } else {
+        return;
+    };
+
+    // Button layout: 1 row with Attack + 3 Skills (4 buttons total)
+    // Button dimensions: width varies, height 60, spacing 12
     let button_height = 60;
     let spacing_x = 12;
     let start_x = 14;
     let start_y = 360;
 
+    // Attack button is wider (110px), skill buttons are narrower (66px each)
+    let attack_width = 110;
+    let skill_width = 66;
+
     let mut clicked_button: Option<u8> = None;
 
-    // Check which button was clicked (3 buttons: Attack, Skill, Run)
-    for i in 0..3 {
-        let btn_x = start_x + i as i32 * (button_width + spacing_x);
-        let btn_y = start_y;
+    // Check Attack button (button 0)
+    if x >= start_x as u16
+        && x <= (start_x + attack_width) as u16
+        && y >= start_y as u16
+        && y <= (start_y + button_height) as u16
+    {
+        clicked_button = Some(0);
+    }
 
+    // Check skill buttons (buttons 1-3)
+    for i in 0..num_skills.min(3) {
+        let btn_x = start_x + attack_width + spacing_x + i as i32 * (skill_width + spacing_x);
         if x >= btn_x as u16
-            && x <= (btn_x + button_width) as u16
-            && y >= btn_y as u16
-            && y <= (btn_y + button_height) as u16
+            && x <= (btn_x + skill_width) as u16
+            && y >= start_y as u16
+            && y <= (start_y + button_height) as u16
         {
-            clicked_button = Some(i);
+            clicked_button = Some((i + 1) as u8);
             break;
         }
     }
 
     if let Some(btn) = clicked_button {
-        // Check if this is a selection (clicking on highlighted item)
-        if btn == game_state.jrpg_menu_selection {
-            // Execute action
-            match btn {
-                0 => {
-                    // Attack
-                    game_state.jrpg_player_attack();
-                    game_state.jrpg_battle_state = JrpgBattleState::PlayerAction;
-                    game_state.jrpg_action_animation_timer = 1500;
-                }
-                1 => {
-                    // Skill submenu
-                    game_state.jrpg_battle_menu = JrpgBattleMenu::Skills;
-                    game_state.jrpg_skill_menu_selection = 0;
-                }
-                2 => {
-                    // Run
-                    game_state.jrpg_battle_state = JrpgBattleState::Fleeing;
-                    game_state.jrpg_action_animation_timer = 1500;
-                    game_state.jrpg_try_run();
-                }
-                _ => {}
+        // Execute action directly (no selection step)
+        match btn {
+            0 => {
+                // Attack
+                game_state.jrpg_player_attack();
+                game_state.jrpg_battle_state = JrpgBattleState::PlayerAction;
+                game_state.jrpg_action_animation_timer = 1500;
             }
-        } else {
-            // Just update selection
-            game_state.jrpg_menu_selection = btn;
+            1..=3 => {
+                // Skill (button 1 = skill 0, button 2 = skill 1, etc.)
+                let skill_index = (btn - 1) as usize;
+
+                // Check if hero has enough SP
+                if let Some(h) = &game_state.jrpg_hero_combatant {
+                    if skill_index < h.available_skills.len() {
+                        let skill = h.available_skills[skill_index];
+                        if h.sp >= skill.sp_cost {
+                            // Use skill
+                            game_state.jrpg_player_use_skill(skill_index);
+                            game_state.jrpg_battle_state = JrpgBattleState::PlayerAction;
+                            game_state.jrpg_action_animation_timer = 1500;
+                        }
+                        // Note: if not enough SP, jrpg_player_use_skill shows error message
+                    }
+                }
+            }
+            _ => {}
         }
         game_state.needs_redraw = true;
-    }
-}
-
-/// Handle JRPG skills menu touches
-fn handle_jrpg_skills_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
-    use crate::combat::{JrpgBattleMenu, JrpgBattleState};
-
-    // Skills submenu - handle skill selection
-    if let Some(hero) = &game_state.jrpg_hero_combatant {
-        let button_width = 340;
-        let button_height = 45;  // Match UI
-        let spacing_y = 6;       // Match UI
-        let start_x = 14;
-        let start_y = 220;       // Match UI
-
-        let mut clicked_button: Option<u8> = None;
-        let num_skills = hero.available_skills.len();
-
-        // Check skill buttons (3 skills)
-        for i in 0..num_skills {
-            let btn_y = start_y + i as i32 * (button_height + spacing_y);
-            if x >= start_x as u16
-                && x <= (start_x + button_width) as u16
-                && y >= btn_y as u16
-                && y <= (btn_y + button_height) as u16
-            {
-                clicked_button = Some(i as u8);
-                break;
-            }
-        }
-
-        // Check "Back" button
-        let back_y = start_y + (num_skills as i32) * (button_height + spacing_y);
-        if x >= start_x as u16
-            && x <= (start_x + button_width) as u16
-            && y >= back_y as u16
-            && y <= (back_y + button_height) as u16
-        {
-            clicked_button = Some(num_skills as u8);
-        }
-
-        if let Some(btn) = clicked_button {
-            if btn == num_skills as u8 {
-                // Back button clicked
-                if btn == game_state.jrpg_skill_menu_selection {
-                    // Execute: go back to main menu
-                    game_state.jrpg_battle_menu = JrpgBattleMenu::Main;
-                    game_state.jrpg_skill_menu_selection = 0;
-                } else {
-                    // Just select back button
-                    game_state.jrpg_skill_menu_selection = btn;
-                }
-            } else if btn < num_skills as u8 {
-                // Skill button clicked
-                if btn == game_state.jrpg_skill_menu_selection {
-                    // Execute: use skill
-                    let skill_index = btn as usize;
-
-                    // Check if hero has enough SP
-                    if let Some(h) = &game_state.jrpg_hero_combatant {
-                        if skill_index < h.available_skills.len() {
-                            let skill = h.available_skills[skill_index];
-                            if h.sp >= skill.sp_cost {
-                                // Use skill
-                                game_state.jrpg_player_use_skill(skill_index);
-                                game_state.jrpg_battle_state = JrpgBattleState::PlayerAction;
-                                game_state.jrpg_action_animation_timer = 1500;
-                                game_state.jrpg_battle_menu = JrpgBattleMenu::Main;
-                                game_state.jrpg_skill_menu_selection = 0;
-                            } else {
-                                // Not enough SP - already handled in jrpg_player_use_skill
-                                // Just play a sound or flash the button (optional)
-                            }
-                        }
-                    }
-                } else {
-                    // Just select this skill
-                    game_state.jrpg_skill_menu_selection = btn;
-                }
-            }
-            game_state.needs_redraw = true;
-        }
     }
 }

@@ -406,22 +406,6 @@ impl GameState {
         self.needs_redraw = true;
     }
 
-    /// Try to run from battle (50% chance)
-    pub fn jrpg_try_run(&mut self) -> bool {
-        let rng = (self.last_update_ms % 100) as u8;
-        let success = rng < 50; // 50% chance
-
-        if success {
-            self.jrpg_battle_state = JrpgBattleState::Escaped;
-            esp_println::println!("[JRPG] Escaped successfully");
-        } else {
-            esp_println::println!("[JRPG] Failed to escape");
-        }
-
-        self.needs_redraw = true;
-        success
-    }
-
     /// End JRPG battle and return to map
     pub fn end_jrpg_battle(&mut self) {
         // Sync hero HP/SP back to main hero

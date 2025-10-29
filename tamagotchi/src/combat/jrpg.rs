@@ -15,8 +15,6 @@ pub enum JrpgBattleState {
     EnemyAction,     // Enemy action animation
     Victory,         // Battle won
     Defeat,          // Battle lost
-    Fleeing,         // Running away animation
-    Escaped,         // Successfully escaped
 }
 
 /// JRPG Battle Action
@@ -26,14 +24,12 @@ pub enum JrpgBattleAction {
     Skill,     // Use skill (costs SP)
     Item,      // Use item
     Defend,    // Reduce damage taken
-    Run,       // Try to flee
 }
 
 /// JRPG Battle Menu Selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JrpgBattleMenu {
-    Main,      // Main menu: Attack, Skill, Run
-    Skills,    // Skill selection submenu
+    Main,      // Main menu: Attack + Skills (direct execution)
 }
 
 /// JRPG Battle Combatant (for both hero and enemy)

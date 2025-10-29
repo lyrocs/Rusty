@@ -421,17 +421,6 @@ pub fn tamagotchi_update_system(
                             game_state.needs_redraw = true;
                         }
                     }
-                    JrpgBattleState::Fleeing => {
-                        // Run attempt finished, check if it was successful (already handled in jrpg_try_run)
-                        if game_state.jrpg_battle_state != JrpgBattleState::Escaped {
-                            // Failed to escape, enemy's turn
-                            game_state.jrpg_battle_state = JrpgBattleState::EnemyTurn;
-                            game_state.jrpg_action_animation_timer = 500;
-                        }
-                        if game_state.screen_on {
-                            game_state.needs_redraw = true;
-                        }
-                    }
                     _ => {}
                 }
             }

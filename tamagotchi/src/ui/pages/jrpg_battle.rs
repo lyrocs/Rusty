@@ -274,219 +274,114 @@ where
 
     // === Action Menu (during player turn) ===
     if game_state.jrpg_battle_state == JrpgBattleState::PlayerTurn {
-        match game_state.jrpg_battle_menu {
-            JrpgBattleMenu::Main => {
-                // Main menu: 3 buttons in a row (Attack, Skill, Run)
-                let options = ["Attack", "Skill", "Run"];
-                let button_width = 110;
-                let button_height = 60;
-                let spacing_x = 12;
-                let start_x = 14;
-                let start_y = 360;
+        // Draw action buttons: Attack + 3 Skills in a single row
+        if let Some(hero) = &game_state.jrpg_hero_combatant {
+            let button_height = 60;
+            let spacing_x = 12;
+            let start_x = 14;
+            let start_y = 360;
 
-                for (i, option) in options.iter().enumerate() {
-                    let x = start_x + i as i32 * (button_width + spacing_x);
-                    let y = start_y;
+            // Attack button (wider)
+            let attack_width = 110;
+            let skill_width = 66;
 
-                    let is_selected = game_state.jrpg_menu_selection == i as u8;
+            // Draw Attack button
+            Rectangle::new(
+                Point::new(start_x, start_y),
+                Size::new(attack_width as u32, button_height as u32),
+            )
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(80, 50, 50)))
+            .draw(display)?;
 
-                    // Button background
-                    let bg_color = if is_selected {
-                        Rgb888::new(80, 80, 120) // Highlighted
-                    } else {
-                        Rgb888::new(50, 50, 80) // Normal
-                    };
+            Rectangle::new(
+                Point::new(start_x, start_y),
+                Size::new(attack_width as u32, button_height as u32),
+            )
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(200, 100, 100), 2))
+            .draw(display)?;
 
-                    Rectangle::new(
-                        Point::new(x, y),
-                        Size::new(button_width as u32, button_height as u32),
-                    )
-                    .into_styled(PrimitiveStyle::with_fill(bg_color))
-                    .draw(display)?;
+            let text_x = start_x + (attack_width / 2) - 27; // "Attack" = 6 chars * 9/2
+            let text_y = start_y + (button_height / 2) - 9;
+            draw_text(
+                display,
+                "Attack",
+                Point::new(text_x, text_y),
+                &FONT_9X18_BOLD,
+                Rgb888::WHITE,
+            )?;
 
-                    // Button border
-                    let border_color = if is_selected {
-                        Rgb888::YELLOW
-                    } else {
-                        COLOR_TEXT
-                    };
-                    let border_width = if is_selected { 3 } else { 2 };
+            // Draw skill buttons (up to 3)
+            for (i, skill) in hero.available_skills.iter().enumerate().take(3) {
+                let x = start_x + attack_width + spacing_x + i as i32 * (skill_width + spacing_x);
+                let has_enough_sp = hero.sp >= skill.sp_cost;
 
-                    Rectangle::new(
-                        Point::new(x, y),
-                        Size::new(button_width as u32, button_height as u32),
-                    )
-                    .into_styled(PrimitiveStyle::with_stroke(border_color, border_width))
-                    .draw(display)?;
+                // Button background
+                let bg_color = if !has_enough_sp {
+                    Rgb888::new(40, 40, 40) // Disabled (not enough SP)
+                } else {
+                    Rgb888::new(50, 50, 80) // Normal
+                };
 
-                    // Button text (centered)
-                    let text_color = if is_selected {
-                        Rgb888::YELLOW
-                    } else {
-                        Rgb888::WHITE
-                    };
-                    let text_x = x + (button_width / 2) - ((option.len() as i32 * 9) / 2);
-                    let text_y = y + (button_height / 2) - 9;
-                    draw_text(
-                        display,
-                        option,
-                        Point::new(text_x, text_y),
-                        &FONT_9X18_BOLD,
-                        text_color,
-                    )?;
-                }
-            }
-            JrpgBattleMenu::Skills => {
-                // Skills submenu - display available skills
-                if let Some(hero) = &game_state.jrpg_hero_combatant {
-                    let button_width = 340;
-                    let button_height = 45; // Reduced from 50
-                    let spacing_y = 6; // Reduced from 8
-                    let start_x = 14;
-                    let start_y = 220; // Moved up from 250
+                Rectangle::new(
+                    Point::new(x, start_y),
+                    Size::new(skill_width as u32, button_height as u32),
+                )
+                .into_styled(PrimitiveStyle::with_fill(bg_color))
+                .draw(display)?;
 
-                    // Draw skill buttons
-                    for (i, skill) in hero.available_skills.iter().enumerate() {
-                        let y = start_y + i as i32 * (button_height + spacing_y);
-                        let is_selected = game_state.jrpg_skill_menu_selection == i as u8;
-                        let has_enough_sp = hero.sp >= skill.sp_cost;
+                // Button border
+                let border_color = if !has_enough_sp {
+                    Rgb888::new(100, 100, 100) // Gray for disabled
+                } else {
+                    Rgb888::new(100, 150, 255) // Blue
+                };
 
-                        // Button background
-                        let bg_color = if !has_enough_sp {
-                            Rgb888::new(40, 40, 40) // Disabled (not enough SP)
-                        } else if is_selected {
-                            Rgb888::new(80, 80, 120) // Highlighted
-                        } else {
-                            Rgb888::new(50, 50, 80) // Normal
-                        };
+                Rectangle::new(
+                    Point::new(x, start_y),
+                    Size::new(skill_width as u32, button_height as u32),
+                )
+                .into_styled(PrimitiveStyle::with_stroke(border_color, 2))
+                .draw(display)?;
 
-                        Rectangle::new(
-                            Point::new(start_x, y),
-                            Size::new(button_width as u32, button_height as u32),
-                        )
-                        .into_styled(PrimitiveStyle::with_fill(bg_color))
-                        .draw(display)?;
+                // Skill name (first 3 chars)
+                let skill_name_short: heapless::String<4> = skill.name.chars().take(3).collect();
+                let text_color = if !has_enough_sp {
+                    Rgb888::new(120, 120, 120) // Dim gray for disabled
+                } else {
+                    Rgb888::WHITE
+                };
+                let skill_text_x = x + 6;
+                let skill_text_y = start_y + 12;
+                draw_text(
+                    display,
+                    &skill_name_short,
+                    Point::new(skill_text_x, skill_text_y),
+                    &FONT_9X15,
+                    text_color,
+                )?;
 
-                        // Button border
-                        let border_color = if !has_enough_sp {
-                            Rgb888::new(100, 100, 100) // Gray for disabled
-                        } else if is_selected {
-                            Rgb888::YELLOW
-                        } else {
-                            COLOR_TEXT
-                        };
-                        let border_width = if is_selected { 3 } else { 2 };
-
-                        Rectangle::new(
-                            Point::new(start_x, y),
-                            Size::new(button_width as u32, button_height as u32),
-                        )
-                        .into_styled(PrimitiveStyle::with_stroke(border_color, border_width))
-                        .draw(display)?;
-
-                        // Skill name (left side)
-                        let text_color = if !has_enough_sp {
-                            Rgb888::new(120, 120, 120) // Dim gray for disabled
-                        } else if is_selected {
-                            Rgb888::YELLOW
-                        } else {
-                            Rgb888::WHITE
-                        };
-                        let text_x = start_x + 10;
-                        let text_y = y + (button_height / 2) - 9;
-                        draw_text(
-                            display,
-                            skill.name,
-                            Point::new(text_x, text_y),
-                            &FONT_9X18_BOLD,
-                            text_color,
-                        )?;
-
-                        // SP cost (right side)
-                        let mut sp_str = String::<16>::new();
-                        write!(sp_str, "SP: {}", skill.sp_cost).ok();
-                        let sp_x = start_x + button_width - 80;
-                        let sp_color = if !has_enough_sp {
-                            Rgb888::RED // Red if not enough SP
-                        } else {
-                            Rgb888::new(100, 200, 255) // Cyan
-                        };
-                        draw_text(
-                            display,
-                            &sp_str,
-                            Point::new(sp_x, text_y),
-                            &FONT_9X18_BOLD,
-                            sp_color,
-                        )?;
-                    }
-
-                    // Draw "Back" button
-                    let back_y = start_y
-                        + (hero.available_skills.len() as i32) * (button_height + spacing_y);
-                    let is_back_selected =
-                        game_state.jrpg_skill_menu_selection == hero.available_skills.len() as u8;
-
-                    let back_bg_color = if is_back_selected {
-                        Rgb888::new(80, 80, 120)
-                    } else {
-                        Rgb888::new(50, 50, 80)
-                    };
-
-                    Rectangle::new(
-                        Point::new(start_x, back_y),
-                        Size::new(button_width as u32, button_height as u32),
-                    )
-                    .into_styled(PrimitiveStyle::with_fill(back_bg_color))
-                    .draw(display)?;
-
-                    let back_border_color = if is_back_selected {
-                        Rgb888::YELLOW
-                    } else {
-                        COLOR_TEXT
-                    };
-                    let back_border_width = if is_back_selected { 3 } else { 2 };
-
-                    Rectangle::new(
-                        Point::new(start_x, back_y),
-                        Size::new(button_width as u32, button_height as u32),
-                    )
-                    .into_styled(PrimitiveStyle::with_stroke(
-                        back_border_color,
-                        back_border_width,
-                    ))
-                    .draw(display)?;
-
-                    let back_text_color = if is_back_selected {
-                        Rgb888::YELLOW
-                    } else {
-                        Rgb888::WHITE
-                    };
-                    let back_text_x = start_x + (button_width / 2) - 27; // Center "Back"
-                    let back_text_y = back_y + (button_height / 2) - 9;
-                    draw_text(
-                        display,
-                        "Back",
-                        Point::new(back_text_x, back_text_y),
-                        &FONT_9X18_BOLD,
-                        back_text_color,
-                    )?;
-
-                    // Display current SP at top
-                    let mut sp_display = String::<32>::new();
-                    write!(sp_display, "SP: {}/{}", hero.sp, hero.max_sp).ok();
-                    draw_text(
-                        display,
-                        &sp_display,
-                        Point::new(130, 190),
-                        &FONT_9X18_BOLD,
-                        Rgb888::new(100, 200, 255),
-                    )?;
-                }
+                // SP cost (bottom of button)
+                let mut sp_str = String::<8>::new();
+                write!(sp_str, "{}", skill.sp_cost).ok();
+                let sp_x = x + (skill_width / 2) - ((sp_str.len() as i32 * 9) / 2);
+                let sp_y = start_y + button_height - 20;
+                let sp_color = if !has_enough_sp {
+                    Rgb888::RED
+                } else {
+                    Rgb888::new(100, 200, 255)
+                };
+                draw_text(
+                    display,
+                    &sp_str,
+                    Point::new(sp_x, sp_y),
+                    &FONT_9X18_BOLD,
+                    sp_color,
+                )?;
             }
         }
     }
 
-    // === Victory Modal (show items dropped) ===
+    // === Victory Modal ===
     if game_state.jrpg_battle_state == JrpgBattleState::Victory {
         // Semi-transparent overlay
         Rectangle::new(Point::new(0, 0), Size::new(360, 480))
