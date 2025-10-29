@@ -8,7 +8,7 @@ use crate::quest::models::{
 };
 
 // Embed quests JSON at compile time
-const QUESTS_JSON: &str = include_str!("../tamagotchi/data/quests.json");
+const QUESTS_JSON: &str = include_str!("../../assets/data/quests.json");
 
 // Static storage for parsed quests
 use core::cell::UnsafeCell;

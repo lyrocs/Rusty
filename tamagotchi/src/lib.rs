@@ -14,4 +14,7 @@ pub mod display;
 pub mod ui;
 pub mod ecs;
 pub mod utils;
+
+// Backward compatibility: Re-export everything under the old `tamagotchi` namespace
+#[path = "tamagotchi_compat.rs"]
 pub mod tamagotchi;

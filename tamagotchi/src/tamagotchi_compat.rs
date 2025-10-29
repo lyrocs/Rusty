@@ -1,3 +1,7 @@
+//! Backward compatibility module for legacy tamagotchi imports
+//!
+//! This module provides backward compatibility by re-exporting all types
+//! from their new clean architecture locations under the old `tamagotchi` namespace.
 
 // Re-export core types for backward compatibility
 pub use crate::core::{GamePage, GameState, MapId};
@@ -21,3 +25,20 @@ pub use crate::combat::{
 
 // Re-export world types for backward compatibility
 pub use crate::world::{LocationType, MapHelper, MapExit};
+
+// Re-export modules under old names
+pub use crate::systems as systems;
+pub use crate::quest::system as quest_system;
+pub use crate::ui as ui;
+pub use crate::data as game_data;
+
+// Re-export everything from these modules
+pub use systems::*;
+pub use quest_system::*;
+pub use ui::*;
+pub use game_data::*;
+
+/// Backward compatibility module namespace
+pub mod models {
+    pub use super::*;
+}

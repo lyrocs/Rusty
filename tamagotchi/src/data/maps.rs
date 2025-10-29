@@ -9,7 +9,7 @@ use super::common::LazyData;
 use super::enemies::get_enemy_data;
 
 // Embed JSON file at compile time
-const MAPS_JSON: &str = include_str!("../tamagotchi/data/maps.json");
+const MAPS_JSON: &str = include_str!("../../assets/data/maps.json");
 
 /// Map data structure (matches maps.json)
 #[derive(Debug, Deserialize, Clone)]

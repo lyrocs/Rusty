@@ -9,7 +9,7 @@ use super::common::LazyData;
 use super::drops::DropEntry;
 
 // Embed JSON file at compile time
-const ENEMIES_JSON: &str = include_str!("../tamagotchi/data/enemies.json");
+const ENEMIES_JSON: &str = include_str!("../../assets/data/enemies.json");
 
 /// Enemy data structure (matches enemies.json)
 #[derive(Debug, Deserialize, Clone)]

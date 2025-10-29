@@ -18,14 +18,14 @@ impl MonsterAnimation {
 
         match (monster_lower.as_str(), self) {
             // Poring animations
-            ("poring", MonsterAnimation::Idle) => include_bytes!("../tamagotchi/images/poring/0.gif"),
-            ("poring", MonsterAnimation::Attacking) => include_bytes!("../tamagotchi/images/poring/16.gif"),
-            ("poring", MonsterAnimation::Dying) => include_bytes!("../tamagotchi/images/poring/32.gif"),
+            ("poring", MonsterAnimation::Idle) => include_bytes!("../../assets/images/poring/0.gif"),
+            ("poring", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/poring/16.gif"),
+            ("poring", MonsterAnimation::Dying) => include_bytes!("../../assets/images/poring/32.gif"),
 
             // Fabre animations
-            ("fabre", MonsterAnimation::Idle) => include_bytes!("../tamagotchi/images/fabre/0.gif"),
-            ("fabre", MonsterAnimation::Attacking) => include_bytes!("../tamagotchi/images/fabre/16.gif"),
-            ("fabre", MonsterAnimation::Dying) => include_bytes!("../tamagotchi/images/fabre/32.gif"),
+            ("fabre", MonsterAnimation::Idle) => include_bytes!("../../assets/images/fabre/0.gif"),
+            ("fabre", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/fabre/16.gif"),
+            ("fabre", MonsterAnimation::Dying) => include_bytes!("../../assets/images/fabre/32.gif"),
 
             // Default fallback to Poring if monster not found
             _ => {
@@ -34,9 +34,9 @@ impl MonsterAnimation {
                     monster_name
                 );
                 match self {
-                    MonsterAnimation::Idle => include_bytes!("../tamagotchi/images/poring/0.gif"),
-                    MonsterAnimation::Attacking => include_bytes!("../tamagotchi/images/poring/16.gif"),
-                    MonsterAnimation::Dying => include_bytes!("../tamagotchi/images/poring/32.gif"),
+                    MonsterAnimation::Idle => include_bytes!("../../assets/images/poring/0.gif"),
+                    MonsterAnimation::Attacking => include_bytes!("../../assets/images/poring/16.gif"),
+                    MonsterAnimation::Dying => include_bytes!("../../assets/images/poring/32.gif"),
                 }
             }
         }
@@ -52,14 +52,14 @@ pub fn get_monster_attacked_gif(monster_name: &str) -> &'static [u8] {
     let monster_lower = monster_name.to_lowercase();
 
     match monster_lower.as_str() {
-        "poring" => include_bytes!("../tamagotchi/images/poring/24.gif"),
-        "fabre" => include_bytes!("../tamagotchi/images/fabre/24.gif"),
+        "poring" => include_bytes!("../../assets/images/poring/24.gif"),
+        "fabre" => include_bytes!("../../assets/images/fabre/24.gif"),
         _ => {
             esp_println::println!(
                 "[WARNING] No attacked GIF found for monster '{}', using Poring",
                 monster_name
             );
-            include_bytes!("../tamagotchi/images/poring/24.gif")
+            include_bytes!("../../assets/images/poring/24.gif")
         }
     }
 }
@@ -83,10 +83,10 @@ pub enum HeroAnimation {
 impl HeroAnimation {
     pub fn gif_data(&self) -> &'static [u8] {
         match self {
-            HeroAnimation::Resting => include_bytes!("../tamagotchi/images/swordman/16.gif"),
-            HeroAnimation::Idle => include_bytes!("../tamagotchi/images/swordman/36.gif"),
-            HeroAnimation::Attacking => include_bytes!("../tamagotchi/images/swordman/84.gif"),
-            HeroAnimation::Attacked => include_bytes!("../tamagotchi/images/swordman/52.gif"),
+            HeroAnimation::Resting => include_bytes!("../../assets/images/swordman/16.gif"),
+            HeroAnimation::Idle => include_bytes!("../../assets/images/swordman/36.gif"),
+            HeroAnimation::Attacking => include_bytes!("../../assets/images/swordman/84.gif"),
+            HeroAnimation::Attacked => include_bytes!("../../assets/images/swordman/52.gif"),
         }
     }
 
@@ -104,10 +104,10 @@ impl HeroAnimation {
 /// 3. Add a match arm below: id => include_bytes!("images/map/{id}.gif")
 pub fn get_map_background(map_id: u32) -> Option<&'static [u8]> {
     match map_id {
-        1 => Some(include_bytes!("../tamagotchi/images/map/1.gif")), // Prontera
-        2 => Some(include_bytes!("../tamagotchi/images/map/2.gif")), // Prontera South
-        3 => Some(include_bytes!("../tamagotchi/images/map/3.gif")), // Prontera West
-        5 => Some(include_bytes!("../tamagotchi/images/map/5.gif")), // Prontera East
+        1 => Some(include_bytes!("../../assets/images/map/1.gif")), // Prontera
+        2 => Some(include_bytes!("../../assets/images/map/2.gif")), // Prontera South
+        3 => Some(include_bytes!("../../assets/images/map/3.gif")), // Prontera West
+        5 => Some(include_bytes!("../../assets/images/map/5.gif")), // Prontera East
         _ => {
             esp_println::println!("[WARNING] No background image found for map ID {}", map_id);
             None
