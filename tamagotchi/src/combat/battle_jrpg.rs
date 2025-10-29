@@ -134,17 +134,6 @@ impl GameState {
             self.jrpg_damage_dealt = damage;
             self.jrpg_last_combat_result = combat_result;
 
-            // Update combo counter
-            if combat_result != CombatResult::Miss {
-                self.jrpg_combo_count = self.jrpg_combo_count.saturating_add(1);
-                if self.jrpg_combo_count >= 3 {
-                    self.jrpg_combo_ready = true;
-                }
-            } else {
-                self.jrpg_combo_count = 0;
-                self.jrpg_combo_ready = false;
-            }
-
             // Set damage animation position (near enemy at x=80, y=150)
             self.jrpg_damage_animation_timer = 1000; // 1 second animation
             self.jrpg_damage_x = 80 + 32; // Center of enemy GIF (64x64)
@@ -157,8 +146,8 @@ impl GameState {
                 CombatResult::Normal => "",
             };
 
-            esp_println::println!("[JRPG] Hero dealt {} damage{} (Combo: {}). Enemy HP: {}/{}",
-                damage, result_str, self.jrpg_combo_count, enemy.hp, enemy.max_hp);
+            esp_println::println!("[JRPG] Hero dealt {} damage{}. Enemy HP: {}/{}",
+                damage, result_str, enemy.hp, enemy.max_hp);
 
             // Set attack animation
             self.hero_animation = HeroAnimation::Attacking;
@@ -175,7 +164,7 @@ impl GameState {
             // Handle double attack
             if is_double_attack && enemy.hp > 0 {
                 // Second hit with different RNG
-                let rng_value2 = (rng_value.wrapping_add(self.jrpg_combo_count)) % 255;
+                let rng_value2 = (rng_value.wrapping_add(17)) % 255;
                 let (damage2, _combat_result2) = calculate_jrpg_damage(
                     hero.attack,
                     hero.luck,
@@ -213,14 +202,10 @@ impl GameState {
             // Store combat result for UI display
             self.jrpg_last_combat_result = combat_result;
 
-            // Only apply damage and reset combo if attack hit
+            // Only apply damage if attack hit
             if combat_result != CombatResult::Miss {
                 hero.hp = hero.hp.saturating_sub(damage);
                 self.jrpg_damage_dealt = damage;
-
-                // Reset combo on player damage
-                self.jrpg_combo_count = 0;
-                self.jrpg_combo_ready = false;
 
                 // Hero hit animation (only when hit)
                 self.hero_animation = HeroAnimation::Attacked;
@@ -347,17 +332,6 @@ impl GameState {
 
                 self.jrpg_damage_dealt = damage;
                 self.jrpg_last_combat_result = combat_result;
-
-                // Update combo
-                if combat_result != CombatResult::Miss {
-                    self.jrpg_combo_count = self.jrpg_combo_count.saturating_add(1);
-                    if self.jrpg_combo_count >= 3 {
-                        self.jrpg_combo_ready = true;
-                    }
-                } else {
-                    self.jrpg_combo_count = 0;
-                    self.jrpg_combo_ready = false;
-                }
             },
             SkillType::Magic => {
                 // Magic skill: use INT with skill power multiplier (ignores DEF)

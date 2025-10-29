@@ -60,8 +60,6 @@ pub struct GameState {
     pub jrpg_damage_x: i32,                    // X position for damage text
     pub jrpg_damage_y: i32,                    // Y position for damage text
     pub jrpg_action_animation_timer: u32,      // Timer for action animations
-    pub jrpg_combo_count: u8,                  // Current combo count (hits in a row)
-    pub jrpg_combo_ready: bool,                // Combo attack available (3 hits)
     pub jrpg_last_combat_result: CombatResult, // Last attack result (normal/crit/lucky)
     pub jrpg_skill_menu_selection: u8,         // Selected skill in skill menu (0-2)
     pub jrpg_selected_skill_index: Option<usize>, // Index of skill being used
@@ -147,8 +145,6 @@ impl Default for GameState {
             jrpg_damage_x: 0,
             jrpg_damage_y: 0,
             jrpg_action_animation_timer: 0,
-            jrpg_combo_count: 0,
-            jrpg_combo_ready: false,
             jrpg_last_combat_result: CombatResult::Normal,
             jrpg_skill_menu_selection: 0,
             jrpg_selected_skill_index: None,

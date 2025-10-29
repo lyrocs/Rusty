@@ -175,18 +175,11 @@ where
         draw_text(display, &dmg_str, Point::new(text_x, damage_y), &FONT_10X20, damage_color)?;
     }
 
-    // === Combo Counter Display ===
-    if game_state.jrpg_combo_count > 0 {
-        let mut combo_str = String::<16>::new();
-        if game_state.jrpg_combo_ready {
-            write!(combo_str, "COMBO x{} READY!", game_state.jrpg_combo_count).ok();
-            // Draw in bright orange
-            draw_text(display, &combo_str, Point::new(80, 180), &FONT_10X20, Rgb888::new(255, 140, 0))?;
-        } else {
-            write!(combo_str, "COMBO x{}", game_state.jrpg_combo_count).ok();
-            // Draw in yellow
-            draw_text(display, &combo_str, Point::new(100, 180), &FONT_10X20, Rgb888::new(255, 255, 0))?;
-        }
+    // === FPS Display (Top Right Corner) ===
+    if game_state.fps > 0 {
+        let mut fps_str = String::<16>::new();
+        write!(fps_str, "FPS: {}", game_state.fps).ok();
+        draw_text(display, &fps_str, Point::new(290, 20), &FONT_9X15, Rgb888::new(150, 150, 150))?;
     }
 
     // === Action Menu (during player turn) ===
@@ -342,8 +335,82 @@ where
         }
     }
 
-    // Battle end states (Victory/Defeat/Escaped) are handled by automatic transition
-    // No modal messages needed - user can see result through animations and returning to map
+    // === Victory Modal (show items dropped) ===
+    if game_state.jrpg_battle_state == JrpgBattleState::Victory {
+        // Semi-transparent overlay
+        Rectangle::new(Point::new(0, 0), Size::new(360, 480))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
+            .draw(display)?;
+
+        // Victory panel
+        let panel_x = 30;
+        let panel_y = 120;
+        let panel_width = 300;
+        let panel_height = 240;
+
+        // Panel background
+        Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_width, panel_height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(30, 60, 30)))
+            .draw(display)?;
+
+        // Panel border
+        Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_width, panel_height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(100, 200, 100), 3))
+            .draw(display)?;
+
+        // Victory title
+        draw_text(display, "VICTORY!", Point::new(panel_x + 80, panel_y + 30), &FONT_9X18_BOLD, Rgb888::new(255, 255, 100))?;
+
+        // Items dropped header
+        let items_y = panel_y + 60;
+        draw_text(display, "Items Dropped:", Point::new(panel_x + 20, items_y), &FONT_9X15, Rgb888::WHITE)?;
+
+        // Display items
+        if game_state.last_drops.is_empty() {
+            draw_text(display, "No items dropped", Point::new(panel_x + 40, items_y + 30), &FONT_9X15, Rgb888::new(180, 180, 180))?;
+        } else {
+            for (i, (_item_id, item_name, quantity)) in game_state.last_drops.iter().enumerate() {
+                let item_y = items_y + 30 + (i as i32 * 25);
+                let mut item_str = String::<48>::new();
+                write!(item_str, "- {} x{}", item_name, quantity).ok();
+                draw_text(display, &item_str, Point::new(panel_x + 40, item_y), &FONT_9X15, Rgb888::new(200, 255, 200))?;
+            }
+        }
+
+        // Continue prompt
+        let prompt_y = panel_y + panel_height as i32 - 40;
+        draw_text(display, "Touch to continue", Point::new(panel_x + 60, prompt_y), &FONT_9X15, Rgb888::new(150, 150, 150))?;
+    }
+
+    // === Defeat Modal ===
+    if game_state.jrpg_battle_state == JrpgBattleState::Defeat {
+        // Semi-transparent overlay
+        Rectangle::new(Point::new(0, 0), Size::new(360, 480))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
+            .draw(display)?;
+
+        // Defeat panel
+        let panel_x = 30;
+        let panel_y = 180;
+        let panel_width = 300;
+        let panel_height = 120;
+
+        // Panel background
+        Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_width, panel_height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 30, 30)))
+            .draw(display)?;
+
+        // Panel border
+        Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_width, panel_height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(200, 100, 100), 3))
+            .draw(display)?;
+
+        // Defeat title
+        draw_text(display, "DEFEAT", Point::new(panel_x + 100, panel_y + 40), &FONT_9X18_BOLD, Rgb888::RED)?;
+
+        // Continue prompt
+        draw_text(display, "Touch to continue", Point::new(panel_x + 60, panel_y + 75), &FONT_9X15, Rgb888::new(150, 150, 150))?;
+    }
 
     Ok(())
 }
