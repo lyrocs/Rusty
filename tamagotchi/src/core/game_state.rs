@@ -13,7 +13,7 @@ use crate::quest::ActiveQuest;
 use crate::combat::{
     BattleAnimationPhase, BattleState, Circle, CombatResult, Enemy,
     FarmState, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
-    JrpgCombatant, MonsterAnimation, MonsterAttackedAnimation, RestState,
+    JrpgCombatant, MonsterAnimation, RestState,
 };
 
 /// Main game state containing all game data and UI state
@@ -88,9 +88,6 @@ pub struct GameState {
     pub monster_animation: MonsterAnimation, // Current monster animation
     pub monster_animation_frame: usize, // Current frame in animation
     pub monster_animation_started_ms: u32, // When current animation started
-    pub monster_attacked_animation: MonsterAttackedAnimation, // Monster attacked state
-    pub monster_attacked_frame: usize, // Current frame in attacked animation
-    pub monster_attacked_started_ms: u32, // When monster attacked animation started
     pub hero_animation: HeroAnimation, // Current hero animation
     pub hero_animation_frame: usize, // Current frame in hero animation
     pub hero_animation_started_ms: u32, // When current hero animation started
@@ -173,9 +170,6 @@ impl Default for GameState {
             monster_animation: MonsterAnimation::Idle,
             monster_animation_frame: 0,
             monster_animation_started_ms: 0,
-            monster_attacked_animation: MonsterAttackedAnimation::Normal,
-            monster_attacked_frame: 0,
-            monster_attacked_started_ms: 0,
             hero_animation: HeroAnimation::Idle,
             hero_animation_frame: 0,
             hero_animation_started_ms: 0,

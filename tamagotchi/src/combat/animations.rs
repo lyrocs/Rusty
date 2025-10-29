@@ -7,6 +7,7 @@
 pub enum MonsterAnimation {
     Idle,      // 0.gif - loops
     Attacking, // 16.gif - plays once
+    Attacked,  // 24.gif - plays once (when monster takes damage)
     Dying,     // 32.gif - plays once
 }
 
@@ -20,11 +21,13 @@ impl MonsterAnimation {
             // Poring animations
             ("poring", MonsterAnimation::Idle) => include_bytes!("../../assets/images/poring/0.gif"),
             ("poring", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/poring/16.gif"),
+            ("poring", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/poring/24.gif"),
             ("poring", MonsterAnimation::Dying) => include_bytes!("../../assets/images/poring/32.gif"),
 
             // Fabre animations
             ("fabre", MonsterAnimation::Idle) => include_bytes!("../../assets/images/fabre/0.gif"),
             ("fabre", MonsterAnimation::Attacking) => include_bytes!("../../assets/images/fabre/16.gif"),
+            ("fabre", MonsterAnimation::Attacked) => include_bytes!("../../assets/images/fabre/24.gif"),
             ("fabre", MonsterAnimation::Dying) => include_bytes!("../../assets/images/fabre/32.gif"),
 
             // Default fallback to Poring if monster not found
@@ -36,6 +39,7 @@ impl MonsterAnimation {
                 match self {
                     MonsterAnimation::Idle => include_bytes!("../../assets/images/poring/0.gif"),
                     MonsterAnimation::Attacking => include_bytes!("../../assets/images/poring/16.gif"),
+                    MonsterAnimation::Attacked => include_bytes!("../../assets/images/poring/24.gif"),
                     MonsterAnimation::Dying => include_bytes!("../../assets/images/poring/32.gif"),
                 }
             }
@@ -45,30 +49,6 @@ impl MonsterAnimation {
     pub fn should_loop(&self) -> bool {
         matches!(self, MonsterAnimation::Idle)
     }
-}
-
-/// Get monster attacked GIF (24.gif) for a specific monster
-pub fn get_monster_attacked_gif(monster_name: &str) -> &'static [u8] {
-    let monster_lower = monster_name.to_lowercase();
-
-    match monster_lower.as_str() {
-        "poring" => include_bytes!("../../assets/images/poring/24.gif"),
-        "fabre" => include_bytes!("../../assets/images/fabre/24.gif"),
-        _ => {
-            esp_println::println!(
-                "[WARNING] No attacked GIF found for monster '{}', using Poring",
-                monster_name
-            );
-            include_bytes!("../../assets/images/poring/24.gif")
-        }
-    }
-}
-
-/// Monster attacked animation (when hero attacks monster)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MonsterAttackedAnimation {
-    Normal,   // Not being attacked
-    Attacked, // 24.gif - plays once when hero attacks
 }
 
 /// Hero GIF animation state

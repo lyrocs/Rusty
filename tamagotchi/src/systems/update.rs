@@ -7,7 +7,7 @@ use crate::core::GameState;
 use crate::combat::BattleState;
 use crate::tamagotchi::models::{FarmState, GamePage, RestState};
 use super::animations::{
-    update_hero_animation, update_monster_animation, update_monster_attacked_animation,
+    update_hero_animation, update_monster_animation,
 };
 
 pub fn tamagotchi_update_system(
@@ -100,7 +100,7 @@ pub fn tamagotchi_update_system(
                 // Only update animations when screen is on
                 if game_state.screen_on {
                     use crate::tamagotchi::models::{
-                        HeroAnimation, MonsterAnimation, MonsterAttackedAnimation,
+                        HeroAnimation, MonsterAnimation,
                     };
 
                     // Ensure hero is in Idle animation during fighting
@@ -120,7 +120,7 @@ pub fn tamagotchi_update_system(
                         .saturating_sub(game_state.last_hero_attack_ms);
                     if time_since_last_hero_attack >= 4000
                         && game_state.hero_animation == HeroAnimation::Idle
-                        && game_state.monster_attacked_animation == MonsterAttackedAnimation::Normal
+                        && game_state.monster_animation == MonsterAnimation::Idle
                     {
                         // Hero attacks!
                         game_state.hero_animation = HeroAnimation::Attacking;
@@ -129,9 +129,9 @@ pub fn tamagotchi_update_system(
                         game_state.last_hero_attack_ms = game_state.last_update_ms;
 
                         // Monster gets attacked!
-                        game_state.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
-                        game_state.monster_attacked_frame = 0;
-                        game_state.monster_attacked_started_ms = game_state.gif_animation_clock_ms;
+                        game_state.monster_animation = MonsterAnimation::Attacked;
+                        game_state.monster_animation_frame = 0;
+                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
 
                         game_state.needs_redraw = true;
                     }
@@ -162,7 +162,6 @@ pub fn tamagotchi_update_system(
                     if let Some(enemy) = &game_state.current_enemy {
                         let monster_name = enemy.name;
                         update_monster_animation(&mut game_state, delta_ms, monster_name);
-                        update_monster_attacked_animation(&mut game_state, delta_ms, monster_name);
                     }
                     update_hero_animation(&mut game_state, delta_ms);
                 }
@@ -446,11 +445,6 @@ pub fn tamagotchi_update_system(
             let enemy_name = game_state.jrpg_enemy_combatant.as_ref().map(|e| e.name);
             if let Some(name) = enemy_name {
                 update_monster_animation(&mut game_state, delta_ms, name);
-
-                // Update attacked animation if active
-                if game_state.monster_attacked_animation != crate::tamagotchi::models::MonsterAttackedAnimation::Normal {
-                    update_monster_attacked_animation(&mut game_state, delta_ms, name);
-                }
             }
         }
     }

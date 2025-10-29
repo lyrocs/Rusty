@@ -111,13 +111,6 @@ where
     // Draw hero GIF (right side)
     draw_hero_gif(display, game_state, Point::new(240, 150))?;
 
-    // Draw monster attacked overlay if active
-    if game_state.monster_attacked_animation
-        != crate::tamagotchi::models::MonsterAttackedAnimation::Normal
-    {
-        draw_monster_attacked_gif(display, game_state, Point::new(80, 150), enemy.name)?;
-    }
-
     // === BOTTOM: Hero Info ===
     // Hero name and level
     let mut hero_info = String::<32>::new();

@@ -5,7 +5,7 @@
 use crate::core::{GameState, GamePage};
 use crate::combat::{
     ActiveStatusEffect, BattleAnimationPhase, CombatResult, Enemy, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
-    JrpgCombatant, JrpgSkill, MonsterAnimation, MonsterAttackedAnimation,
+    JrpgCombatant, JrpgSkill, MonsterAnimation,
     SkillEffect, SkillType, StatusEffectType, calculate_jrpg_damage,
 };
 use crate::quest::QuestAction;
@@ -155,9 +155,9 @@ impl GameState {
             self.hero_animation_started_ms = self.gif_animation_clock_ms;
 
             // Enemy hit animation
-            self.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
-            self.monster_attacked_frame = 0;
-            self.monster_attacked_started_ms = self.gif_animation_clock_ms;
+            self.monster_animation = MonsterAnimation::Attacked;
+            self.monster_animation_frame = 0;
+            self.monster_animation_started_ms = self.gif_animation_clock_ms;
 
             self.needs_redraw = true;
 
@@ -390,9 +390,9 @@ impl GameState {
 
         // Enemy hit animation (if damage skill)
         if skill.skill_type == SkillType::Physical || skill.skill_type == SkillType::Magic {
-            self.monster_attacked_animation = MonsterAttackedAnimation::Attacked;
-            self.monster_attacked_frame = 0;
-            self.monster_attacked_started_ms = self.gif_animation_clock_ms;
+            self.monster_animation = MonsterAnimation::Attacked;
+            self.monster_animation_frame = 0;
+            self.monster_animation_started_ms = self.gif_animation_clock_ms;
         }
 
         self.needs_redraw = true;

@@ -42,9 +42,8 @@ pub mod tamagotchi {
     pub use crate::combat::{
         ActiveStatusEffect, BattleAnimationPhase, BattleState, Circle, CircleType, CombatResult,
         Enemy, FarmState, HeroAnimation, JrpgBattleAction, JrpgBattleMenu, JrpgBattleState,
-        JrpgCombatant, JrpgSkill, MonsterAnimation, MonsterAttackedAnimation, RestState,
+        JrpgCombatant, JrpgSkill, MonsterAnimation, RestState,
         SkillEffect, SkillType, StatusEffectType, calculate_jrpg_damage, get_map_background,
-        get_monster_attacked_gif,
     };
 
     // Re-export world types

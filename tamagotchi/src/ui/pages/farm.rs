@@ -172,8 +172,8 @@ where
                 // Draw hero GIF animation (middle-left, lower)
                 draw_hero_gif(display, game_state, Point::new(120, 280))?;
 
-                // Draw monster GIF animation with attacked state (middle-right, same level)
-                draw_monster_attacked_gif(display, game_state, Point::new(260, 280), enemy.name)?;
+                // Draw monster GIF animation (middle-right, same level)
+                draw_monster_gif(display, game_state, Point::new(260, 280), enemy.name)?;
 
                 // Progress bar
                 draw_text(
