@@ -32,10 +32,10 @@ use ft3x68_rs::{FT3168_DEVICE_ADDRESS, Ft3x68Driver};
 use sh8601_rs::{ColorMode, DMA_CHUNK_SIZE, ResetDriver, Sh8601Driver, Ws18AmoledDriver};
 
 // Import from our library
+use esp32_conways_game_of_life_rs::core::GameState; // Core game state
 use esp32_conways_game_of_life_rs::display::{DISPLAY_SIZE, FB_SIZE};
 use esp32_conways_game_of_life_rs::drivers::{ExioPin, Pcf85063, ResetTouchDriver, Tca9554Driver};
 use esp32_conways_game_of_life_rs::ecs::resources::*;
-use esp32_conways_game_of_life_rs::tamagotchi::GameState;
 use esp32_conways_game_of_life_rs::tamagotchi::systems::{
     tamagotchi_button_system, tamagotchi_render_system, tamagotchi_save_system,
     tamagotchi_touch_system, tamagotchi_update_system,
