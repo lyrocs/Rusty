@@ -1,7 +1,6 @@
 /// Enemy data management
 ///
 /// Loads and provides access to enemy data from JSON.
-
 use heapless::Vec as HeaplessVec;
 use serde::Deserialize;
 
@@ -21,7 +20,6 @@ pub struct EnemyData {
     pub attack: u16,
     pub defense: u16,
     pub base_exp: u32,
-    pub job_exp: u32,
     #[serde(default)]
     pub drops: HeaplessVec<DropEntry, 8>,
 }
@@ -70,7 +68,6 @@ pub fn get_enemy_data(id: u32) -> Option<crate::combat::Enemy> {
             attack: e.attack,
             defense: e.defense,
             base_exp: e.base_exp,
-            job_exp: e.job_exp,
             zeny_reward: e.base_exp / 10, // Calculate zeny from base_exp
         })
 }

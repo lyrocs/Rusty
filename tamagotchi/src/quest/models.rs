@@ -1,7 +1,6 @@
 /// Quest system models
 ///
 /// Defines quest types, objectives, rewards, and active quest tracking.
-
 use heapless::Vec as HeaplessVec;
 use serde::Deserialize;
 
@@ -36,8 +35,6 @@ pub struct QuestReward {
     #[serde(default)]
     pub base_exp: u32,
     #[serde(default)]
-    pub job_exp: u32,
-    #[serde(default)]
     pub zeny: u32,
     #[serde(default)]
     pub items: [(u32, u16); 4], // (Item ID, Quantity) pairs (0, 0 = empty slot)
@@ -50,8 +47,8 @@ pub struct QuestData {
     pub name: &'static str,
     pub description: &'static str,
     pub quest_type: QuestType,
-    pub min_level: u16,    // Min level to accept
-    pub max_level: u16,    // Max level for quest (0 = no limit)
+    pub min_level: u16,                             // Min level to accept
+    pub max_level: u16,                             // Max level for quest (0 = no limit)
     pub objectives: HeaplessVec<QuestObjective, 4>, // Up to 4 objectives per quest
     pub rewards: QuestReward,
 }

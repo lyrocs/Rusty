@@ -1,8 +1,7 @@
 /// Combat models
 ///
 /// Core combat entities including Enemy and basic combat states.
-
-use crate::tamagotchi::{get_enemy_data};
+use crate::tamagotchi::get_enemy_data;
 
 /// Enemy data (based on data/enemies.json)
 /// Note: JSON files in data/ folder serve as source of truth
@@ -17,7 +16,6 @@ pub struct Enemy {
     pub attack: u16,      // Added from JSON
     pub defense: u16,     // Added from JSON
     pub base_exp: u32,    // Renamed from exp_reward
-    pub job_exp: u32,     // Added from JSON
     pub zeny_reward: u32, // Calculated zeny (base_exp / 10)
 }
 

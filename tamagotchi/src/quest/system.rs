@@ -3,9 +3,7 @@
 use heapless::Vec as HeaplessVec;
 
 use crate::core::GameState;
-use crate::quest::models::{
-    ActiveQuest, QuestAction, QuestData, QuestObjective, QuestType,
-};
+use crate::quest::models::{ActiveQuest, QuestAction, QuestData, QuestObjective, QuestType};
 
 // Embed quests JSON at compile time
 const QUESTS_JSON: &str = include_str!("../../assets/data/quests.json");
@@ -55,7 +53,11 @@ fn parse_quests() -> HeaplessVec<QuestData, 32> {
             for quest in &quests {
                 esp_println::println!(
                     "  - {} (ID: {}, Type: {:?}, Lvl: {}-{})",
-                    quest.name, quest.id, quest.quest_type, quest.min_level, quest.max_level
+                    quest.name,
+                    quest.id,
+                    quest.quest_type,
+                    quest.min_level,
+                    quest.max_level
                 );
             }
             quests
@@ -120,7 +122,11 @@ pub fn get_achievement_quests() -> HeaplessVec<u32, 16> {
 /// Start a quest (add to active quests)
 pub fn start_quest(game_state: &mut GameState, quest_id: u32) -> bool {
     // Check if already active or completed
-    if game_state.active_quests.iter().any(|q| q.quest_id == quest_id) {
+    if game_state
+        .active_quests
+        .iter()
+        .any(|q| q.quest_id == quest_id)
+    {
         esp_println::println!("[QUEST] Quest {} already active", quest_id);
         return false;
     }
@@ -139,7 +145,11 @@ pub fn start_quest(game_state: &mut GameState, quest_id: u32) -> bool {
         );
 
         if game_state.active_quests.push(active_quest).is_ok() {
-            esp_println::println!("[QUEST] Started quest: {} (ID: {})", quest_data.name, quest_id);
+            esp_println::println!(
+                "[QUEST] Started quest: {} (ID: {})",
+                quest_data.name,
+                quest_id
+            );
             return true;
         } else {
             esp_println::println!("[QUEST] Failed to start quest (active quests full)");
@@ -154,7 +164,12 @@ pub fn start_quest(game_state: &mut GameState, quest_id: u32) -> bool {
 /// Check if a quest objective matches the given action
 fn objective_matches(objective: &QuestObjective, action: &QuestAction) -> Option<u16> {
     match (objective.objective_type, action) {
-        ("KillMonster", QuestAction::MonsterKilled { enemy_id: killed_id }) => {
+        (
+            "KillMonster",
+            QuestAction::MonsterKilled {
+                enemy_id: killed_id,
+            },
+        ) => {
             // enemy_id 0 means "any monster"
             if objective.enemy_id == 0 || objective.enemy_id == *killed_id {
                 Some(1) // Increment by 1
@@ -162,7 +177,13 @@ fn objective_matches(objective: &QuestObjective, action: &QuestAction) -> Option
                 None
             }
         }
-        ("CollectItem", QuestAction::ItemCollected { item_id: collected_id, quantity: count }) => {
+        (
+            "CollectItem",
+            QuestAction::ItemCollected {
+                item_id: collected_id,
+                quantity: count,
+            },
+        ) => {
             if objective.item_id == *collected_id {
                 Some(*count)
             } else {
@@ -306,14 +327,12 @@ pub fn claim_quest_reward(game_state: &mut GameState, quest_id: u32) -> bool {
     // Give rewards
     esp_println::println!("[QUEST] Claiming rewards for: {}", quest_data.name);
 
-    // Add exp (base_exp + job_exp combined into exp for now)
-    let total_exp = quest_data.rewards.base_exp + quest_data.rewards.job_exp;
-    game_state.hero.exp += total_exp;
+    game_state.hero.exp += quest_data.rewards.base_exp;
     game_state.hero.zeny += quest_data.rewards.zeny;
 
     esp_println::println!(
         "  +{} EXP, +{} Zeny",
-        total_exp,
+        quest_data.rewards.base_exp,
         quest_data.rewards.zeny
     );
 
