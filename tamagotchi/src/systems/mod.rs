@@ -1,16 +1,16 @@
 /// Systems Module
 ///
 /// ECS systems for game logic, organized by responsibility.
-/// Currently re-exports from tamagotchi/systems.rs for backward compatibility.
 
+pub mod animations;
 pub mod input;
+pub mod render;
+pub mod save;
+pub mod update;
 
-// Re-export input systems
+// Re-export all systems
+pub use animations::*;
 pub use input::{tamagotchi_button_system, tamagotchi_touch_system};
-
-// Re-export other systems from tamagotchi (will be extracted in future refactoring)
-pub use crate::tamagotchi::systems::{
-    tamagotchi_update_system,
-    tamagotchi_render_system,
-    tamagotchi_save_system,
-};
+pub use render::tamagotchi_render_system;
+pub use save::tamagotchi_save_system;
+pub use update::tamagotchi_update_system;

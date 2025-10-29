@@ -1,6 +1,6 @@
-/// UI Color Palette
+/// UI Color constants
 ///
-/// Color constants inspired by Ragnarok Online.
+/// Color palette inspired by Ragnarok Online
 
 use embedded_graphics::pixelcolor::Rgb888;
 

@@ -2,12 +2,13 @@
 
 use heapless::Vec as HeaplessVec;
 
-use crate::tamagotchi::models::{
-    ActiveQuest, GameState, QuestAction, QuestData, QuestObjective, QuestType,
+use crate::core::GameState;
+use crate::quest::models::{
+    ActiveQuest, QuestAction, QuestData, QuestObjective, QuestType,
 };
 
 // Embed quests JSON at compile time
-const QUESTS_JSON: &str = include_str!("data/quests.json");
+const QUESTS_JSON: &str = include_str!("../tamagotchi/data/quests.json");
 
 // Static storage for parsed quests
 use core::cell::UnsafeCell;

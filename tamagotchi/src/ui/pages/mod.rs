@@ -1,21 +1,30 @@
 /// UI Pages Module
 ///
-/// Page-specific rendering functions for different game screens.
-/// Currently re-exports from tamagotchi/ui.rs for backward compatibility.
-/// In future refactoring, pages will be extracted to individual modules.
+/// Individual page rendering functions organized by page type.
 
-// Re-export all page rendering functions from tamagotchi::ui
-pub use crate::tamagotchi::ui::{
-    draw_overview_page,
-    draw_stats_page,
-    draw_equipment_page,
-    draw_farm_page,
-    draw_rest_page,
-    draw_battle_page,
-    draw_jrpg_battle_page,
-    draw_map_page,
-    draw_menu,
-    draw_inventory,
-    draw_quests_page,
-    draw_settings_page,
-};
+pub mod overview;
+pub mod stats;
+pub mod equipment;
+pub mod farm;
+pub mod rest;
+pub mod battle;
+pub mod map;
+pub mod menu;
+pub mod inventory;
+pub mod quests;
+pub mod settings;
+pub mod jrpg_battle;
+
+// Re-export all page drawing functions
+pub use overview::draw_overview_page;
+pub use stats::draw_stats_page;
+pub use equipment::draw_equipment_page;
+pub use farm::draw_farm_page;
+pub use rest::draw_rest_page;
+pub use battle::draw_battle_page;
+pub use map::draw_map_page;
+pub use menu::draw_menu;
+pub use inventory::draw_inventory;
+pub use quests::draw_quests_page;
+pub use settings::draw_settings_page;
+pub use jrpg_battle::draw_jrpg_battle_page;

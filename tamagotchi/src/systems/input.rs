@@ -12,7 +12,7 @@ use crate::core::GameState;
 use crate::combat::{BattleState, Enemy};
 use crate::hero::EquipmentSlot;
 use crate::tamagotchi::models::{FarmState, GamePage, MapHelper, RestState};
-use crate::tamagotchi::quest_system;
+use crate::quest::system as quest_system;
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
 
