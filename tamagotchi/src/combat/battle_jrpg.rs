@@ -455,19 +455,24 @@ impl GameState {
                     },
                 );
 
-                // Roll for item drops
+                // Roll for item drops (same system as farm battles)
                 let rng_value = (self.last_update_ms % 255) as u8;
-                let drop_rate = 30; // 30% drop chance
-                if rng_value < drop_rate {
-                    if let Some((item_id, item_name)) = self.roll_item_drop(enemy_id, rng_value) {
-                        let quantity = 1;
-                        self.hero.add_item(item_id, item_name, quantity);
+                let drops = crate::data::roll_drops(enemy_id, rng_value);
+
+                // Clear previous drops and store new ones
+                self.last_drops.clear();
+                for (item_id, item_name, quantity) in drops.iter() {
+                    if self.hero.add_item(*item_id, item_name, *quantity) {
+                        esp_println::println!("[JRPG DROPS] Got {} x{}", item_name, quantity);
+                        self.last_drops.push((*item_id, item_name, *quantity)).ok();
+                    } else {
+                        esp_println::println!("[JRPG DROPS] Inventory full! Lost {}", item_name);
                     }
                 }
 
                 esp_println::println!(
-                    "[JRPG] Victory! Gained {} EXP, {} Zeny",
-                    base_exp, zeny_earned
+                    "[JRPG] Victory! Gained {} EXP, {} Zeny, {} items",
+                    base_exp, zeny_earned, self.last_drops.len()
                 );
             }
         }
