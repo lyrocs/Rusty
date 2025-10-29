@@ -111,7 +111,7 @@ pub fn draw_hero_gif<D>(
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    let gif_data = game_state.hero_animation.gif_data();
+    let gif_data = game_state.hero_animation.gif_data(&game_state.hero.job);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
 
     // Get GIF dimensions

@@ -58,7 +58,7 @@ pub fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
     use embedded_graphics::pixelcolor::Rgb888;
     use tinygif::Gif;
 
-    let gif_data = game_state.hero_animation.gif_data();
+    let gif_data = game_state.hero_animation.gif_data(&game_state.hero.job);
     let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
     let total_frames = gif.frames().count();
 

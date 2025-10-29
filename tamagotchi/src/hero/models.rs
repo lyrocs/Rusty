@@ -101,10 +101,15 @@ impl Hero {
         // Increase exp requirement
         self.exp_to_next_level = (self.exp_to_next_level as f32 * 1.2) as u32;
 
-        // Job progression
+        // Job progression (Novice → Swordman at 10, Swordman → Knight at 40)
         if self.level == 10 && self.job == "Novice" {
-            self.job = "Swordsman";
-            self.name = "Swordsman";
+            self.job = "Swordman";
+            self.name = "Swordman";
+            esp_println::println!("[LEVEL UP] Hero evolved to Swordman!");
+        } else if self.level == 40 && self.job == "Swordman" {
+            self.job = "Knight";
+            self.name = "Knight";
+            esp_println::println!("[LEVEL UP] Hero evolved to Knight!");
         }
     }
 

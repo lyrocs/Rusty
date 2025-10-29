@@ -55,18 +55,49 @@ impl MonsterAnimation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeroAnimation {
     Resting,   // 16.gif - loops (shown on rest page)
-    Idle,      // 36.gif - loops (main loop on battle/farm)
-    Attacking, // 84.gif - plays once (hero attacks)
-    Attacked,  // 52.gif - plays once (hero takes damage)
+    Idle,      // 32.gif - loops (main loop on battle/farm)
+    Attacking, // 80.gif - plays once (hero attacks)
+    Attacked,  // 48.gif - plays once (hero takes damage)
 }
 
 impl HeroAnimation {
-    pub fn gif_data(&self) -> &'static [u8] {
-        match self {
-            HeroAnimation::Resting => include_bytes!("../../assets/images/swordman/16.gif"),
-            HeroAnimation::Idle => include_bytes!("../../assets/images/swordman/36.gif"),
-            HeroAnimation::Attacking => include_bytes!("../../assets/images/swordman/84.gif"),
-            HeroAnimation::Attacked => include_bytes!("../../assets/images/swordman/52.gif"),
+    /// Get GIF data for hero based on job class
+    pub fn gif_data(&self, job: &str) -> &'static [u8] {
+        // Convert job name to lowercase for folder matching
+        let job_lower = job.to_lowercase();
+
+        match (job_lower.as_str(), self) {
+            // Novice animations
+            ("novice", HeroAnimation::Resting) => include_bytes!("../../assets/images/novice/16.gif"),
+            ("novice", HeroAnimation::Idle) => include_bytes!("../../assets/images/novice/32.gif"),
+            ("novice", HeroAnimation::Attacking) => include_bytes!("../../assets/images/novice/80.gif"),
+            ("novice", HeroAnimation::Attacked) => include_bytes!("../../assets/images/novice/48.gif"),
+
+            // Swordman animations
+            ("swordman", HeroAnimation::Resting) => include_bytes!("../../assets/images/swordman/16.gif"),
+            ("swordman", HeroAnimation::Idle) => include_bytes!("../../assets/images/swordman/32.gif"),
+            ("swordman", HeroAnimation::Attacking) => include_bytes!("../../assets/images/swordman/80.gif"),
+            ("swordman", HeroAnimation::Attacked) => include_bytes!("../../assets/images/swordman/48.gif"),
+
+            // Knight animations
+            ("knight", HeroAnimation::Resting) => include_bytes!("../../assets/images/knight/16.gif"),
+            ("knight", HeroAnimation::Idle) => include_bytes!("../../assets/images/knight/32.gif"),
+            ("knight", HeroAnimation::Attacking) => include_bytes!("../../assets/images/knight/80.gif"),
+            ("knight", HeroAnimation::Attacked) => include_bytes!("../../assets/images/knight/48.gif"),
+
+            // Default fallback to Swordman if job not found
+            _ => {
+                esp_println::println!(
+                    "[WARNING] No GIF found for job '{}', using Swordman",
+                    job
+                );
+                match self {
+                    HeroAnimation::Resting => include_bytes!("../../assets/images/swordman/16.gif"),
+                    HeroAnimation::Idle => include_bytes!("../../assets/images/swordman/32.gif"),
+                    HeroAnimation::Attacking => include_bytes!("../../assets/images/swordman/80.gif"),
+                    HeroAnimation::Attacked => include_bytes!("../../assets/images/swordman/48.gif"),
+                }
+            }
         }
     }
 
