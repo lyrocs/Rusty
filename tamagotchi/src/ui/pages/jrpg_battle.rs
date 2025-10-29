@@ -343,22 +343,24 @@ where
                 .into_styled(PrimitiveStyle::with_stroke(border_color, 2))
                 .draw(display)?;
 
-                // Skill name (first 3 chars)
-                let skill_name_short: heapless::String<4> = skill.name.chars().take(3).collect();
-                let text_color = if !has_enough_sp {
-                    Rgb888::new(120, 120, 120) // Dim gray for disabled
-                } else {
-                    Rgb888::WHITE
-                };
-                let skill_text_x = x + 6;
-                let skill_text_y = start_y + 12;
-                draw_text(
-                    display,
-                    &skill_name_short,
-                    Point::new(skill_text_x, skill_text_y),
-                    &FONT_9X15,
-                    text_color,
-                )?;
+                // Skill icon GIF (centered in button)
+                if let Some(icon_data) = crate::combat::get_skill_icon(skill.id) {
+                    // Try to render GIF icon (single frame)
+                    if let Ok(gif) = Gif::<Rgb888>::from_slice(icon_data) {
+                        // Get GIF dimensions
+                        let gif_width = gif.width() as i32;
+                        let gif_height = gif.height() as i32;
+
+                        // Center the icon in the button
+                        let icon_x = x + (skill_width / 2) - (gif_width / 2);
+                        let icon_y = start_y + 8; // Small padding from top
+
+                        // Draw first frame (skill icons are single-frame)
+                        if let Some(frame) = gif.frames().next() {
+                            Image::new(&frame, Point::new(icon_x, icon_y)).draw(display).ok();
+                        }
+                    }
+                }
 
                 // SP cost (bottom of button)
                 let mut sp_str = String::<8>::new();

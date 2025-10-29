@@ -137,3 +137,31 @@ pub fn get_map_background(map_id: u32) -> Option<&'static [u8]> {
         }
     }
 }
+
+/// Get skill icon GIF by skill ID
+/// Skill icons are single-frame GIFs stored in images/skills/
+///
+/// To add a new skill icon:
+/// 1. Add skill data to skills.json with a unique ID
+/// 2. Create a GIF file: images/skills/{job_prefix}_{skill_name}.gif
+/// 3. Add a match arm below: id => include_bytes!("images/skills/{job_prefix}_{skill_name}.gif")
+pub fn get_skill_icon(skill_id: u16) -> Option<&'static [u8]> {
+    match skill_id {
+        // Swordman skills
+        1 => Some(include_bytes!("../../assets/images/skills/sm_bash.gif")),     // Bash
+        2 => Some(include_bytes!("../../assets/images/skills/sm_provoke.gif")),  // Provoke
+        3 => Some(include_bytes!("../../assets/images/skills/sm_magnum.gif")),   // Magnum Break
+
+        // TODO: Add more skill icons as they become available
+        // Mage skills (ID 10-19)
+        // Archer skills (ID 20-29)
+        // Thief skills (ID 30-39)
+        // Acolyte skills (ID 40-49)
+        // Merchant skills (ID 50-59)
+
+        _ => {
+            // No icon available - will use placeholder
+            None
+        }
+    }
+}

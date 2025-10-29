@@ -14,12 +14,8 @@ impl GameState {
     pub fn start_jrpg_battle(&mut self, enemy: Enemy) {
         esp_println::println!("[JRPG] Starting battle with {}", enemy.name);
 
-        // Load skills for hero's job
-        let hero_skills_array = JrpgSkill::get_skills_for_job(self.hero.job);
-        let mut hero_skills = heapless::Vec::new();
-        for skill in hero_skills_array {
-            let _ = hero_skills.push(skill);
-        }
+        // Load skills for hero's job from JSON data
+        let hero_skills = crate::data::get_skills_for_job(self.hero.job);
 
         // Get equipment bonuses
         let weapon = &self.hero.equipped_weapon;
