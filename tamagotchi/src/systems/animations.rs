@@ -31,14 +31,16 @@ pub fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, mons
             game_state.needs_redraw = true;
         }
     } else {
-        // Play-once animations (Attacking, Dying)
+        // Play-once animations (Attacking, Attacked, Dying)
         if game_state.monster_animation_frame < total_frames - 1 {
             if game_state.monster_animation_frame != target_frame {
                 game_state.monster_animation_frame = target_frame.min(total_frames - 1);
                 game_state.needs_redraw = true;
             }
         } else {
-            // Animation finished - return to Idle if it was Attacking or Attacked
+            // Animation finished
+            // For Dying: stay on last frame (keep displaying dead monster)
+            // For Attacking/Attacked: return to Idle
             if game_state.monster_animation == MonsterAnimation::Attacking
                 || game_state.monster_animation == MonsterAnimation::Attacked
             {
@@ -47,6 +49,7 @@ pub fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, mons
                 game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
                 game_state.needs_redraw = true;
             }
+            // MonsterAnimation::Dying stays on last frame - no transition
         }
     }
 }

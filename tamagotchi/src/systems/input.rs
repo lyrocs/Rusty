@@ -771,17 +771,32 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
 
         // Check for quest card clicks to show details
         // Quest cards: x=10-358, y=60-140, 148-228, 236-316, 324-404 (height 80, spacing 8)
+
+        // Filter and sort quests the same way as the UI does
+        let mut sorted_quests: heapless::Vec<&crate::tamagotchi::models::ActiveQuest, 16> = game_state
+            .active_quests
+            .iter()
+            .filter(|q| !q.claimed)
+            .collect();
+
+        // Sort by priority (lower priority value = higher priority)
+        sorted_quests.sort_by(|a, b| {
+            let a_data = crate::tamagotchi::quest_system::get_quest_data(a.quest_id);
+            let b_data = crate::tamagotchi::quest_system::get_quest_data(b.quest_id);
+
+            match (a_data, b_data) {
+                (Some(a_quest), Some(b_quest)) => a_quest.priority.cmp(&b_quest.priority),
+                (Some(_), None) => core::cmp::Ordering::Less,
+                (None, Some(_)) => core::cmp::Ordering::Greater,
+                (None, None) => core::cmp::Ordering::Equal,
+            }
+        });
+
         let start_index = game_state.quest_page_scroll as usize;
-        let mut card_index = 0;
         let mut card_y = 60i32;
 
-        for active_quest in game_state.active_quests.iter() {
-            if active_quest.claimed {
-                continue;
-            }
-
+        for (card_index, active_quest) in sorted_quests.iter().enumerate() {
             if card_index < start_index {
-                card_index += 1;
                 continue;
             }
 
@@ -798,7 +813,6 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
             }
 
             card_y += 88; // card_height (80) + spacing (8)
-            card_index += 1;
         }
     }
 }

@@ -13,6 +13,7 @@ pub enum JrpgBattleState {
     PlayerAction,    // Player action animation
     EnemyTurn,       // Enemy choosing action (auto)
     EnemyAction,     // Enemy action animation
+    EnemyDying,      // Enemy death animation (before victory)
     Victory,         // Battle won
     Defeat,          // Battle lost
 }

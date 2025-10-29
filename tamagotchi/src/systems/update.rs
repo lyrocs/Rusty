@@ -374,9 +374,9 @@ pub fn tamagotchi_update_system(
                         // Check if enemy defeated
                         if let Some(enemy) = &game_state.jrpg_enemy_combatant {
                             if enemy.hp == 0 {
-                                game_state.jrpg_battle_state = JrpgBattleState::Victory;
-                                game_state.jrpg_battle_message = Some("Victory!");
-                                game_state.jrpg_battle_message_timer = 0; // Don't auto-hide
+                                // Transition to dying state to play death animation
+                                game_state.jrpg_battle_state = JrpgBattleState::EnemyDying;
+                                game_state.jrpg_action_animation_timer = 1200; // Duration for death animation
 
                                 // Set monster dying animation (only when screen is on)
                                 if game_state.screen_on {
@@ -391,6 +391,17 @@ pub fn tamagotchi_update_system(
                                 game_state.jrpg_action_animation_timer = 500; // Brief pause
                             }
                         }
+                        if game_state.screen_on {
+                            game_state.needs_redraw = true;
+                        }
+                    }
+                    JrpgBattleState::EnemyDying => {
+                        // Death animation finished, show victory
+                        game_state.jrpg_battle_state = JrpgBattleState::Victory;
+                        game_state.jrpg_battle_message = Some("Victory!");
+                        game_state.jrpg_battle_message_timer = 0; // Don't auto-hide
+                        // Set battle_end_time to prevent immediate accidental close
+                        game_state.battle_end_time = game_state.last_update_ms;
                         if game_state.screen_on {
                             game_state.needs_redraw = true;
                         }
