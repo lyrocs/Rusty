@@ -74,6 +74,7 @@ pub struct GameState {
     pub completed_quest_ids: HeaplessVec<u32, 64>, // IDs of all completed quests
     pub daily_quest_refresh_time: u32,          // When daily quests last refreshed (ms)
     pub quest_page_scroll: u8,                  // Scroll position in quest list (0-255)
+    pub selected_quest_id: Option<u32>,         // Quest ID for details view (None = list view)
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -156,6 +157,7 @@ impl Default for GameState {
             completed_quest_ids: HeaplessVec::new(),
             daily_quest_refresh_time: 0,
             quest_page_scroll: 0,
+            selected_quest_id: None,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,

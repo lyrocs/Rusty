@@ -704,88 +704,102 @@ fn handle_stats_touch(game_state: &mut GameState, x: u16, y: u16) {
 
 /// Handle Quests page touches
 fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
-    // UP arrow button: x=10-80, y=400-440
-    if x >= 10 && x <= 80 && y >= 400 && y <= 440 {
-        if game_state.quest_page_scroll > 0 {
-            game_state.quest_page_scroll -= 1;
+    // Check if we're in details view
+    if game_state.selected_quest_id.is_some() {
+        // Details view - handle Back and Claim buttons
+
+        // Back button: x=20-170, y=400-460
+        if x >= 20 && x <= 170 && y >= 400 && y <= 460 {
+            game_state.selected_quest_id = None;
             game_state.needs_redraw = true;
-            esp_println::println!("[QUEST] Scrolled up to {}", game_state.quest_page_scroll);
+            esp_println::println!("[QUEST] Back to quest list");
+            return;
         }
-        return;
-    }
 
-    // Back button (center): x=134-234, y=400-440
-    if x >= 134 && x <= 234 && y >= 400 && y <= 440 {
-        game_state.current_page = GamePage::Overview;
-        game_state.needs_redraw = true;
-        return;
-    }
+        // Claim button: x=190-340, y=400-460
+        if x >= 190 && x <= 340 && y >= 400 && y <= 460 {
+            if let Some(quest_id) = game_state.selected_quest_id {
+                // Check if quest is completed and not claimed
+                if let Some(active_quest) = game_state.active_quests.iter().find(|q| q.quest_id == quest_id) {
+                    if active_quest.completed && !active_quest.claimed {
+                        esp_println::println!("[QUEST] Claiming quest ID: {}", quest_id);
+                        quest_system::claim_quest_reward(game_state, quest_id);
+                        game_state.selected_quest_id = None; // Return to list after claiming
+                        game_state.needs_redraw = true;
+                    }
+                }
+            }
+            return;
+        }
+    } else {
+        // List view - handle scrolling, back button, and quest card clicks
 
-    // DOWN arrow button: x=288-358, y=400-440
-    if x >= 288 && x <= 358 && y >= 400 && y <= 440 {
-        // Count total unclaimed quests
-        let total_quests = game_state
-            .active_quests
-            .iter()
-            .filter(|q| !q.claimed)
-            .count();
+        // UP arrow button: x=10-80, y=400-440
+        if x >= 10 && x <= 80 && y >= 400 && y <= 440 {
+            if game_state.quest_page_scroll > 0 {
+                game_state.quest_page_scroll -= 1;
+                game_state.needs_redraw = true;
+                esp_println::println!("[QUEST] Scrolled up to {}", game_state.quest_page_scroll);
+            }
+            return;
+        }
 
-        // Check if we can scroll down (more than 4 quests and not at bottom)
-        if total_quests > 4 && (game_state.quest_page_scroll as usize + 4) < total_quests {
-            game_state.quest_page_scroll += 1;
+        // Back button (center): x=134-234, y=400-440
+        if x >= 134 && x <= 234 && y >= 400 && y <= 440 {
+            game_state.current_page = GamePage::Overview;
             game_state.needs_redraw = true;
-            esp_println::println!("[QUEST] Scrolled down to {}", game_state.quest_page_scroll);
-        }
-        return;
-    }
-
-    // Check for CLAIM button clicks on quest cards
-    // Quest cards start at y=60, height=80, spacing=8
-    // CLAIM button: x=250-348, offset from card top: y+10 to y+70
-
-    // Find which quest was clicked (if any)
-    let start_index = game_state.quest_page_scroll as usize;
-    let mut quest_to_claim: Option<u32> = None;
-
-    // Filter active quests (not claimed) and check for clicks
-    let mut card_index = 0;
-    let mut card_y = 60i32;
-
-    for active_quest in game_state.active_quests.iter() {
-        if active_quest.claimed {
-            continue;
+            return;
         }
 
-        if card_index < start_index {
+        // DOWN arrow button: x=288-358, y=400-440
+        if x >= 288 && x <= 358 && y >= 400 && y <= 440 {
+            // Count total unclaimed quests
+            let total_quests = game_state
+                .active_quests
+                .iter()
+                .filter(|q| !q.claimed)
+                .count();
+
+            // Check if we can scroll down (more than 4 quests and not at bottom)
+            if total_quests > 4 && (game_state.quest_page_scroll as usize + 4) < total_quests {
+                game_state.quest_page_scroll += 1;
+                game_state.needs_redraw = true;
+                esp_println::println!("[QUEST] Scrolled down to {}", game_state.quest_page_scroll);
+            }
+            return;
+        }
+
+        // Check for quest card clicks to show details
+        // Quest cards: x=10-358, y=60-140, 148-228, 236-316, 324-404 (height 80, spacing 8)
+        let start_index = game_state.quest_page_scroll as usize;
+        let mut card_index = 0;
+        let mut card_y = 60i32;
+
+        for active_quest in game_state.active_quests.iter() {
+            if active_quest.claimed {
+                continue;
+            }
+
+            if card_index < start_index {
+                card_index += 1;
+                continue;
+            }
+
+            if card_index >= start_index + 4 {
+                break;
+            }
+
+            // Check if clicking anywhere on the quest card
+            if x >= 10 && x <= 358 && y >= card_y as u16 && y <= (card_y + 80) as u16 {
+                game_state.selected_quest_id = Some(active_quest.quest_id);
+                game_state.needs_redraw = true;
+                esp_println::println!("[QUEST] Selected quest ID: {}", active_quest.quest_id);
+                return;
+            }
+
+            card_y += 88; // card_height (80) + spacing (8)
             card_index += 1;
-            continue;
         }
-
-        if card_index >= start_index + 4 {
-            break;
-        }
-
-        // Check if clicking on CLAIM button for this quest
-        if active_quest.completed
-            && x >= 250
-            && x <= 348
-            && y >= (card_y + 10) as u16
-            && y <= (card_y + 70) as u16
-        {
-            quest_to_claim = Some(active_quest.quest_id);
-            break;
-        }
-
-        card_y += 88; // card_height (80) + spacing (8)
-        card_index += 1;
-    }
-
-    // Claim quest if one was clicked
-    if let Some(quest_id) = quest_to_claim {
-        esp_println::println!("[QUEST] Claiming quest ID: {}", quest_id);
-        quest_system::claim_quest_reward(game_state, quest_id);
-        game_state.needs_redraw = true;
-        return;
     }
 }
 
