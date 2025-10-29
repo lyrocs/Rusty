@@ -184,3 +184,106 @@ impl Default for GameState {
         }
     }
 }
+
+impl GameState {
+    /// Serialize quest data to string for SD card persistence
+    /// Format: daily_refresh_time|completed_ids|active_quests
+    /// Where active_quests is semicolon-separated: quest_id,p0,p1,p2,p3,completed,claimed
+    pub fn quests_to_save_string(&self) -> heapless::String<1024> {
+        use core::fmt::Write;
+
+        let mut save_str = heapless::String::<1024>::new();
+
+        // Write daily refresh time
+        write!(save_str, "{}|", self.daily_quest_refresh_time).ok();
+
+        // Write completed quest IDs (comma-separated)
+        for (i, quest_id) in self.completed_quest_ids.iter().enumerate() {
+            if i > 0 {
+                write!(save_str, ",{}", quest_id).ok();
+            } else {
+                write!(save_str, "{}", quest_id).ok();
+            }
+        }
+
+        write!(save_str, "|").ok();
+
+        // Write active quests (semicolon-separated)
+        for (i, quest) in self.active_quests.iter().enumerate() {
+            if i > 0 {
+                write!(save_str, ";").ok();
+            }
+            write!(
+                save_str,
+                "{},{},{},{},{},{},{}",
+                quest.quest_id,
+                quest.progress[0],
+                quest.progress[1],
+                quest.progress[2],
+                quest.progress[3],
+                if quest.completed { 1 } else { 0 },
+                if quest.claimed { 1 } else { 0 }
+            ).ok();
+        }
+
+        save_str
+    }
+
+    /// Deserialize quest data from string
+    pub fn quests_from_save_string(&mut self, save_str: &str) {
+        let parts: heapless::Vec<&str, 3> = save_str.split('|').collect();
+
+        if parts.len() != 3 {
+            esp_println::println!("[LOAD] Invalid quest save format");
+            return;
+        }
+
+        // Parse daily refresh time
+        if let Ok(refresh_time) = parts[0].parse::<u32>() {
+            self.daily_quest_refresh_time = refresh_time;
+        }
+
+        // Parse completed quest IDs
+        self.completed_quest_ids.clear();
+        if !parts[1].is_empty() {
+            for id_str in parts[1].split(',') {
+                if let Ok(quest_id) = id_str.parse::<u32>() {
+                    self.completed_quest_ids.push(quest_id).ok();
+                }
+            }
+        }
+
+        // Parse active quests
+        self.active_quests.clear();
+        if !parts[2].is_empty() {
+            for quest_str in parts[2].split(';') {
+                let quest_parts: heapless::Vec<&str, 7> = quest_str.split(',').collect();
+                if quest_parts.len() == 7 {
+                    if let (Ok(quest_id), Ok(p0), Ok(p1), Ok(p2), Ok(p3), Ok(completed), Ok(claimed)) = (
+                        quest_parts[0].parse::<u32>(),
+                        quest_parts[1].parse::<u16>(),
+                        quest_parts[2].parse::<u16>(),
+                        quest_parts[3].parse::<u16>(),
+                        quest_parts[4].parse::<u16>(),
+                        quest_parts[5].parse::<u8>(),
+                        quest_parts[6].parse::<u8>(),
+                    ) {
+                        let active_quest = ActiveQuest {
+                            quest_id,
+                            progress: [p0, p1, p2, p3],
+                            completed: completed != 0,
+                            claimed: claimed != 0,
+                        };
+                        self.active_quests.push(active_quest).ok();
+                    }
+                }
+            }
+        }
+
+        esp_println::println!(
+            "[LOAD] Loaded {} active quests, {} completed",
+            self.active_quests.len(),
+            self.completed_quest_ids.len()
+        );
+    }
+}

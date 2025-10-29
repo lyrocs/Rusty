@@ -214,6 +214,8 @@ fn main() -> ! {
 
     // Insert game state with loaded or default hero
     let mut game_state = GameState::default();
+    let has_saved_hero = loaded_hero.is_some();
+
     if let Some(mut hero) = loaded_hero {
         // Try to load inventory
         load_inventory_from_sd(&mut volume_mgr, &mut hero);
@@ -234,8 +236,20 @@ fn main() -> ! {
         );
     }
 
-    // Initialize quest system (auto-start achievements and daily quests)
-    esp32_conways_game_of_life_rs::quest::initialize_quest_system(&mut game_state);
+    // Try to load quest data
+    load_quests_from_sd(&mut volume_mgr, &mut game_state);
+
+    // Initialize quest system only if no saved quests were loaded (new game)
+    if game_state.active_quests.is_empty() && has_saved_hero {
+        esp_println::println!("[QUEST] No saved quests found, initializing quest system");
+        esp32_conways_game_of_life_rs::quest::initialize_quest_system(&mut game_state);
+    } else if game_state.active_quests.is_empty() && !has_saved_hero {
+        // Brand new game - initialize quests
+        esp_println::println!("[QUEST] New game, initializing quest system");
+        esp32_conways_game_of_life_rs::quest::initialize_quest_system(&mut game_state);
+    } else {
+        esp_println::println!("[QUEST] Loaded saved quest progress");
+    }
 
     world.insert_resource(game_state);
 
@@ -400,6 +414,57 @@ fn load_inventory_from_sd<D, T>(
         hero.inventory_from_save_string(save_str);
     } else {
         esp_println::println!("[LOAD] Failed to parse ITEMS.SAV");
+    }
+
+    // Resources will be cleaned up automatically when they go out of scope
+}
+
+/// Load quest data from SD card
+fn load_quests_from_sd<D, T>(
+    volume_mgr: &mut VolumeManager<D, T, 4, 4, 1>,
+    game_state: &mut esp32_conways_game_of_life_rs::core::GameState,
+) where
+    D: embedded_sdmmc::BlockDevice,
+    T: embedded_sdmmc::TimeSource,
+    D::Error: core::fmt::Debug,
+{
+    use embedded_sdmmc::Mode;
+
+    esp_println::println!("[LOAD] Attempting to load quests from SD card...");
+
+    // Open volume
+    let Ok(mut volume) = volume_mgr.open_volume(VolumeIdx(0)) else {
+        esp_println::println!("[LOAD] Failed to open volume for quests");
+        return;
+    };
+
+    // Open root directory
+    let Ok(mut root_dir) = volume.open_root_dir() else {
+        esp_println::println!("[LOAD] Failed to open root directory for quests");
+        return;
+    };
+
+    // Try to open quest file
+    let Ok(mut file) = root_dir.open_file_in_dir("QUESTS.SAV", Mode::ReadOnly) else {
+        esp_println::println!("[LOAD] No QUESTS.SAV found (this is OK for new games)");
+        return;
+    };
+
+    // Read file contents
+    let mut buffer = [0u8; 1024];
+    let Ok(bytes_read) = file.read(&mut buffer) else {
+        esp_println::println!("[LOAD] Failed to read QUESTS.SAV");
+        return;
+    };
+
+    esp_println::println!("[LOAD] Read {} bytes from QUESTS.SAV", bytes_read);
+
+    // Parse quest data
+    if let Ok(save_str) = core::str::from_utf8(&buffer[..bytes_read]) {
+        esp_println::println!("[LOAD] Quest data: {}", save_str);
+        game_state.quests_from_save_string(save_str);
+    } else {
+        esp_println::println!("[LOAD] Failed to parse QUESTS.SAV");
     }
 
     // Resources will be cleaned up automatically when they go out of scope
