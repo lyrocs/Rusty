@@ -8,9 +8,11 @@ use heapless::Vec as HeaplessVec;
 
 use crate::core::{GamePage, MapId, MAP_PRONTERA_ID};
 use crate::core::constants::*;
-use crate::tamagotchi::{
-    ActiveQuest, BattleAnimationPhase, BattleState, Circle, CombatResult, Enemy,
-    EquipmentSlot, FarmState, Hero, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
+use crate::hero::{EquipmentSlot, Hero};
+use crate::quest::ActiveQuest;
+use crate::combat::{
+    BattleAnimationPhase, BattleState, Circle, CombatResult, Enemy,
+    FarmState, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
     JrpgCombatant, MonsterAnimation, MonsterAttackedAnimation, RestState,
 };
 

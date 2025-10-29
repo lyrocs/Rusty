@@ -1328,6 +1328,15 @@ where
                 COLOR_TEXT_DIM,
             )?;
         }
+        RestState::Complete => {
+            draw_text(
+                display,
+                "Rest Complete",
+                Point::new(90, 330),
+                &FONT_9X18_BOLD,
+                COLOR_TEXT,
+            )?;
+        }
     }
 
     // Battery info
@@ -1537,7 +1546,7 @@ where
                         // Draw only colored border (no fill)
                         EgCircle::new(
                             Point::new(c.x - c.radius as i32, c.y - c.radius as i32),
-                            c.radius * 2,
+                            (c.radius * 2) as u32,
                         )
                         .into_styled(PrimitiveStyle::with_stroke(color, 3))
                         .draw(display)?;

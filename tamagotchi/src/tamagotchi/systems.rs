@@ -2,7 +2,6 @@ use bevy_ecs::prelude::*;
 use core::fmt::Write;
 use ft3x68_rs::{TouchPoint, TouchState};
 use heapless::String;
-use heapless::Vec as HeaplessVec;
 
 use crate::ecs::resources::{
     BatteryResource, ButtonResource, DisplayResource, RtcResource, SdCardResource, TouchResource,

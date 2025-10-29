@@ -3,6 +3,9 @@
 extern crate alloc;
 
 pub mod core;       // Core game state and types
+pub mod hero;       // Hero domain (character, stats, inventory, equipment)
+pub mod combat;     // Combat domain (enemies, battles, skills, animations)
+pub mod quest;      // Quest domain (quests, objectives, rewards)
 pub mod drivers;
 pub mod display;
 pub mod ui;

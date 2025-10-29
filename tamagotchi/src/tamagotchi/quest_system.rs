@@ -161,7 +161,7 @@ fn objective_matches(objective: &QuestObjective, action: &QuestAction) -> Option
                 None
             }
         }
-        ("CollectItem", QuestAction::ItemCollected { item_id: collected_id, count }) => {
+        ("CollectItem", QuestAction::ItemCollected { item_id: collected_id, quantity: count }) => {
             if objective.item_id == *collected_id {
                 Some(*count)
             } else {
