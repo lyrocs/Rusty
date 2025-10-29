@@ -15,7 +15,7 @@ pub fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, mons
     // Dynamic frame duration: 150ms for Idle (slower), 100ms for actions (faster)
     let frame_duration_ms = match game_state.monster_animation {
         MonsterAnimation::Idle => 150,
-        MonsterAnimation::Attacking | MonsterAnimation::Attacked | MonsterAnimation::Dying => 100,
+        MonsterAnimation::Attacking | MonsterAnimation::Attacked | MonsterAnimation::Dying => 75,
     };
 
     let elapsed_ms = game_state
@@ -65,7 +65,7 @@ pub fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
     // Dynamic frame duration: 150ms for Idle/Resting (slower), 100ms for actions (faster)
     let frame_duration_ms = match game_state.hero_animation {
         HeroAnimation::Idle | HeroAnimation::Resting => 150,
-        HeroAnimation::Attacking | HeroAnimation::Attacked => 100,
+        HeroAnimation::Attacking | HeroAnimation::Attacked => 75,
     };
 
     let elapsed_ms = game_state

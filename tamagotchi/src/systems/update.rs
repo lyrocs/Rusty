@@ -55,15 +55,16 @@ pub fn tamagotchi_update_system(
             }
         }
 
-        // Update global GIF animation clock every 100ms for synchronized animations
+        // Update global GIF animation clock every 75ms for synchronized animations
+        // 75ms is the GCD of frame durations (75ms for actions, 150ms for idle)
         // This ensures all GIF animations update at the same time, reducing redraws
         let gif_clock_elapsed = game_state
             .last_update_ms
             .wrapping_sub(game_state.gif_animation_last_update_ms);
-        if gif_clock_elapsed >= 100 {
+        if gif_clock_elapsed >= 75 {
             game_state.gif_animation_clock_ms = game_state
                 .gif_animation_clock_ms
-                .wrapping_add(100);
+                .wrapping_add(75);
             game_state.gif_animation_last_update_ms = game_state.last_update_ms;
 
             // Note: We don't set needs_redraw here - individual animation functions will do that
