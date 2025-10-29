@@ -130,9 +130,22 @@ impl GameState {
                 rng_value,
             );
 
-            enemy.hp = enemy.hp.saturating_sub(damage);
-            self.jrpg_damage_dealt = damage;
+            // Store combat result for UI display
             self.jrpg_last_combat_result = combat_result;
+
+            // Only apply damage if attack hit
+            if combat_result != CombatResult::Miss {
+                enemy.hp = enemy.hp.saturating_sub(damage);
+                self.jrpg_damage_dealt = damage;
+
+                // Enemy hit animation (only when hit)
+                self.monster_animation = MonsterAnimation::Attacked;
+                self.monster_animation_frame = 0;
+                self.monster_animation_started_ms = self.gif_animation_clock_ms;
+            } else {
+                // Miss - no damage
+                self.jrpg_damage_dealt = 0;
+            }
 
             // Set damage animation position (near enemy at x=80, y=150)
             self.jrpg_damage_animation_timer = 1000; // 1 second animation
@@ -146,18 +159,13 @@ impl GameState {
                 CombatResult::Normal => "",
             };
 
-            esp_println::println!("[JRPG] Hero dealt {} damage{}. Enemy HP: {}/{}",
+            esp_println::println!("[JRPG] Hero attack: {} damage{}. Enemy HP: {}/{}",
                 damage, result_str, enemy.hp, enemy.max_hp);
 
-            // Set attack animation
+            // Set hero attack animation (always plays even on miss)
             self.hero_animation = HeroAnimation::Attacking;
             self.hero_animation_frame = 0;
             self.hero_animation_started_ms = self.gif_animation_clock_ms;
-
-            // Enemy hit animation
-            self.monster_animation = MonsterAnimation::Attacked;
-            self.monster_animation_frame = 0;
-            self.monster_animation_started_ms = self.gif_animation_clock_ms;
 
             self.needs_redraw = true;
 

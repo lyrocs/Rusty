@@ -206,7 +206,7 @@ where
     }
 
     // === Floating Damage Text Animation ===
-    if game_state.jrpg_damage_dealt > 0 && game_state.jrpg_damage_animation_timer > 0 {
+    if game_state.jrpg_damage_animation_timer > 0 {
         // Calculate animation progress (0.0 to 1.0)
         let progress = 1.0 - (game_state.jrpg_damage_animation_timer as f32 / 1000.0);
 
