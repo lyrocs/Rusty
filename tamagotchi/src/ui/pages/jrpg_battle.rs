@@ -284,6 +284,7 @@ where
             // Attack button (wider)
             let attack_width = 110;
             let skill_width = 66;
+            let skill_height = 66;
 
             // Draw Attack button
             Rectangle::new(
@@ -301,7 +302,7 @@ where
             .draw(display)?;
 
             let text_x = start_x + (attack_width / 2) - 27; // "Attack" = 6 chars * 9/2
-            let text_y = start_y + (button_height / 2) - 9;
+            let text_y = start_y + (button_height / 2);
             draw_text(
                 display,
                 "Attack",
@@ -313,35 +314,6 @@ where
             // Draw skill buttons (up to 3)
             for (i, skill) in hero.available_skills.iter().enumerate().take(3) {
                 let x = start_x + attack_width + spacing_x + i as i32 * (skill_width + spacing_x);
-                let has_enough_sp = hero.sp >= skill.sp_cost;
-
-                // Button background
-                let bg_color = if !has_enough_sp {
-                    Rgb888::new(40, 40, 40) // Disabled (not enough SP)
-                } else {
-                    Rgb888::new(50, 50, 80) // Normal
-                };
-
-                Rectangle::new(
-                    Point::new(x, start_y),
-                    Size::new(skill_width as u32, button_height as u32),
-                )
-                .into_styled(PrimitiveStyle::with_fill(bg_color))
-                .draw(display)?;
-
-                // Button border
-                let border_color = if !has_enough_sp {
-                    Rgb888::new(100, 100, 100) // Gray for disabled
-                } else {
-                    Rgb888::new(100, 150, 255) // Blue
-                };
-
-                Rectangle::new(
-                    Point::new(x, start_y),
-                    Size::new(skill_width as u32, button_height as u32),
-                )
-                .into_styled(PrimitiveStyle::with_stroke(border_color, 2))
-                .draw(display)?;
 
                 // Skill icon GIF (centered in button)
                 if let Some(icon_data) = crate::combat::get_skill_icon(skill.id) {
@@ -353,32 +325,16 @@ where
 
                         // Center the icon in the button
                         let icon_x = x + (skill_width / 2) - (gif_width / 2);
-                        let icon_y = start_y + 8; // Small padding from top
+                        let icon_y = start_y + 8;
 
                         // Draw first frame (skill icons are single-frame)
                         if let Some(frame) = gif.frames().next() {
-                            Image::new(&frame, Point::new(icon_x, icon_y)).draw(display).ok();
+                            Image::new(&frame, Point::new(icon_x, icon_y))
+                                .draw(display)
+                                .ok();
                         }
                     }
                 }
-
-                // SP cost (bottom of button)
-                let mut sp_str = String::<8>::new();
-                write!(sp_str, "{}", skill.sp_cost).ok();
-                let sp_x = x + (skill_width / 2) - ((sp_str.len() as i32 * 9) / 2);
-                let sp_y = start_y + button_height - 20;
-                let sp_color = if !has_enough_sp {
-                    Rgb888::RED
-                } else {
-                    Rgb888::new(100, 200, 255)
-                };
-                draw_text(
-                    display,
-                    &sp_str,
-                    Point::new(sp_x, sp_y),
-                    &FONT_9X18_BOLD,
-                    sp_color,
-                )?;
             }
         }
     }
