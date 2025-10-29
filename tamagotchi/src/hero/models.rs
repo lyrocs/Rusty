@@ -2,7 +2,6 @@
 ///
 /// Contains the main Hero struct and its core methods for progression,
 /// combat, and persistence.
-
 use core::fmt::Write;
 use heapless::String;
 
@@ -25,12 +24,12 @@ pub struct Hero {
     pub inventory: Inventory, // Item inventory
 
     // Base stats (allocatable)
-    pub base_str: u16,  // Strength (affects ATK)
-    pub base_agi: u16,  // Agility (affects evasion, double attack, ASPD)
-    pub base_vit: u16,  // Vitality (affects HP)
-    pub base_int: u16,  // Intelligence (affects SP, magic damage, healing)
-    pub base_dex: u16,  // Dexterity (affects accuracy, skill damage)
-    pub base_luk: u16,  // Luck (affects critical rate)
+    pub base_str: u16, // Strength (affects ATK)
+    pub base_agi: u16, // Agility (affects evasion, double attack, ASPD)
+    pub base_vit: u16, // Vitality (affects HP)
+    pub base_int: u16, // Intelligence (affects SP, magic damage, healing)
+    pub base_dex: u16, // Dexterity (affects accuracy, skill damage)
+    pub base_luk: u16, // Luck (affects critical rate)
 
     // Stat points available for allocation
     pub stat_points: u16,
@@ -163,8 +162,12 @@ impl Hero {
 
     /// Reset all stats (refund all spent stat points)
     pub fn reset_stats(&mut self) {
-        let total_stats = self.base_str + self.base_agi + self.base_vit +
-                          self.base_int + self.base_dex + self.base_luk;
+        let total_stats = self.base_str
+            + self.base_agi
+            + self.base_vit
+            + self.base_int
+            + self.base_dex
+            + self.base_luk;
         let starting_stats = 6; // 1 in each stat
         let spent_points = total_stats - starting_stats;
 
@@ -278,7 +281,11 @@ impl Hero {
     /// Refine equipment in a specific slot
     /// Returns Ok((success, new_level)) or Err(insufficient funds)
     /// On failure for risky refines (+5 and above), equipment downgrades 1 level
-    pub fn refine_equipment(&mut self, slot: super::equipment::EquipmentSlot, rng_value: u8) -> Result<(bool, u8), &'static str> {
+    pub fn refine_equipment(
+        &mut self,
+        slot: super::equipment::EquipmentSlot,
+        rng_value: u8,
+    ) -> Result<(bool, u8), &'static str> {
         use super::equipment::EquipmentSlot;
 
         let equipment = match slot {
@@ -338,32 +345,94 @@ impl Hero {
         let zeny: u32 = parts.next()?.parse().ok()?;
 
         // Try to parse extended format with stats and equipment (13 more fields)
-        let (base_str, base_agi, base_vit, base_int, base_dex, base_luk, stat_points, weapon_id, weapon_refine, armor_id, armor_refine, accessory_id, accessory_refine) =
-            if let (Some(str_val), Some(agi_val), Some(vit_val), Some(int_val), Some(dex_val), Some(luk_val), Some(pts_val),
-                    Some(w_id), Some(w_ref), Some(a_id), Some(a_ref), Some(acc_id), Some(acc_ref)) =
-                (parts.next(), parts.next(), parts.next(), parts.next(), parts.next(), parts.next(), parts.next(),
-                 parts.next(), parts.next(), parts.next(), parts.next(), parts.next(), parts.next()) {
-                // New format with all stats and equipment
-                (str_val.parse().ok()?, agi_val.parse().ok()?, vit_val.parse().ok()?, int_val.parse().ok()?,
-                 dex_val.parse().ok()?, luk_val.parse().ok()?, pts_val.parse().ok()?,
-                 w_id.parse().ok()?, w_ref.parse().ok()?, a_id.parse().ok()?, a_ref.parse().ok()?,
-                 acc_id.parse().ok()?, acc_ref.parse().ok()?)
-            } else {
-                // Old format - initialize with defaults
-                (1, 1, 1, 1, 1, 1, if level > 1 { (level - 1) * 3 } else { 0 },
-                 1000, 0, 2000, 0, 3000, 0)
-            };
+        let (
+            base_str,
+            base_agi,
+            base_vit,
+            base_int,
+            base_dex,
+            base_luk,
+            stat_points,
+            weapon_id,
+            weapon_refine,
+            armor_id,
+            armor_refine,
+            accessory_id,
+            accessory_refine,
+        ) = if let (
+            Some(str_val),
+            Some(agi_val),
+            Some(vit_val),
+            Some(int_val),
+            Some(dex_val),
+            Some(luk_val),
+            Some(pts_val),
+            Some(w_id),
+            Some(w_ref),
+            Some(a_id),
+            Some(a_ref),
+            Some(acc_id),
+            Some(acc_ref),
+        ) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) {
+            // New format with all stats and equipment
+            (
+                str_val.parse().ok()?,
+                agi_val.parse().ok()?,
+                vit_val.parse().ok()?,
+                int_val.parse().ok()?,
+                dex_val.parse().ok()?,
+                luk_val.parse().ok()?,
+                pts_val.parse().ok()?,
+                w_id.parse().ok()?,
+                w_ref.parse().ok()?,
+                a_id.parse().ok()?,
+                a_ref.parse().ok()?,
+                acc_id.parse().ok()?,
+                acc_ref.parse().ok()?,
+            )
+        } else {
+            // Old format - initialize with defaults
+            (
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                if level > 1 { (level - 1) * 3 } else { 0 },
+                1000,
+                0,
+                2000,
+                0,
+                3000,
+                0,
+            )
+        };
 
         // Parse job to a static string
         let job: &'static str = if job_str == "Novice" {
             "Novice"
         } else {
-            "Swordsman"
+            "Swordman"
         };
         let name: &'static str = if job_str == "Novice" {
             "Novice"
         } else {
-            "Swordsman"
+            "Swordman"
         };
 
         // Load equipment by ID

@@ -9,6 +9,7 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
 ## Features
 
 ### 📊 **Overview Page**
+
 - View hero statistics:
   - Level and Job
   - HP (Health Points) with percentage bar
@@ -18,6 +19,7 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
 - Clean Ragnarok-inspired UI with colored bars
 
 ### ⚔️ **Auto Farm Page**
+
 - Farm monsters to gain EXP and Zeny
 - Fight against classic RO monsters:
   - Poring
@@ -32,6 +34,7 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
 - Victory screen with rewards earned
 
 ### 🧘 **Rest/Sit Page**
+
 - Regenerate SP while your hero rests
 - Visual sitting animation
 - SP regeneration: +5 SP per second
@@ -39,6 +42,7 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
 - Auto-notification when SP is full
 
 ### 📱 **Menu System**
+
 - Press BOOT button to open/close menu
 - Touch to navigate between:
   - Overview
@@ -59,17 +63,20 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
 ## Game Mechanics
 
 ### Experience & Leveling
+
 - Gain EXP by defeating enemies
 - Level up increases HP, SP, and stats
-- At Level 10, job advances from Novice to Swordsman
+- At Level 10, job advances from Novice to Swordman
 - EXP requirement increases by 20% per level
 
 ### SP Management
+
 - Farming costs 20 SP
 - Rest to regenerate SP at 5 SP/second
 - Maximum SP increases with level
 
 ### Enemy System
+
 - Enemies scale with hero level
 - Random enemy selection (Poring, Lunatic, or Spore)
 - Each enemy has unique rewards:
@@ -79,6 +86,7 @@ Raise your own Ragnarok Online character! Start as a Novice and level up through
 ## Technical Details
 
 ### Architecture
+
 ```
 src/tamagotchi/
 ├── models.rs      # Game state, Hero, Enemy data structures
@@ -87,12 +95,15 @@ src/tamagotchi/
 ```
 
 ### Game States
+
 - `GamePage`: Overview, Farm, Rest, Menu
 - `FarmState`: Idle, Fighting, Victory, Defeat
 - `RestState`: Resting, FullSP
 
 ### Color Palette
+
 Inspired by Ragnarok Online:
+
 - HP Bar: Red (`220, 50, 50`)
 - SP Bar: Blue (`50, 120, 220`)
 - EXP Bar: Golden (`255, 200, 50`)
@@ -101,16 +112,19 @@ Inspired by Ragnarok Online:
 ## Building & Running
 
 ### Build the Tamagotchi game:
+
 ```bash
 cargo build --bin tamagotchi
 ```
 
 ### Flash to ESP32-S3:
+
 ```bash
 cargo run --bin tamagotchi --release
 ```
 
 Or with espflash:
+
 ```bash
 cargo espflash flash --bin tamagotchi --release --monitor
 ```
@@ -127,6 +141,7 @@ cargo espflash flash --bin tamagotchi --release --monitor
 ## Recent Updates
 
 ### v0.7.0 - UI and Save System Improvements
+
 - **Increased text sizes**: All text now uses 12px+ fonts (FONT_9X18_BOLD, FONT_9X15) for better readability
 - **Battery monitoring**: Added battery voltage and percentage display on all pages
 - **Enhanced menu**:
@@ -140,6 +155,7 @@ cargo espflash flash --bin tamagotchi --release --monitor
 ## Future Enhancements
 
 Potential features to add:
+
 - **Enable SD card saves** (pending SPI trait compatibility fix)
 - Multiple job classes (Mage, Archer, etc.)
 - Item/Equipment system
@@ -154,6 +170,7 @@ Potential features to add:
 ## Credits
 
 Inspired by:
+
 - **Ragnarok Online** by Gravity Corp.
 - Classic Tamagotchi virtual pets
 - Embedded Rust community

@@ -16,18 +16,18 @@ pub enum SkillType {
 /// Skill effects
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillEffect {
-    Damage(u16),           // Base damage
-    Heal(u16),             // Heal amount
-    Stun(u8),              // Stun for X turns
-    Poison(u16, u8),       // Damage per turn, duration
-    BuffAtk(u16, u8),      // Increase ATK by X%, duration
-    BuffDef(u16, u8),      // Increase DEF by X%, duration
-    BuffAgi(u16, u8),      // Increase AGI by X%, duration
-    DebuffAtk(u16, u8),    // Decrease ATK by X%, duration
-    DebuffDef(u16, u8),    // Decrease DEF by X%, duration
-    Steal(u16, u16),       // Min/max zeny to steal
-    MultiHit(u8),          // Number of hits
-    DodgeNext,             // Dodge next attack
+    Damage(u16),        // Base damage
+    Heal(u16),          // Heal amount
+    Stun(u8),           // Stun for X turns
+    Poison(u16, u8),    // Damage per turn, duration
+    BuffAtk(u16, u8),   // Increase ATK by X%, duration
+    BuffDef(u16, u8),   // Increase DEF by X%, duration
+    BuffAgi(u16, u8),   // Increase AGI by X%, duration
+    DebuffAtk(u16, u8), // Decrease ATK by X%, duration
+    DebuffDef(u16, u8), // Decrease DEF by X%, duration
+    Steal(u16, u16),    // Min/max zeny to steal
+    MultiHit(u8),       // Number of hits
+    DodgeNext,          // Dodge next attack
 }
 
 /// JRPG Skill definition
@@ -37,9 +37,9 @@ pub struct JrpgSkill {
     pub name: &'static str,
     pub sp_cost: u16,
     pub skill_type: SkillType,
-    pub power: u16,              // Damage multiplier (150 = 150%)
+    pub power: u16, // Damage multiplier (150 = 150%)
     pub effect: Option<SkillEffect>,
-    pub duration: u8,            // For buffs/debuffs
+    pub duration: u8, // For buffs/debuffs
 }
 
 /// Status effect type
@@ -65,14 +65,14 @@ pub enum StatusEffectType {
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveStatusEffect {
     pub effect_type: StatusEffectType,
-    pub duration: u8,     // Turns remaining
-    pub power: u16,       // Effect strength (%)
+    pub duration: u8, // Turns remaining
+    pub power: u16,   // Effect strength (%)
 }
 
 /// Skill database - skills available per job
 impl JrpgSkill {
-    /// Get skills for Swordsman job
-    pub const fn get_swordsman_skills() -> [JrpgSkill; 3] {
+    /// Get skills for Swordman job
+    pub const fn get_swordman_skills() -> [JrpgSkill; 3] {
         [
             // Bash - High damage single target
             JrpgSkill {
@@ -80,7 +80,7 @@ impl JrpgSkill {
                 name: "Bash",
                 sp_cost: 8,
                 skill_type: SkillType::Physical,
-                power: 150, // 150% ATK damage
+                power: 150,                         // 150% ATK damage
                 effect: Some(SkillEffect::Stun(1)), // 10% stun chance handled in code
                 duration: 1,
             },
@@ -90,7 +90,7 @@ impl JrpgSkill {
                 name: "Provoke",
                 sp_cost: 5,
                 skill_type: SkillType::Debuff,
-                power: 0, // No damage
+                power: 0,                                    // No damage
                 effect: Some(SkillEffect::DebuffDef(30, 3)), // -30% DEF for 3 turns
                 duration: 3,
             },
@@ -100,7 +100,7 @@ impl JrpgSkill {
                 name: "Magnum Break",
                 sp_cost: 15,
                 skill_type: SkillType::Physical,
-                power: 120, // 120% ATK damage
+                power: 120,   // 120% ATK damage
                 effect: None, // Just damage
                 duration: 0,
             },
@@ -126,7 +126,7 @@ impl JrpgSkill {
                 name: "Cold Bolt",
                 sp_cost: 12,
                 skill_type: SkillType::Magic,
-                power: 180, // INT × 1.8
+                power: 180,                                // INT × 1.8
                 effect: Some(SkillEffect::BuffAgi(50, 2)), // Implemented as slow (reduce AGI)
                 duration: 2,
             },
@@ -136,7 +136,7 @@ impl JrpgSkill {
                 name: "Lightning Bolt",
                 sp_cost: 12,
                 skill_type: SkillType::Magic,
-                power: 220, // INT × 2.2
+                power: 220,                         // INT × 2.2
                 effect: Some(SkillEffect::Stun(1)), // 10% stun chance
                 duration: 1,
             },
@@ -208,7 +208,7 @@ impl JrpgSkill {
                 name: "Envenom",
                 sp_cost: 15,
                 skill_type: SkillType::Physical,
-                power: 120, // 120% ATK
+                power: 120,                              // 120% ATK
                 effect: Some(SkillEffect::Poison(5, 3)), // 5 dmg/turn for 3 turns
                 duration: 3,
             },
@@ -224,7 +224,7 @@ impl JrpgSkill {
                 name: "Heal",
                 sp_cost: 13,
                 skill_type: SkillType::Healing,
-                power: 300, // INT × 3
+                power: 300,                         // INT × 3
                 effect: Some(SkillEffect::Heal(0)), // Amount calculated in code
                 duration: 0,
             },
