@@ -9,6 +9,7 @@ pub mod maps;
 pub mod items;
 pub mod npcs;
 pub mod drops;
+pub mod equipments;
 
 // Re-export commonly used items
 pub use common::*;
@@ -18,3 +19,4 @@ pub use maps::{get_map_data, get_all_maps, get_map_name, get_map_connections,
 pub use items::get_item_name;
 pub use npcs::{get_npc_name, get_city_npcs};
 pub use drops::{roll_drops, DropEntry};
+pub use equipments::{get_equipment_by_id, get_all_equipments};

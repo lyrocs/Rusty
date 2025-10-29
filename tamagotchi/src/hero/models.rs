@@ -470,23 +470,18 @@ impl Hero {
         })
     }
 
-    /// Get equipment by ID (simple lookup for now)
+    /// Get equipment by ID (loads from JSON data)
     fn get_equipment_by_id(id: u16) -> Equipment {
-        match id {
-            1000 => Equipment::starter_weapon_novice(),
-            2000 => Equipment::starter_armor_novice(),
-            3000 => Equipment::starter_accessory_novice(),
-            _ => {
-                esp_println::println!("[HERO] Unknown equipment ID {}, using starter", id);
-                // Return appropriate starter based on ID range
-                if id < 2000 {
-                    Equipment::starter_weapon_novice()
-                } else if id < 3000 {
-                    Equipment::starter_armor_novice()
-                } else {
-                    Equipment::starter_accessory_novice()
-                }
+        crate::data::get_equipment_by_id(id).unwrap_or_else(|| {
+            esp_println::println!("[HERO] Unknown equipment ID {}, using default starter", id);
+            // Return appropriate starter based on ID range
+            if id < 2000 {
+                Equipment::starter_weapon_novice()
+            } else if id < 3000 {
+                Equipment::starter_armor_novice()
+            } else {
+                Equipment::starter_accessory_novice()
             }
-        }
+        })
     }
 }

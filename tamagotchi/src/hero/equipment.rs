@@ -96,94 +96,22 @@ pub struct Equipment {
 }
 
 impl Equipment {
-    /// Create starter weapon for Novice
-    pub const fn starter_weapon_novice() -> Self {
-        Equipment {
-            id: 1000,
-            name: "Rusty Knife",
-            equipment_type: EquipmentType::Knife,
-            slot: EquipmentSlot::Weapon,
-            level_req: 1,
-            job_req: None,
-            atk_bonus: 8,
-            def_bonus: 0,
-            hp_bonus: 0,
-            sp_bonus: 0,
-            str_bonus: 0,
-            agi_bonus: 0,
-            vit_bonus: 0,
-            int_bonus: 0,
-            dex_bonus: 0,
-            luk_bonus: 0,
-            crit_rate_bonus: 0,
-            aspd_bonus: 0,
-            refine_level: 0,
-            max_refine: 10,
-            can_upgrade: true,
-            upgrade_level_req: 10,
-            upgrade_cost: 500,
-            upgrades_to: Some(1001),
-        }
+    /// Create starter weapon for Novice (loads from JSON)
+    pub fn starter_weapon_novice() -> Self {
+        crate::data::get_equipment_by_id(1000)
+            .expect("Failed to load starter weapon (ID: 1000)")
     }
 
-    /// Create starter armor for Novice
-    pub const fn starter_armor_novice() -> Self {
-        Equipment {
-            id: 2000,
-            name: "Cotton Shirt",
-            equipment_type: EquipmentType::ClothArmor,
-            slot: EquipmentSlot::Armor,
-            level_req: 1,
-            job_req: None,
-            atk_bonus: 0,
-            def_bonus: 5,
-            hp_bonus: 10,
-            sp_bonus: 0,
-            str_bonus: 0,
-            agi_bonus: 0,
-            vit_bonus: 1,
-            int_bonus: 0,
-            dex_bonus: 0,
-            luk_bonus: 0,
-            crit_rate_bonus: 0,
-            aspd_bonus: 0,
-            refine_level: 0,
-            max_refine: 10,
-            can_upgrade: true,
-            upgrade_level_req: 10,
-            upgrade_cost: 500,
-            upgrades_to: Some(2001),
-        }
+    /// Create starter armor for Novice (loads from JSON)
+    pub fn starter_armor_novice() -> Self {
+        crate::data::get_equipment_by_id(2000)
+            .expect("Failed to load starter armor (ID: 2000)")
     }
 
-    /// Create starter accessory for Novice
-    pub const fn starter_accessory_novice() -> Self {
-        Equipment {
-            id: 3000,
-            name: "Wooden Ring",
-            equipment_type: EquipmentType::Ring,
-            slot: EquipmentSlot::Accessory,
-            level_req: 1,
-            job_req: None,
-            atk_bonus: 0,
-            def_bonus: 0,
-            hp_bonus: 5,
-            sp_bonus: 5,
-            str_bonus: 1,
-            agi_bonus: 0,
-            vit_bonus: 0,
-            int_bonus: 0,
-            dex_bonus: 0,
-            luk_bonus: 0,
-            crit_rate_bonus: 0,
-            aspd_bonus: 0,
-            refine_level: 0,
-            max_refine: 10,
-            can_upgrade: true,
-            upgrade_level_req: 10,
-            upgrade_cost: 500,
-            upgrades_to: Some(3001),
-        }
+    /// Create starter accessory for Novice (loads from JSON)
+    pub fn starter_accessory_novice() -> Self {
+        crate::data::get_equipment_by_id(3000)
+            .expect("Failed to load starter accessory (ID: 3000)")
     }
 
     /// Get refine bonus based on slot and refine level
