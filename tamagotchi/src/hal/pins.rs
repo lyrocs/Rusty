@@ -60,7 +60,7 @@ pub mod i2c_addresses {
 
 /// Display specifications
 pub mod display_spec {
-    pub const WIDTH: u16 = 240;
-    pub const HEIGHT: u16 = 280;
+    pub const WIDTH: u16 = 368;
+    pub const HEIGHT: u16 = 448;
     pub const DMA_CHUNK_SIZE: usize = 32768;
 }

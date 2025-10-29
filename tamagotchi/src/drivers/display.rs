@@ -64,6 +64,8 @@ pub struct Sh8601DisplayDriver<'d> {
     width: u16,
     height: u16,
     initialized: bool,
+    // Track if we're in a transaction
+    in_write_mode: bool,
 }
 
 impl<'d> Sh8601DisplayDriver<'d> {
@@ -73,12 +75,14 @@ impl<'d> Sh8601DisplayDriver<'d> {
         gpio_expander: Tca9554Driver<'d>,
     ) -> Result<Self> {
         log::info!("Creating SH8601 display driver");
+        log::warn!("NOTE: Using standard SPI mode - QSPI would be better");
         Ok(Self {
             spi,
             gpio_expander,
             width: DISPLAY_WIDTH,
             height: DISPLAY_HEIGHT,
             initialized: false,
+            in_write_mode: false,
         })
     }
 
@@ -103,14 +107,26 @@ impl<'d> Sh8601DisplayDriver<'d> {
     fn send_command(&mut self, cmd: u8) -> Result<()> {
         // For SH8601, command/data is controlled by D/C pin or first bit
         // In QSPI mode with Waveshare driver, we send command as single byte
+        log::trace!("SPI CMD: 0x{:02X}", cmd);
         let data = [cmd];
-        self.spi.write(&data)?;
+        self.spi.write(&data).map_err(|e| {
+            log::error!("Failed to send command 0x{:02X}: {:?}", cmd, e);
+            e
+        })?;
+        // Small delay to ensure command is processed
+        thread::sleep(Duration::from_micros(100));
         Ok(())
     }
 
     /// Send data to display
     fn send_data(&mut self, data: &[u8]) -> Result<()> {
-        self.spi.write(data)?;
+        log::trace!("SPI DATA: {} bytes", data.len());
+        self.spi.write(data).map_err(|e| {
+            log::error!("Failed to send {} bytes of data: {:?}", data.len(), e);
+            e
+        })?;
+        // Small delay after data
+        thread::sleep(Duration::from_micros(100));
         Ok(())
     }
 
@@ -126,24 +142,49 @@ impl<'d> Sh8601DisplayDriver<'d> {
         self.reset()?;
 
         // SH8601 initialization sequence
-        // Note: These commands are based on typical AMOLED controller initialization
-        // You may need to adjust based on the actual SH8601 datasheet
+        // Based on sh8601-rs driver and datasheet
 
+        log::info!("Sending Software Reset (0x01)...");
+        // Software Reset
+        self.send_command(0x01)?;
+        thread::sleep(Duration::from_millis(10));
+
+        log::info!("Sending Sleep Out (0x11)...");
         // Sleep Out
         self.send_command(0x11)?;
         thread::sleep(Duration::from_millis(120));
 
-        // Display Inversion On (typical for AMOLED)
-        self.send_command(0x21)?;
-
+        log::info!("Setting Color Mode to RGB888 (0x3A)...");
         // Pixel Format Set - 24bit/pixel (RGB888)
         self.send_command(0x3A)?;
-        self.send_data(&[0x77])?; // 24-bit color
+        self.send_data(&[0x77])?; // 24-bit color (0x77 = RGB888)
 
+        log::info!("Setting Memory Access Control (0x36)...");
         // Memory Data Access Control
         self.send_command(0x36)?;
         self.send_data(&[0x00])?; // Normal orientation
 
+        log::info!("Configuring Tearing Effect...");
+        // Tearing Effect Scan Line
+        self.send_command(0x44)?;
+        self.send_data(&[0x01, 0xC5])?;
+
+        // Tearing Effect Line On
+        self.send_command(0x35)?;
+        self.send_data(&[0x00])?;
+
+        log::info!("Turning Display On (0x29)...");
+        // Display On
+        self.send_command(0x29)?;
+        thread::sleep(Duration::from_millis(120));
+
+        log::info!("Setting Partial Area (0x30)...");
+        // Partial Area
+        self.send_command(0x30)?;
+        self.send_data(&[0x00, 0x80, 0x00, 0x02])?;
+        thread::sleep(Duration::from_millis(10));
+
+        log::info!("Setting default drawing window...");
         // Column Address Set (0 to WIDTH-1)
         self.send_command(0x2A)?;
         self.send_data(&[
@@ -159,10 +200,6 @@ impl<'d> Sh8601DisplayDriver<'d> {
             ((self.height - 1) >> 8) as u8,
             ((self.height - 1) & 0xFF) as u8, // End row
         ])?;
-
-        // Display On
-        self.send_command(0x29)?;
-        thread::sleep(Duration::from_millis(20));
 
         self.initialized = true;
         log::info!("SH8601 display initialized successfully");

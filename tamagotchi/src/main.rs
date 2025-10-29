@@ -27,13 +27,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use crate::drivers::{display::create_shared_display, touch::create_shared_touch};
 use crate::systems::{
     game::{GameState, game_update_system},
     input::{InputEventReceiver, process_input_system},
     render::{RenderCommandSender, send_render_commands_system},
 };
-use crate::threads::{input::spawn_input_thread, render::spawn_render_thread};
+use crate::threads::{
+    input::spawn_input_thread,
+    render::{spawn_render_thread, SharedDisplay},
+};
 
 fn main() -> Result<()> {
     // Initialize ESP-IDF - link_patches is called by esp-idf-svc
@@ -68,30 +70,9 @@ fn main() -> Result<()> {
 
     log::info!("I2C bus initialized, will be shared between touch and GPIO expander");
 
-    // Initialize SPI for display
-    log::info!("Setting up SPI...");
-    use esp_idf_svc::hal::spi::{
-        config::{Config as SpiConfig, Mode},
-        Dma, SpiDeviceDriver, SpiDriver, SpiDriverConfig,
-    };
-
-    let spi_driver = Box::leak(Box::new(SpiDriver::new(
-        peripherals.spi2,
-        peripherals.pins.gpio11, // SCK
-        peripherals.pins.gpio4,  // MOSI (SIO0)
-        Some(peripherals.pins.gpio5), // MISO (SIO1)
-        &SpiDriverConfig::new().dma(Dma::Auto(4096)),
-    )?));
-
-    let spi_config = SpiConfig::new()
-        .baudrate(Hertz(40_000_000));
-        // Mode 0 is default, no need to set explicitly
-
-    let spi_device = Box::leak(Box::new(SpiDeviceDriver::new(
-        spi_driver,
-        Some(peripherals.pins.gpio12), // CS
-        &spi_config,
-    )?));
+    // Note: SPI initialization is now handled internally by RawQspiDriver
+    // using raw ESP-IDF API to enable QSPI mode (4 data lines)
+    log::info!("SPI will be initialized by display driver with QSPI support...");
 
     // Create GPIO expanders
     use crate::drivers::gpio_expander::Tca9554Driver;
@@ -131,11 +112,11 @@ fn main() -> Result<()> {
             e
         })?; // Display reset as output
 
-        log::info!("Configuring touch reset pin (pin 1)...");
-        gpio_exp_temp.configure_pin(1, false).map_err(|e| {
+        log::info!("Configuring touch reset pin (pin 2)...");
+        gpio_exp_temp.configure_pin(2, false).map_err(|e| {
             log::error!("Failed to configure touch reset pin: {:?}", e);
             e
-        })?; // Touch reset as output
+        })?; // Touch reset as output (pin 2, not 1!)
 
         // Proper reset sequence for FT3168 and display:
         // FT3168 requires: HIGH (1ms) -> LOW (20ms) -> HIGH (50ms)
@@ -143,22 +124,22 @@ fn main() -> Result<()> {
 
         // Step 1: Set HIGH
         gpio_exp_temp.write_pin(0, true)?; // Display reset HIGH
-        gpio_exp_temp.write_pin(1, true)?; // Touch reset HIGH
+        gpio_exp_temp.write_pin(2, true)?; // Touch reset HIGH (pin 2!)
         thread::sleep(Duration::from_millis(1));
 
         // Step 2: Set LOW
         log::info!("Asserting resets (LOW)...");
         gpio_exp_temp.write_pin(0, false)?; // Display reset LOW
-        gpio_exp_temp.write_pin(1, false)?; // Touch reset LOW
+        gpio_exp_temp.write_pin(2, false)?; // Touch reset LOW (pin 2!)
         thread::sleep(Duration::from_millis(20));
 
         // Step 3: Set HIGH
         log::info!("Releasing resets (HIGH)...");
         gpio_exp_temp.write_pin(0, true)?; // Display reset HIGH
-        gpio_exp_temp.write_pin(1, true)?; // Touch reset HIGH
+        gpio_exp_temp.write_pin(2, true)?; // Touch reset HIGH (pin 2!)
 
-        log::info!("Waiting for devices to boot (50ms)...");
-        thread::sleep(Duration::from_millis(50));
+        log::info!("Waiting for devices to boot (300ms for touch)...");
+        thread::sleep(Duration::from_millis(300));
     } // gpio_exp_temp is dropped here, releasing the borrow
 
     // Re-scan I2C bus after reset to see if touch controller appears
@@ -175,11 +156,13 @@ fn main() -> Result<()> {
     let gpio_exp_shared = Tca9554Driver::new_with_address(i2c_for_gpio, gpio_address);
     log::info!("GPIO expander initialization complete");
 
-    // Create display driver
-    use crate::drivers::display::Sh8601DisplayDriver;
-    let mut display_driver = Sh8601DisplayDriver::new(spi_device, gpio_exp_shared)?;
+    // Create raw QSPI display driver (uses ESP-IDF sys bindings directly)
+    use crate::drivers::display_hal::RawQspiDriver;
+    let mut display_driver = RawQspiDriver::new(gpio_exp_shared)?;
     display_driver.initialize()?;
-    let display: Arc<Mutex<dyn crate::hal::DisplayDriver>> = Arc::new(Mutex::new(display_driver));
+
+    // Wrap for thread sharing
+    let display: SharedDisplay = Arc::new(Mutex::new(display_driver));
 
     // Create touch driver (reset was already handled by gpio_exp_shared above)
     use crate::drivers::touch::Ft3168TouchDriver;

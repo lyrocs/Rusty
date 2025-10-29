@@ -185,8 +185,15 @@ impl<'d> Ft3168TouchDriver<'d> {
             return Ok(None);
         }
 
-        // Read touch status
-        let td_status = self.read_register(REG_TD_STATUS)?;
+        // Read touch status - catch errors gracefully
+        let td_status = match self.read_register(REG_TD_STATUS) {
+            Ok(status) => status,
+            Err(_) => {
+                // Touch read can fail if device is busy or not touched
+                return Ok(None);
+            }
+        };
+
         let touch_points = td_status & 0x0F;
 
         if touch_points == 0 {
@@ -195,7 +202,10 @@ impl<'d> Ft3168TouchDriver<'d> {
 
         // Read first touch point coordinates
         let mut touch_data = [0u8; 4];
-        self.read_registers(REG_TOUCH1_XH, &mut touch_data)?;
+        if let Err(_) = self.read_registers(REG_TOUCH1_XH, &mut touch_data) {
+            // Failed to read touch coordinates
+            return Ok(None);
+        }
 
         // Parse coordinates (FT3168 uses 12-bit coordinates)
         let x = (((touch_data[0] & 0x0F) as u16) << 8) | (touch_data[1] as u16);

@@ -2,12 +2,16 @@
 //
 // This thread runs on Core 0 and processes render commands to update the display
 
-use crate::drivers::display::{SharedDisplay, FrameBuffer};
+use crate::drivers::display::FrameBuffer;
+use crate::drivers::display_hal::RawQspiDriver;
 use crate::types::{RenderCommand, Color};
 use crossbeam_channel::Receiver;
-use std::thread::{self, JoinHandle};
+use parking_lot::Mutex;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{self, JoinHandle};
+
+pub type SharedDisplay = Arc<Mutex<RawQspiDriver<'static>>>;
 
 /// Spawn the render thread
 pub fn spawn_render_thread(
@@ -21,31 +25,25 @@ pub fn spawn_render_thread(
         .spawn(move || {
             log::info!("Render thread started");
 
-            // Create double buffers
-            let mut front_buffer = FrameBuffer::new(240, 280);
-            let mut back_buffer = FrameBuffer::new(240, 280);
+            // Create double buffers (368x448 for Waveshare 1.8" AMOLED)
+            let mut front_buffer = FrameBuffer::new(368, 448);
+            let mut back_buffer = FrameBuffer::new(368, 448);
 
-            // Draw test pattern on startup
-            log::info!("Drawing test pattern...");
-            back_buffer.clear();
-            // Red rectangle
-            back_buffer.draw_rect(10, 10, 60, 60, 255, 0, 0);
-            // Green rectangle
-            back_buffer.draw_rect(80, 10, 60, 60, 0, 255, 0);
-            // Blue rectangle
-            back_buffer.draw_rect(150, 10, 60, 60, 0, 0, 255);
-            // Yellow rectangle
-            back_buffer.draw_rect(10, 80, 60, 60, 255, 255, 0);
-            // Cyan rectangle
-            back_buffer.draw_rect(80, 80, 60, 60, 0, 255, 255);
-            // Magenta rectangle
-            back_buffer.draw_rect(150, 80, 60, 60, 255, 0, 255);
-            // White rectangle
-            back_buffer.draw_rect(10, 150, 220, 60, 255, 255, 255);
+            // Simple test: clear to solid red color
+            log::info!("Testing display with solid red screen...");
 
-            // Display the test pattern
+            // Fill buffer with red (255, 0, 0)
+            for pixel in back_buffer.data.chunks_exact_mut(3) {
+                pixel[0] = 255; // R
+                pixel[1] = 0;   // G
+                pixel[2] = 0;   // B
+            }
+
+            // Display the red screen using QSPI
             if let Some(mut display_driver) = display.try_lock() {
-                log::info!("Sending test pattern to display...");
+                log::info!("Sending red buffer to display using QSPI...");
+                log::info!("Buffer size: {} bytes for {}x{}", back_buffer.data.len(), back_buffer.width, back_buffer.height);
+
                 match display_driver.draw_buffer(
                     &back_buffer.data,
                     0,
@@ -53,9 +51,11 @@ pub fn spawn_render_thread(
                     back_buffer.width,
                     back_buffer.height
                 ) {
-                    Ok(_) => log::info!("Test pattern displayed successfully"),
-                    Err(e) => log::error!("Failed to display test pattern: {:?}", e),
+                    Ok(_) => log::info!("🔴 RED SCREEN sent successfully via QSPI - display should be RED now!"),
+                    Err(e) => log::error!("Failed to send red screen: {:?}", e),
                 }
+            } else {
+                log::error!("Could not lock display driver!");
             }
 
             let mut frame_count = 0u64;
@@ -93,7 +93,7 @@ pub fn spawn_render_thread(
                     // Swap buffers
                     std::mem::swap(&mut front_buffer, &mut back_buffer);
 
-                    // Send to display
+                    // Send to display via QSPI
                     if let Some(mut display_driver) = display.try_lock() {
                         display_driver.draw_buffer(
                             &front_buffer.data,
