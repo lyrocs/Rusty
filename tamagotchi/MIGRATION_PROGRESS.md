@@ -138,18 +138,73 @@ src/ui/
 - ✅ Clean compilation (38 warnings for unused imports, fixable with cargo fix)
 - ✅ Reduced tamagotchi/ folder by 3,189 lines
 
+## ✅ Completed: Phase 2 - GameState Methods Extraction
+
+### What Was Done
+Extracted all GameState impl methods from `tamagotchi/models.rs` to domain-specific modules using Rust's extension trait pattern.
+
+### Files Created
+```
+src/core/
+├── farming.rs (101 lines) - Farming game logic (start_farming, update_farm_progress, etc.)
+└── rest.rs (50 lines) - Rest/recovery logic (init_rest_state, update_rest_progress)
+
+src/combat/
+├── battle_manual.rs (233 lines) - Manual click battle (Whac-A-Mole style)
+└── battle_jrpg.rs (512 lines) - JRPG turn-based battle system
+```
+
+**Total:** 896 lines extracted
+
+### Code Moved
+- Farming methods (roll_item_drop, start_farming, complete_farming, etc.) → `core/farming.rs`
+- Rest methods (init_rest_state, update_rest_progress) → `core/rest.rs`
+- Manual battle methods (start_battle, spawn_battle_circle, click_battle_circle, etc.) → `combat/battle_manual.rs`
+- JRPG battle methods (start_jrpg_battle, player_attack, enemy_attack, use_skill, try_run, etc.) → `combat/battle_jrpg.rs`
+
+### Changes Made
+1. **src/core/farming.rs** - Created with farming game logic extension methods
+2. **src/core/rest.rs** - Created with rest/recovery extension methods
+3. **src/combat/battle_manual.rs** - Created with manual battle extension methods
+4. **src/combat/battle_jrpg.rs** - Created with JRPG battle extension methods
+5. **src/core/mod.rs** - Added farming and rest module exports
+6. **src/combat/mod.rs** - Added battle_manual and battle_jrpg module exports
+7. **src/tamagotchi/models.rs** - Removed entire GameState impl block (862 lines → 23 lines)
+8. **Deleted src/tamagotchi/game_data.rs** - File no longer needed (just re-exports)
+
+### Benefits
+- ✅ GameState methods properly organized by domain
+- ✅ Used extension trait pattern (impl GameState in separate files)
+- ✅ All battle logic consolidated in combat/ module
+- ✅ All farming/rest logic in core/ module
+- ✅ Backward compatible (tamagotchi re-exports maintained)
+- ✅ Clean compilation (0 errors, 40 unused import warnings)
+- ✅ Reduced models.rs from 889 lines to 23 lines (96.7% reduction!)
+
 ## 📊 Current Architecture Status
 
 ### Clean Architecture Modules
 ```
 src/
-├── combat/         712 lines   ✅ Complete
-├── core/           247 lines   ✅ Complete
+├── combat/         1,457 lines ✅ Complete (Phase 2: +745 lines!)
+│   ├── models      Models and types
+│   ├── battle      Base battle logic
+│   ├── jrpg        JRPG turn-based system (170 lines)
+│   ├── battle_jrpg JRPG battle methods (512 lines)
+│   ├── battle_manual Manual click battle (233 lines)
+│   ├── skills      Skill system
+│   └── damage      Damage calculation
+├── core/           398 lines   ✅ Complete (Phase 2: +151 lines!)
+│   ├── game_state  GameState struct
+│   ├── farming     Farming methods (101 lines)
+│   ├── rest        Rest methods (50 lines)
+│   ├── types       Core types
+│   └── constants   Constants
 ├── data/           392 lines   ✅ Complete
 ├── hero/           752 lines   ✅ Complete
 ├── quest/          510 lines   ✅ Complete
 ├── systems/        1,900 lines ✅ Complete
-├── ui/             4,137 lines ✅ Complete (Phase 5: +3,478 lines!)
+├── ui/             4,137 lines ✅ Complete
 │   ├── colors      15 lines
 │   ├── helpers     761 lines
 │   ├── components  659 lines
@@ -161,45 +216,39 @@ src/
     utils/                      ✅
 ```
 
-**Clean Code:** 8,755 lines (up from 5,277)
+**Clean Code:** 9,651 lines (up from 8,755)
 
 ### Legacy Code Remaining
 ```
 src/tamagotchi/
-├── models.rs       889 lines   → Extract GameState methods
-├── game_data.rs    7 lines     → Delete (just re-exports)
-└── mod.rs          11 lines    → Delete eventually
+├── models.rs       23 lines    → Just re-exports (can be deleted)
+└── mod.rs          19 lines    → Just re-exports (can be deleted)
 ```
 
-**Legacy Code:** 907 lines (down from 4,096)
+**Legacy Code:** 42 lines (down from 907)
 
 ### Overall Progress
-- **Migration:** 90.6% complete (8,755 / 9,662 total lines)
-- **Lines migrated this session:** 4,600 lines (Phase 1: 105 + Phase 3: 402 + Phase 4: 904 + Phase 5: 3,189)
-- **Modules created:** 28 clean modules (including 12 UI page modules)
-- **Phases complete:** 5 full phases + Phase 1, 3, 4 & 5 of final migration
+- **Migration:** 99.6% complete (9,651 / 9,693 total lines)
+- **Lines migrated this session:** 5,496 lines (Phase 1: 105 + Phase 2: 896 + Phase 3: 402 + Phase 4: 904 + Phase 5: 3,189)
+- **Modules created:** 32 clean modules (including 4 new GameState extension modules)
+- **Phases complete:** ALL 5 PHASES COMPLETE! 🎉
 
-## 🎯 Next Steps
+## 🎯 Optional Final Cleanup
 
-### Immediate (Recommended Order)
-1. **Quick Win:** Delete `game_data.rs` (7 lines - just re-exports)
-2. **Phase 2:** Extract GameState methods from `models.rs` (889 lines):
-   - Extract impl methods to appropriate domain modules
-   - This is complex - methods need to be moved without duplication
-3. **Final Cleanup:** Remove tamagotchi/ folder entirely once all code is migrated
+### Remaining Tasks (Optional)
+1. **Delete tamagotchi folder:** Remove `src/tamagotchi/` entirely (only 42 lines of re-exports)
+   - All code has been migrated to clean modules
+   - Re-exports can be handled at the crate root if needed
+2. **Clean up unused imports:** Run `cargo fix --lib` to remove 40 unused import warnings
+3. **Organize assets:** Move `data/` and `images/` folders to `assets/` directory (optional)
 
-### Phase 2 Alternative (Extract GameState Methods)
-The GameState impl block has ~860 lines of methods that should be organized:
-- **Challenge:** Methods need to be removed from `models.rs` while extracting
-- **Approach:** Extract + Remove in same commit to avoid duplicates
-- **Recommendation:** Save for later, focus on easier extractions first
-
-### Quick Wins
-- Delete `game_data.rs` (just re-exports)
-- Move `data/` and `images/` folders to `assets/`
-- ✅ Extract quest_system.rs (COMPLETED in Phase 3)
-- ✅ Extract systems.rs (COMPLETED in Phase 4)
-- ✅ Extract ui.rs (COMPLETED in Phase 5)
+### Migration Complete ✅
+All 5 phases successfully completed:
+- ✅ Phase 1: World domain (105 lines)
+- ✅ Phase 2: GameState methods (896 lines)
+- ✅ Phase 3: Quest system (402 lines)
+- ✅ Phase 4: Systems module (904 lines)
+- ✅ Phase 5: UI pages (3,189 lines)
 
 ## 📈 Benefits Achieved So Far
 
@@ -261,16 +310,38 @@ After each extraction:
 
 **✅ Phase 1 Complete:** World domain successfully extracted (105 lines) - LocationType, MapHelper, and MapExit now properly organized in the world module.
 
+**✅ Phase 2 Complete:** GameState methods successfully extracted (896 lines) - All GameState impl methods moved to domain-specific modules using extension trait pattern. Farming and rest logic in core/, battle logic in combat/.
+
 **✅ Phase 3 Complete:** Quest system successfully migrated (402 lines) - All quest loading, progress tracking, rewards, and daily quest logic moved to quest/system.rs.
 
 **✅ Phase 4 Complete:** Systems module fully extracted (904 lines) - All ECS systems organized into animations, update, render, and save modules with clear separation of concerns.
 
 **✅ Phase 5 Complete:** UI pages fully extracted (3,189 lines) - All 12 page rendering functions organized into individual modules with shared helpers for common drawing utilities. This was the largest single migration, reducing tamagotchi/ui.rs from 3,189 lines to 0.
 
-**🎯 Next Milestone:** Complete Phase 2 (GameState methods extraction) and delete game_data.rs to reach 100% migration.
+**🎉 MIGRATION COMPLETE:** All 5 phases successfully completed!
 
-**Progress:** 90.6% migrated (8,755 clean / 907 legacy remaining)
+**Progress:** 99.6% migrated (9,651 clean / 42 legacy re-exports remaining)
 
 ---
 
-**🎉 Major Achievement:** Over 90% of the legacy code has been successfully migrated to clean architecture! The tamagotchi folder has been reduced from 6,372 lines to just 907 lines across 4 phases of migration. Only GameState method extraction remains.
+**🎉 MAJOR ACHIEVEMENT:** Clean architecture migration is complete! The tamagotchi folder has been reduced from 6,372 lines to just 42 lines of re-exports (99.3% reduction). All 5,496 lines of legacy code have been successfully migrated to clean domain modules across all 5 phases.
+
+### Key Accomplishments
+- ✅ 32 clean domain modules created
+- ✅ All code properly organized by domain (combat, core, quest, systems, ui, world, hero, data)
+- ✅ Extension trait pattern successfully applied for GameState methods
+- ✅ Zero compilation errors (only 40 cosmetic unused import warnings)
+- ✅ 100% backward compatibility maintained throughout migration
+- ✅ Clear module boundaries and zero circular dependencies
+
+### Architecture Highlights
+- **Combat module:** 1,457 lines - Complete battle system (JRPG, manual, skills, damage)
+- **UI module:** 4,137 lines - 12 page modules + shared helpers + components
+- **Systems module:** 1,900 lines - All ECS systems (input, update, render, save, animations)
+- **Core module:** 398 lines - GameState + farming/rest logic
+- **Quest module:** 510 lines - Complete quest system
+- **Hero module:** 752 lines - Character management
+- **World module:** 105 lines - Map navigation
+- **Data module:** 392 lines - Game data loading
+
+The codebase is now fully organized following Domain-Driven Design principles! 🚀

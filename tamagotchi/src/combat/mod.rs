@@ -10,6 +10,8 @@ pub mod damage;
 pub mod jrpg;
 pub mod skills;
 pub mod skills_db;
+pub mod battle_manual;
+pub mod battle_jrpg;
 
 pub use models::*;
 pub use battle::*;
