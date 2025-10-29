@@ -217,12 +217,12 @@ impl Hero {
     }
 
     /// Serialize hero data to a CSV-like string format
-    /// Format: level,exp,exp_to_next,job,hp,max_hp,sp,max_sp,zeny
-    pub fn to_save_string(&self) -> String<128> {
-        let mut save_str = String::<128>::new();
+    /// Format: level,exp,exp_to_next,job,hp,max_hp,sp,max_sp,zeny,str,agi,vit,int,dex,luk,stat_points,weapon_id,weapon_refine,armor_id,armor_refine,accessory_id,accessory_refine
+    pub fn to_save_string(&self) -> String<256> {
+        let mut save_str = String::<256>::new();
         write!(
             save_str,
-            "{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.level,
             self.exp,
             self.exp_to_next_level,
@@ -231,7 +231,20 @@ impl Hero {
             self.max_hp,
             self.sp,
             self.max_sp,
-            self.zeny
+            self.zeny,
+            self.base_str,
+            self.base_agi,
+            self.base_vit,
+            self.base_int,
+            self.base_dex,
+            self.base_luk,
+            self.stat_points,
+            self.equipped_weapon.id,
+            self.equipped_weapon.refine_level,
+            self.equipped_armor.id,
+            self.equipped_armor.refine_level,
+            self.equipped_accessory.id,
+            self.equipped_accessory.refine_level
         )
         .ok();
         save_str
@@ -308,7 +321,7 @@ impl Hero {
         // Use splitn to limit splits and avoid overflow
         let mut parts = data.split(',');
 
-        // Parse each field manually to avoid Vec overflow
+        // Parse basic fields (9 fields)
         let level: u16 = parts.next()?.parse().ok()?;
         let exp: u32 = parts.next()?.parse().ok()?;
         let exp_to_next_level: u32 = parts.next()?.parse().ok()?;
@@ -318,6 +331,23 @@ impl Hero {
         let sp: u16 = parts.next()?.parse().ok()?;
         let max_sp: u16 = parts.next()?.parse().ok()?;
         let zeny: u32 = parts.next()?.parse().ok()?;
+
+        // Try to parse extended format with stats and equipment (13 more fields)
+        let (base_str, base_agi, base_vit, base_int, base_dex, base_luk, stat_points, weapon_id, weapon_refine, armor_id, armor_refine, accessory_id, accessory_refine) =
+            if let (Some(str_val), Some(agi_val), Some(vit_val), Some(int_val), Some(dex_val), Some(luk_val), Some(pts_val),
+                    Some(w_id), Some(w_ref), Some(a_id), Some(a_ref), Some(acc_id), Some(acc_ref)) =
+                (parts.next(), parts.next(), parts.next(), parts.next(), parts.next(), parts.next(), parts.next(),
+                 parts.next(), parts.next(), parts.next(), parts.next(), parts.next(), parts.next()) {
+                // New format with all stats and equipment
+                (str_val.parse().ok()?, agi_val.parse().ok()?, vit_val.parse().ok()?, int_val.parse().ok()?,
+                 dex_val.parse().ok()?, luk_val.parse().ok()?, pts_val.parse().ok()?,
+                 w_id.parse().ok()?, w_ref.parse().ok()?, a_id.parse().ok()?, a_ref.parse().ok()?,
+                 acc_id.parse().ok()?, acc_ref.parse().ok()?)
+            } else {
+                // Old format - initialize with defaults
+                (1, 1, 1, 1, 1, 1, if level > 1 { (level - 1) * 3 } else { 0 },
+                 1000, 0, 2000, 0, 3000, 0)
+            };
 
         // Parse job to a static string
         let job: &'static str = if job_str == "Novice" {
@@ -331,6 +361,16 @@ impl Hero {
             "Swordsman"
         };
 
+        // Load equipment by ID
+        let mut equipped_weapon = Self::get_equipment_by_id(weapon_id);
+        equipped_weapon.refine_level = weapon_refine;
+
+        let mut equipped_armor = Self::get_equipment_by_id(armor_id);
+        equipped_armor.refine_level = armor_refine;
+
+        let mut equipped_accessory = Self::get_equipment_by_id(accessory_id);
+        equipped_accessory.refine_level = accessory_refine;
+
         Some(Hero {
             name,
             level,
@@ -343,23 +383,36 @@ impl Hero {
             max_sp,
             zeny,
             inventory: Inventory::new(),
-
-            // Initialize base stats (1 in each + 3 per level from level 2+)
-            base_str: 1,
-            base_agi: 1,
-            base_vit: 1,
-            base_int: 1,
-            base_dex: 1,
-            base_luk: 1,
-
-            // Calculate available stat points based on level
-            // Level 1 = 0 points, Level 2+ = (level - 1) * 3 points
-            stat_points: if level > 1 { (level - 1) * 3 } else { 0 },
-
-            // Starter equipment (loaded saves get default Novice gear)
-            equipped_weapon: Equipment::starter_weapon_novice(),
-            equipped_armor: Equipment::starter_armor_novice(),
-            equipped_accessory: Equipment::starter_accessory_novice(),
+            base_str,
+            base_agi,
+            base_vit,
+            base_int,
+            base_dex,
+            base_luk,
+            stat_points,
+            equipped_weapon,
+            equipped_armor,
+            equipped_accessory,
         })
+    }
+
+    /// Get equipment by ID (simple lookup for now)
+    fn get_equipment_by_id(id: u16) -> Equipment {
+        match id {
+            1000 => Equipment::starter_weapon_novice(),
+            2000 => Equipment::starter_armor_novice(),
+            3000 => Equipment::starter_accessory_novice(),
+            _ => {
+                esp_println::println!("[HERO] Unknown equipment ID {}, using starter", id);
+                // Return appropriate starter based on ID range
+                if id < 2000 {
+                    Equipment::starter_weapon_novice()
+                } else if id < 3000 {
+                    Equipment::starter_armor_novice()
+                } else {
+                    Equipment::starter_accessory_novice()
+                }
+            }
+        }
     }
 }
