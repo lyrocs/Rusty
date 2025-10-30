@@ -125,6 +125,15 @@ where
         Rgb888::WHITE,
     )?;
 
+    // Draw crafting details modal if open
+    if game_state.crafting_details_open {
+        if let Some(equip_id) = game_state.crafting_selected_id {
+            if let Some(equip_data) = crate::data::get_equipment_data_by_id(equip_id) {
+                draw_crafting_details_modal(display, game_state, equip_data)?;
+            }
+        }
+    }
+
     // Draw craft result message if active
     if let Some(msg) = game_state.craft_result_message {
         draw_craft_result_popup(display, msg)?;
@@ -233,15 +242,16 @@ where
         cost_color,
     )?;
 
-    // Materials (show first 2)
+    // Materials (show first 2 with names)
     if let Some(materials) = &equip_data.craft_materials {
-        let mut mat_x = position.x + 5;
         let mat_y = position.y + 52;
 
         for (idx, (mat_id, required_qty)) in materials.iter().enumerate().take(2) {
-            if idx > 0 {
-                mat_x += 120;
-            }
+            let mat_x = if idx == 0 {
+                position.x + 5
+            } else {
+                position.x + 180
+            };
 
             let item_name = crate::data::get_item_name(*mat_id);
             let has_qty = hero.inventory.iter()
@@ -250,11 +260,11 @@ where
                 .unwrap_or(0);
 
             let mut mat_str = String::<32>::new();
-            write!(mat_str, "{}/{}", has_qty, required_qty).ok();
+            write!(mat_str, "{}: {}/{}", item_name, has_qty, required_qty).ok();
 
             let mat_color = if has_qty >= *required_qty {
                 Rgb888::new(100, 200, 100)
-                } else {
+            } else {
                 Rgb888::new(200, 100, 100)
             };
 
@@ -266,17 +276,6 @@ where
                 mat_color,
             )?;
         }
-    }
-
-    // Craft button
-    if can_craft {
-        draw_text(
-            display,
-            "[Craft]",
-            Point::new(position.x + 285, position.y + 35),
-            &FONT_9X18_BOLD,
-            Rgb888::new(100, 200, 100),
-        )?;
     }
 
     Ok(())
@@ -304,6 +303,275 @@ fn check_can_craft(hero: &crate::hero::Hero, equip_data: &crate::data::Equipment
     }
 
     true
+}
+
+/// Draw crafting details modal showing equipment stats and materials
+pub fn draw_crafting_details_modal<D>(
+    display: &mut D,
+    game_state: &GameState,
+    equip_data: &crate::data::EquipmentData,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    let hero = &game_state.hero;
+
+    // Semi-transparent overlay
+    Rectangle::new(Point::new(0, 0), Size::new(368, 448))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
+        .draw(display)?;
+
+    // Modal panel (fullscreen with margins)
+    let panel_x = 10;
+    let panel_y = 10;
+    let panel_w = 348;
+    let panel_h = 428;
+
+    Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_w, panel_h))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 30, 40)))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_w, panel_h))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+        .draw(display)?;
+
+    let mut y = panel_y + 20;
+
+    // Equipment name
+    draw_text(
+        display,
+        equip_data.name,
+        Point::new(panel_x + 10, y),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+    y += 25;
+
+    // Level requirement
+    let mut level_str = String::<32>::new();
+    write!(level_str, "Level: {}", equip_data.level_req).ok();
+    let level_color = if hero.level >= equip_data.level_req {
+        COLOR_TEXT
+    } else {
+        Rgb888::new(200, 100, 100)
+    };
+    draw_text(display, &level_str, Point::new(panel_x + 10, y), &FONT_9X15, level_color)?;
+    y += 20;
+
+    // Stats
+    y = draw_equipment_stats_compact(display, equip_data, Point::new(panel_x + 10, y))?;
+    y += 10;
+
+    // Materials section
+    draw_text(
+        display,
+        "Materials:",
+        Point::new(panel_x + 10, y),
+        &FONT_9X18_BOLD,
+        COLOR_TEXT,
+    )?;
+    y += 20;
+
+    if let Some(materials) = &equip_data.craft_materials {
+        for (mat_id, required_qty) in materials.iter() {
+            let item_name = crate::data::get_item_name(*mat_id);
+            let has_qty = hero.inventory.iter()
+                .find(|item| item.id == *mat_id)
+                .map(|item| item.quantity)
+                .unwrap_or(0);
+
+            let mut mat_str = String::<48>::new();
+            write!(mat_str, "{}: {}/{}", item_name, has_qty, required_qty).ok();
+
+            let mat_color = if has_qty >= *required_qty {
+                Rgb888::new(100, 200, 100)
+            } else {
+                Rgb888::new(200, 100, 100)
+            };
+
+            draw_text(display, &mat_str, Point::new(panel_x + 15, y), &FONT_9X15, mat_color)?;
+            y += 18;
+        }
+    }
+
+    y += 5;
+
+    // Cost
+    let mut cost_str = String::<32>::new();
+    write!(cost_str, "Cost: {}z", equip_data.craft_cost).ok();
+    let cost_color = if hero.zeny >= equip_data.craft_cost {
+        COLOR_EXP
+    } else {
+        Rgb888::new(200, 100, 100)
+    };
+    draw_text(display, &cost_str, Point::new(panel_x + 10, y), &FONT_9X18_BOLD, cost_color)?;
+
+    // Check if can craft
+    let can_craft = check_can_craft(hero, equip_data);
+
+    // Buttons on same line at bottom
+    let buttons_y = panel_y + panel_h as i32 - 45;
+    let button_width = 150;
+    let button_gap = 8;
+    let craft_btn_x = panel_x + 20;
+    let close_btn_x = craft_btn_x + button_width + button_gap;
+
+    // Craft button (green if can craft, gray if not)
+    let craft_color = if can_craft {
+        Rgb888::new(60, 140, 60)
+    } else {
+        Rgb888::new(60, 60, 60)
+    };
+
+    Rectangle::new(Point::new(craft_btn_x, buttons_y), Size::new(button_width as u32, 35))
+        .into_styled(PrimitiveStyle::with_fill(craft_color))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(craft_btn_x, buttons_y), Size::new(button_width as u32, 35))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 1))
+        .draw(display)?;
+
+    let craft_text = if can_craft { "CRAFT" } else { "Cannot" };
+    draw_text(
+        display,
+        craft_text,
+        Point::new(craft_btn_x + 40, buttons_y + 22),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    // Close button (red)
+    Rectangle::new(Point::new(close_btn_x, buttons_y), Size::new(button_width as u32, 35))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 60, 60)))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(close_btn_x, buttons_y), Size::new(button_width as u32, 35))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 1))
+        .draw(display)?;
+
+    draw_text(
+        display,
+        "CLOSE",
+        Point::new(close_btn_x + 35, buttons_y + 22),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    Ok(())
+}
+
+/// Draw equipment stats in compact form
+fn draw_equipment_stats_compact<D>(
+    display: &mut D,
+    equip_data: &crate::data::EquipmentData,
+    start_pos: Point,
+) -> Result<i32, D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    let mut y = start_pos.y;
+    let x = start_pos.x;
+
+    // Primary stats
+    if equip_data.atk_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "ATK: +{}", equip_data.atk_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_HP)?;
+        y += 17;
+    }
+
+    if equip_data.def_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "DEF: +{}", equip_data.def_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, Rgb888::new(150, 150, 200))?;
+        y += 17;
+    }
+
+    if equip_data.hp_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "HP: +{}", equip_data.hp_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_HP)?;
+        y += 17;
+    }
+
+    if equip_data.sp_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "SP: +{}", equip_data.sp_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_SP)?;
+        y += 17;
+    }
+
+    // Stat bonuses (combine in one line if possible)
+    let mut stat_bonuses = String::<64>::new();
+    let mut has_stats = false;
+
+    if equip_data.str_bonus != 0 {
+        write!(stat_bonuses, "STR+{} ", equip_data.str_bonus).ok();
+        has_stats = true;
+    }
+    if equip_data.agi_bonus != 0 {
+        write!(stat_bonuses, "AGI+{} ", equip_data.agi_bonus).ok();
+        has_stats = true;
+    }
+    if equip_data.vit_bonus != 0 {
+        write!(stat_bonuses, "VIT+{} ", equip_data.vit_bonus).ok();
+        has_stats = true;
+    }
+    if equip_data.int_bonus != 0 {
+        write!(stat_bonuses, "INT+{} ", equip_data.int_bonus).ok();
+        has_stats = true;
+    }
+    if equip_data.dex_bonus != 0 {
+        write!(stat_bonuses, "DEX+{} ", equip_data.dex_bonus).ok();
+        has_stats = true;
+    }
+    if equip_data.luk_bonus != 0 {
+        write!(stat_bonuses, "LUK+{} ", equip_data.luk_bonus).ok();
+        has_stats = true;
+    }
+
+    if has_stats {
+        draw_text(display, &stat_bonuses, Point::new(x, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+        y += 17;
+    }
+
+    // Special bonuses
+    if equip_data.crit_rate_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "Crit Rate: +{}", equip_data.crit_rate_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+        y += 17;
+    }
+
+    if equip_data.aspd_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "ASPD: +{}", equip_data.aspd_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+        y += 17;
+    }
+
+    if equip_data.flee_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "Flee: +{}", equip_data.flee_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+        y += 17;
+    }
+
+    if equip_data.hit_bonus > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "Hit: +{}", equip_data.hit_bonus).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+        y += 17;
+    }
+
+    if equip_data.damage_reduction > 0 {
+        let mut s = String::<32>::new();
+        write!(s, "DMG Reduction: +{}%", equip_data.damage_reduction).ok();
+        draw_text(display, &s, Point::new(x, y), &FONT_9X15, COLOR_TEXT_DIM)?;
+        y += 17;
+    }
+
+    Ok(y)
 }
 
 /// Draw craft result popup

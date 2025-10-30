@@ -86,6 +86,7 @@ pub struct GameState {
     pub crafting_scroll: u8,                    // Scroll position in crafting list
     pub crafting_filter: &'static str,          // Equipment slot filter ("All", "Weapon", etc.)
     pub crafting_selected_id: Option<u16>,      // Selected equipment ID for details
+    pub crafting_details_open: bool,            // Whether crafting details modal is shown
     pub craft_result_message: Option<&'static str>, // Craft result message
     pub craft_result_timer: u32,                // How long to show craft result
     // Quest system state
@@ -189,6 +190,7 @@ impl Default for GameState {
             crafting_scroll: 0,
             crafting_filter: "All",
             crafting_selected_id: None,
+            crafting_details_open: false,
             craft_result_message: None,
             craft_result_timer: 0,
             // Quest system state

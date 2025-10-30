@@ -1332,6 +1332,12 @@ fn handle_crafting_touch(game_state: &mut GameState, x: u16, y: u16) {
         return;
     }
 
+    // If crafting details modal is open, handle modal buttons
+    if game_state.crafting_details_open {
+        handle_crafting_details_touch(game_state, x, y);
+        return;
+    }
+
     // Back button: x=100-260, y=410-440
     if x >= 100 && x <= 260 && y >= 410 && y <= 440 {
         game_state.current_page = GamePage::Map;
@@ -1400,7 +1406,7 @@ fn handle_crafting_touch(game_state: &mut GameState, x: u16, y: u16) {
         return;
     }
 
-    // Recipe list: y=120-400
+    // Recipe list: y=120-400 - clicking opens details modal
     if y >= 120 && y <= 400 {
         let start_y = 120;
         let item_height = 70;
@@ -1413,7 +1419,43 @@ fn handle_crafting_touch(game_state: &mut GameState, x: u16, y: u16) {
         {
             let item_y = start_y + (i as i32 * item_height);
             if y >= item_y as u16 && y <= (item_y + 65) as u16 {
-                // Check if this item can be crafted
+                // Open crafting details modal
+                game_state.crafting_selected_id = Some(equip_data.id);
+                game_state.crafting_details_open = true;
+                game_state.needs_redraw = true;
+                esp_println::println!("[CRAFTING] Opened details for {}", equip_data.name);
+                return;
+            }
+        }
+    }
+
+    game_state.needs_redraw = true;
+}
+
+/// Handle touch input for crafting details modal
+fn handle_crafting_details_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::hero::inventory::InventoryExt;
+
+    // Modal panel dimensions (from draw function)
+    let panel_y = 10;
+    let panel_h = 428;
+
+    // Button layout
+    let buttons_y = panel_y + panel_h - 45; // 393
+    let button_width = 150;
+    let button_gap = 8;
+    let craft_btn_x = 30; // panel_x + 20 = 10 + 20
+    let close_btn_x = craft_btn_x + button_width + button_gap; // 188
+
+    // Craft button: x=30-180, y=393-428
+    if x >= craft_btn_x as u16
+        && x <= (craft_btn_x + button_width) as u16
+        && y >= buttons_y as u16
+        && y <= (buttons_y + 35) as u16
+    {
+        if let Some(equip_id) = game_state.crafting_selected_id {
+            if let Some(equip_data) = crate::data::get_equipment_data_by_id(equip_id) {
+                // Check if can craft
                 let hero = &game_state.hero;
                 let can_craft = hero.level >= equip_data.level_req
                     && hero.zeny >= equip_data.craft_cost
@@ -1436,19 +1478,38 @@ fn handle_crafting_touch(game_state: &mut GameState, x: u16, y: u16) {
                             game_state.craft_result_message = Some("Crafted successfully!");
                             game_state.craft_result_timer = game_state.last_update_ms + 2000;
                             esp_println::println!("[CRAFT] Crafted {}", equipment.name);
+
+                            // Close details modal
+                            game_state.crafting_details_open = false;
+                            game_state.crafting_selected_id = None;
                         }
                         Err(err) => {
                             game_state.craft_result_message = Some(err);
                             game_state.craft_result_timer = game_state.last_update_ms + 2000;
                             esp_println::println!("[CRAFT] Failed: {}", err);
+
+                            // Close details modal on error too
+                            game_state.crafting_details_open = false;
+                            game_state.crafting_selected_id = None;
                         }
                     }
                     game_state.needs_redraw = true;
-                    return;
                 }
             }
         }
+        return;
     }
 
-    game_state.needs_redraw = true;
+    // Close button: x=188-338, y=393-428
+    if x >= close_btn_x as u16
+        && x <= (close_btn_x + button_width) as u16
+        && y >= buttons_y as u16
+        && y <= (buttons_y + 35) as u16
+    {
+        game_state.crafting_details_open = false;
+        game_state.crafting_selected_id = None;
+        game_state.needs_redraw = true;
+        esp_println::println!("[CRAFTING] Closed details modal");
+        return;
+    }
 }
