@@ -243,6 +243,12 @@ where
             draw_refine_popup(display, game_state, slot)?;
         }
     }
+    // Farm duration selection modal (if open)
+    else if game_state.farm_selection_open {
+        if let Some(enemy) = &game_state.current_enemy {
+            draw_farm_duration_selection(display, game_state, enemy)?;
+        }
+    }
 
     Ok(())
 }

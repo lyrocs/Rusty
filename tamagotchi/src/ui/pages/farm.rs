@@ -158,16 +158,55 @@ where
                     COLOR_TEXT,
                 )?;
 
-                // Enemy name
+                // Enemy name with efficiency rating
                 let mut enemy_str = String::<32>::new();
                 write!(enemy_str, "{} Lv.{}", enemy.name, enemy.level).ok();
                 draw_text(
                     display,
                     &enemy_str,
-                    Point::new(100, 60),
+                    Point::new(90, 60),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
+
+                // Efficiency rating (if available)
+                if let Some(rating) = game_state.farm_efficiency_rating {
+                    let rating_color = match rating {
+                        crate::combat::EfficiencyRating::Excellent => Rgb888::new(100, 255, 100),
+                        crate::combat::EfficiencyRating::Good => Rgb888::new(150, 255, 150),
+                        crate::combat::EfficiencyRating::Fair => Rgb888::new(200, 200, 100),
+                        crate::combat::EfficiencyRating::Risky => Rgb888::new(255, 150, 50),
+                        crate::combat::EfficiencyRating::Impossible => Rgb888::new(255, 50, 50),
+                    };
+
+                    let mut rating_str = String::<16>::new();
+                    write!(rating_str, "[{}]", rating.icon()).ok();
+                    draw_text(
+                        display,
+                        &rating_str,
+                        Point::new(90, 85),
+                        &FONT_9X15,
+                        rating_color,
+                    )?;
+                }
+
+                // Kill counter (if efficiency system is active)
+                if game_state.farm_expected_kills > 0 {
+                    let mut kills_str = String::<24>::new();
+                    write!(
+                        kills_str,
+                        "Kills: {}/{}",
+                        game_state.farm_kills_count,
+                        game_state.farm_expected_kills
+                    ).ok();
+                    draw_text(
+                        display,
+                        &kills_str,
+                        Point::new(220, 85),
+                        &FONT_9X15,
+                        Rgb888::new(200, 200, 255),
+                    )?;
+                }
 
                 // Draw monster GIF animation (left side, closer to middle)
                 draw_monster_gif(display, game_state, Point::new(110, 280), enemy.name)?;
@@ -202,21 +241,41 @@ where
                     COLOR_TEXT_DIM,
                 )?;
 
-                // Potential rewards
-                let mut reward_str = String::<32>::new();
-                write!(
-                    reward_str,
-                    "Rewards: EXP {} | Zeny {}",
-                    enemy.base_exp, enemy.zeny_reward
-                )
-                .ok();
-                draw_text(
-                    display,
-                    &reward_str,
-                    Point::new(30, 405),
-                    &FONT_9X15,
-                    COLOR_EXP,
-                )?;
+                // Expected total rewards (based on efficiency)
+                if game_state.farm_expected_kills > 0 {
+                    let mut reward_str = String::<48>::new();
+                    let total_exp = enemy.base_exp * (game_state.farm_expected_kills as u32);
+                    let total_zeny = enemy.zeny_reward * (game_state.farm_expected_kills as u32);
+                    write!(
+                        reward_str,
+                        "Expected: ~{} EXP | ~{}z",
+                        total_exp, total_zeny
+                    )
+                    .ok();
+                    draw_text(
+                        display,
+                        &reward_str,
+                        Point::new(40, 405),
+                        &FONT_9X15,
+                        COLOR_EXP,
+                    )?;
+                } else {
+                    // Fallback for old system
+                    let mut reward_str = String::<32>::new();
+                    write!(
+                        reward_str,
+                        "Rewards: EXP {} | Zeny {}",
+                        enemy.base_exp, enemy.zeny_reward
+                    )
+                    .ok();
+                    draw_text(
+                        display,
+                        &reward_str,
+                        Point::new(30, 405),
+                        &FONT_9X15,
+                        COLOR_EXP,
+                    )?;
+                }
 
                 // FPS display at bottom
                 draw_fps_info(display, Point::new(10, 425), fps)?;
@@ -232,78 +291,119 @@ where
             )?;
 
             if let Some(enemy) = &game_state.current_enemy {
-                let mut enemy_str = String::<32>::new();
-                write!(enemy_str, "Defeated {}", enemy.name).ok();
+                // Calculate actual kills (for efficiency system)
+                let actual_kills = if game_state.farm_expected_kills > 0 {
+                    game_state.farm_kills_count
+                } else {
+                    1 // Fallback for old system
+                };
+
+                // Enemy name (30px higher: 60 - 30 = 30)
+                let mut enemy_str = String::<48>::new();
+                if actual_kills > 1 {
+                    write!(enemy_str, "Defeated {} x{}", enemy.name, actual_kills).ok();
+                } else {
+                    write!(enemy_str, "Defeated {}", enemy.name).ok();
+                }
                 draw_text(
                     display,
                     &enemy_str,
-                    Point::new(85, 60),
+                    Point::new(70, 30),
                     &FONT_9X18_BOLD,
                     COLOR_TEXT,
                 )?;
 
-                // Draw dying monster GIF animation (centered)
-                draw_monster_gif(display, game_state, Point::new(120, 110), enemy.name)?;
+                // Show efficiency rating if available (30px higher: 85 - 30 = 55)
+                if let Some(rating) = game_state.farm_efficiency_rating {
+                    let rating_color = match rating {
+                        crate::combat::EfficiencyRating::Excellent => Rgb888::new(100, 255, 100),
+                        crate::combat::EfficiencyRating::Good => Rgb888::new(150, 255, 150),
+                        crate::combat::EfficiencyRating::Fair => Rgb888::new(200, 200, 100),
+                        crate::combat::EfficiencyRating::Risky => Rgb888::new(255, 150, 50),
+                        crate::combat::EfficiencyRating::Impossible => Rgb888::new(255, 50, 50),
+                    };
 
+                    let mut rating_str = String::<32>::new();
+                    write!(rating_str, "[{}] {}", rating.icon(), rating.display_name()).ok();
+                    draw_text(
+                        display,
+                        &rating_str,
+                        Point::new(110, 55),
+                        &FONT_9X15,
+                        rating_color,
+                    )?;
+                }
+
+                // Draw dying monster GIF animation
+                // Centered on screen (x=152) and moved down 20px: (110-30)+20 = 100
+                draw_monster_gif(display, game_state, Point::new(152, 100), enemy.name)?;
+
+                // Two-column layout for rewards and items
+                // Left column: Rewards (30px higher: 280 - 30 = 250)
                 draw_text(
                     display,
                     "Rewards:",
-                    Point::new(130, 280),
+                    Point::new(30, 250),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
 
+                // Calculate total rewards
+                let total_exp = enemy.base_exp * (actual_kills as u32);
+                let total_zeny = enemy.zeny_reward * (actual_kills as u32);
+
                 let mut exp_str = String::<32>::new();
-                write!(exp_str, "+{} EXP", enemy.base_exp).ok();
+                write!(exp_str, "+{} EXP", total_exp).ok();
                 draw_text(
                     display,
                     &exp_str,
-                    Point::new(115, 310),
+                    Point::new(30, 280),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
 
                 let mut zeny_str = String::<32>::new();
-                write!(zeny_str, "+{} Zeny", enemy.zeny_reward).ok();
+                write!(zeny_str, "+{} Zeny", total_zeny).ok();
                 draw_text(
                     display,
                     &zeny_str,
-                    Point::new(115, 340),
+                    Point::new(30, 310),
                     &FONT_9X18_BOLD,
                     COLOR_EXP,
                 )?;
 
+                // Right column: Items (same y as Rewards header)
+                draw_text(
+                    display,
+                    "Items:",
+                    Point::new(200, 250),
+                    &FONT_9X18_BOLD,
+                    Rgb888::YELLOW,
+                )?;
+
                 // Display loot if any
                 if !game_state.last_drops.is_empty() {
-                    draw_text(
-                        display,
-                        "Items:",
-                        Point::new(140, 380),
-                        &FONT_9X18_BOLD,
-                        Rgb888::YELLOW,
-                    )?;
-
-                    let mut y = 410;
+                    let mut y = 280;
                     for (_, item_name, quantity) in &game_state.last_drops {
-                        let mut item_str = String::<48>::new();
+                        let mut item_str = String::<32>::new();
                         write!(item_str, "{} x{}", item_name, quantity).ok();
                         draw_text(
                             display,
                             &item_str,
-                            Point::new(100, y),
+                            Point::new(200, y),
                             &FONT_9X15,
                             Rgb888::YELLOW,
                         )?;
                         y += 20;
-                        if y > 450 {
+                        if y > 370 {
                             break; // Don't overflow screen
                         }
                     }
                 } else {
                     draw_text(
                         display,
-                        "No items dropped",
-                        Point::new(90, 400),
+                        "None",
+                        Point::new(200, 280),
                         &FONT_9X15,
                         COLOR_TEXT_DIM,
                     )?;

@@ -1074,3 +1074,208 @@ where
 
     Ok(())
 }
+
+/// Draw farm duration selection modal with efficiency preview
+pub fn draw_farm_duration_selection<D>(
+    display: &mut D,
+    game_state: &GameState,
+    enemy: &crate::combat::Enemy,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    use crate::combat::{FarmDuration, calculate_efficiency, calculate_expected_kills, calculate_farm_rewards};
+
+    // Semi-transparent overlay
+    Rectangle::new(Point::new(0, 0), Size::new(368, 448))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
+        .draw(display)?;
+
+    // Modal panel
+    let panel_x = 10;
+    let panel_y = 20;
+    let panel_w = 348;
+    let panel_h = 408;
+
+    Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_w, panel_h))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 30, 40)))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(panel_x, panel_y), Size::new(panel_w, panel_h))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+        .draw(display)?;
+
+    let mut y = panel_y + 20;
+
+    // Title
+    draw_text(
+        display,
+        "AUTO FARM",
+        Point::new(panel_x + 110, y),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+    y += 30;
+
+    // Enemy name
+    let mut enemy_str = String::<32>::new();
+    write!(enemy_str, "vs {} Lv.{}", enemy.name, enemy.level).ok();
+    draw_text(
+        display,
+        &enemy_str,
+        Point::new(panel_x + 90, y),
+        &FONT_9X18_BOLD,
+        COLOR_TEXT,
+    )?;
+    y += 25;
+
+    // Calculate efficiency
+    let (rating, _power_ratio, hero_power, enemy_power) = calculate_efficiency(&game_state.hero, enemy);
+
+    // Power comparison
+    let mut power_str = String::<48>::new();
+    write!(power_str, "Power: {:.0} vs {:.0}", hero_power, enemy_power).ok();
+    draw_text(
+        display,
+        &power_str,
+        Point::new(panel_x + 70, y),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
+    )?;
+    y += 20;
+
+    // Efficiency rating
+    let mut rating_str = String::<48>::new();
+    write!(rating_str, "Efficiency: {} {}", rating.icon(), rating.display_name()).ok();
+    let rating_color = match rating {
+        crate::combat::EfficiencyRating::Excellent => Rgb888::new(100, 255, 100),
+        crate::combat::EfficiencyRating::Good => Rgb888::new(150, 255, 150),
+        crate::combat::EfficiencyRating::Fair => Rgb888::new(200, 200, 100),
+        crate::combat::EfficiencyRating::Risky => Rgb888::new(255, 150, 50),
+        crate::combat::EfficiencyRating::Impossible => Rgb888::new(255, 50, 50),
+    };
+    draw_text(
+        display,
+        &rating_str,
+        Point::new(panel_x + 50, y),
+        &FONT_9X18_BOLD,
+        rating_color,
+    )?;
+    y += 30;
+
+    // Check if farming is allowed
+    if !rating.is_allowed() {
+        draw_text(
+            display,
+            "Too dangerous!",
+            Point::new(panel_x + 85, y),
+            &FONT_9X18_BOLD,
+            Rgb888::RED,
+        )?;
+        y += 20;
+        draw_text(
+            display,
+            "Get stronger first",
+            Point::new(panel_x + 75, y),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    } else {
+        // Duration options
+        draw_text(
+            display,
+            "Select Duration:",
+            Point::new(panel_x + 90, y),
+            &FONT_9X15,
+            COLOR_TEXT,
+        )?;
+        y += 25;
+
+        let durations = [
+            FarmDuration::OneMinute,
+            FarmDuration::FiveMinutes,
+            FarmDuration::TenMinutes,
+        ];
+
+        for (i, duration) in durations.iter().enumerate() {
+            let btn_y = y + (i as i32 * 85);
+            let expected_kills = calculate_expected_kills(rating, *duration);
+            let (exp_reward, zeny_reward) = calculate_farm_rewards(enemy, expected_kills);
+
+            // Check if player has enough SP
+            let sp_cost = duration.sp_cost();
+            let can_afford = game_state.hero.sp >= sp_cost;
+            let btn_color = if can_afford {
+                Rgb888::new(40, 70, 40)
+            } else {
+                Rgb888::new(50, 50, 50)
+            };
+
+            // Button background
+            Rectangle::new(Point::new(panel_x + 15, btn_y), Size::new(318, 75))
+                .into_styled(PrimitiveStyle::with_fill(btn_color))
+                .draw(display)?;
+
+            Rectangle::new(Point::new(panel_x + 15, btn_y), Size::new(318, 75))
+                .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 1))
+                .draw(display)?;
+
+            // Duration name
+            draw_text(
+                display,
+                duration.display_name(),
+                Point::new(panel_x + 25, btn_y + 18),
+                &FONT_9X18_BOLD,
+                if can_afford { COLOR_TEXT } else { COLOR_TEXT_DIM },
+            )?;
+
+            // SP cost
+            let mut sp_str = String::<16>::new();
+            write!(sp_str, "{}SP", sp_cost).ok();
+            draw_text(
+                display,
+                &sp_str,
+                Point::new(panel_x + 285, btn_y + 18),
+                &FONT_9X15,
+                if can_afford { COLOR_SP } else { COLOR_TEXT_DIM },
+            )?;
+
+            // Expected kills
+            let mut kills_str = String::<32>::new();
+            write!(kills_str, "~{} kills", expected_kills).ok();
+            draw_text(
+                display,
+                &kills_str,
+                Point::new(panel_x + 25, btn_y + 40),
+                &FONT_9X15,
+                COLOR_TEXT_DIM,
+            )?;
+
+            // Rewards
+            let mut reward_str = String::<32>::new();
+            write!(reward_str, "{}exp, {}z", exp_reward, zeny_reward).ok();
+            draw_text(
+                display,
+                &reward_str,
+                Point::new(panel_x + 25, btn_y + 58),
+                &FONT_9X15,
+                COLOR_EXP,
+            )?;
+        }
+    }
+
+    // Close button at bottom
+    let close_y = panel_y + panel_h as i32 - 45;
+    Rectangle::new(Point::new(panel_x + 100, close_y), Size::new(148, 35))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
+        .draw(display)?;
+    draw_text(
+        display,
+        "Cancel",
+        Point::new(panel_x + 135, close_y + 22),
+        &FONT_9X18_BOLD,
+        Rgb888::WHITE,
+    )?;
+
+    Ok(())
+}

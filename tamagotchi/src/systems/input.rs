@@ -390,6 +390,12 @@ fn handle_map_touch(game_state: &mut GameState, x: u16, y: u16) {
         return;
     }
 
+    // Handle farm duration selection modal if open (intercepts all other touches)
+    if game_state.farm_selection_open {
+        handle_farm_duration_selection_touch(game_state, x, y);
+        return;
+    }
+
     // Map navigation with border buttons and center actions
     let map_id = game_state.current_location;
     let exits = MapHelper::exits(map_id);
@@ -935,7 +941,7 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
         esp_println::println!("[MAP] Auto Farm selected");
         // Spawn enemy from current map
         let enemy_ids = MapHelper::enemies(map_id);
-        if !enemy_ids.is_empty() && game_state.hero.sp >= 20 {
+        if !enemy_ids.is_empty() {
             // Pick random enemy from map
             let rng_value = (x.wrapping_add(y)) as u8;
             let enemy_index = (rng_value as usize) % enemy_ids.len();
@@ -943,16 +949,14 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
 
             if let Some(enemy) = Enemy::from_id(enemy_id) {
                 esp_println::println!(
-                    "[MAP] Starting farm with {} from map",
+                    "[MAP] Opening farm duration selection for {}",
                     enemy.name
                 );
-                game_state.start_farming(enemy);
+                // Store enemy and open duration selection modal
+                game_state.current_enemy = Some(enemy);
+                game_state.farm_selection_open = true;
+                game_state.needs_redraw = true;
             }
-        } else if game_state.hero.sp < 20 {
-            esp_println::println!("[MAP] Not enough SP for farming");
-            game_state.save_status_msg = Some("Not enough SP! (need 20)");
-            game_state.save_status_timeout = game_state.last_update_ms + 2000;
-            game_state.needs_redraw = true;
         }
     }
     // Check JRPG Battle button (194, 295, 130x55)
@@ -1511,5 +1515,90 @@ fn handle_crafting_details_touch(game_state: &mut GameState, x: u16, y: u16) {
         game_state.needs_redraw = true;
         esp_println::println!("[CRAFTING] Closed details modal");
         return;
+    }
+}
+
+/// Handle touch input for farm duration selection modal
+fn handle_farm_duration_selection_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::combat::{FarmDuration, calculate_efficiency};
+    let panel_x = 10;
+    let panel_y = 20;
+    let panel_h = 408;
+
+    // Get enemy and calculate efficiency
+    let enemy = match &game_state.current_enemy {
+        Some(e) => e.clone(),
+        None => {
+            // No enemy, close modal
+            game_state.farm_selection_open = false;
+            game_state.needs_redraw = true;
+            return;
+        }
+    };
+
+    let (rating, _power_ratio, _hero_power, _enemy_power) =
+        calculate_efficiency(&game_state.hero, &enemy);
+
+    // Close button: x=110-258, y=383-418
+    let close_y = panel_y + panel_h as i32 - 45;
+    if x >= 110 && x <= 258 && y >= close_y as u16 && y <= (close_y + 35) as u16 {
+        esp_println::println!("[FARM] Duration selection cancelled");
+        game_state.farm_selection_open = false;
+        game_state.current_enemy = None;
+        game_state.needs_redraw = true;
+        return;
+    }
+
+    // Check if farming is allowed for this enemy
+    if !rating.is_allowed() {
+        // If impossible, any click on close button closes modal (already handled above)
+        // Ignore other clicks
+        return;
+    }
+
+    // Duration button coordinates
+    // Buttons start at y=170 after "Select Duration:" text
+    let buttons_start_y = 170;
+    let button_height = 75;
+    let button_spacing = 85; // height + gap
+
+    let durations = [
+        FarmDuration::OneMinute,
+        FarmDuration::FiveMinutes,
+        FarmDuration::TenMinutes,
+    ];
+
+    // Check each duration button
+    for (i, duration) in durations.iter().enumerate() {
+        let btn_y = buttons_start_y + (i as i32 * button_spacing);
+
+        // Button bounds: x=25-343, y=btn_y to btn_y+75
+        if x >= 25 && x <= 343 && y >= btn_y as u16 && y <= (btn_y + button_height) as u16 {
+            // Check if player has enough SP
+            let sp_cost = duration.sp_cost();
+            if game_state.hero.sp >= sp_cost {
+                esp_println::println!("[FARM] Selected duration: {:?}", duration);
+
+                // Store selected duration and efficiency
+                game_state.farm_duration_option = Some(*duration);
+                game_state.farm_efficiency_rating = Some(rating);
+
+                // Calculate expected kills for this duration
+                let expected_kills = crate::combat::calculate_expected_kills(rating, *duration);
+                game_state.farm_expected_kills = expected_kills;
+
+                // Start farming
+                game_state.start_farming_with_efficiency(enemy, *duration);
+
+                // Close modal
+                game_state.farm_selection_open = false;
+                game_state.needs_redraw = true;
+                return;
+            } else {
+                esp_println::println!("[FARM] Not enough SP for {} (need {}, have {})",
+                    duration.display_name(), sp_cost, game_state.hero.sp);
+                // Could show a message here, but for now just ignore the click
+            }
+        }
     }
 }

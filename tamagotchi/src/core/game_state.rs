@@ -27,6 +27,13 @@ pub struct GameState {
     pub farm_progress: u32,       // 0-60000 (60 seconds in milliseconds)
     pub farm_duration_ms: u32,    // 60000 ms = 1 minute
     pub farm_touch_cooldown: u32, // Cooldown in ms to prevent immediate re-touch
+    // Farm efficiency system
+    pub farm_duration_option: Option<crate::combat::FarmDuration>, // Selected duration (1min, 5min, 10min)
+    pub farm_efficiency_rating: Option<crate::combat::EfficiencyRating>, // Efficiency rating for current enemy
+    pub farm_kills_count: u16,    // Number of kills during current farm
+    pub farm_expected_kills: u16, // Expected kills based on efficiency
+    pub farm_last_kill_time: u32, // Last time a kill tick occurred
+    pub farm_selection_open: bool, // Whether farm duration selection modal is open
     pub rest_state: RestState,
     pub rest_progress: u32,                  // Progress in milliseconds
     pub sp_regen_rate: u16,                  // SP per second while resting
@@ -132,6 +139,13 @@ impl Default for GameState {
             farm_progress: 0,
             farm_duration_ms: DEFAULT_FARM_DURATION_MS, // 1 minute
             farm_touch_cooldown: 0,
+            // Farm efficiency system
+            farm_duration_option: None,
+            farm_efficiency_rating: None,
+            farm_kills_count: 0,
+            farm_expected_kills: 0,
+            farm_last_kill_time: 0,
+            farm_selection_open: false,
             rest_state: RestState::Resting,
             rest_progress: 0,
             sp_regen_rate: DEFAULT_SP_REGEN_RATE, // 5 SP per second
