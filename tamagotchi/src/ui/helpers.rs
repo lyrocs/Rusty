@@ -1200,7 +1200,7 @@ where
         for (i, duration) in durations.iter().enumerate() {
             let btn_y = y + (i as i32 * 85);
             let expected_kills = calculate_expected_kills(rating, *duration);
-            let (exp_reward, zeny_reward) = calculate_farm_rewards(enemy, expected_kills);
+            let (exp_reward, zeny_reward) = calculate_farm_rewards(enemy, expected_kills, game_state.hero.level);
 
             // Check if player has enough SP
             let sp_cost = duration.sp_cost();

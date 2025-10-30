@@ -110,8 +110,12 @@ impl GameState {
                 1 // Fallback for old farming system
             };
 
-            let total_exp = enemy.base_exp * (actual_kills as u32);
-            let total_zeny = enemy.zeny_reward * (actual_kills as u32);
+            // Calculate rewards with level penalty and auto-farm rate (1/10)
+            let (total_exp, total_zeny) = crate::combat::calculate_farm_rewards(
+                enemy,
+                actual_kills,
+                self.hero.level,
+            );
 
             self.hero.add_exp(total_exp);
             self.hero.add_zeny(total_zeny);
@@ -140,22 +144,27 @@ impl GameState {
                 },
             );
 
-            // Roll for item drops (once per kill)
+            // Roll for item drops (once per kill, with 1/10 chance for auto-farm)
             self.last_drops.clear();
 
             for kill_index in 0..actual_kills {
-                let rng_value = ((self.last_update_ms + kill_index as u32) % 255) as u8;
-                let drops = crate::data::roll_drops(enemy_id, rng_value);
+                let rng_value = ((self.last_update_ms + kill_index as u32) % 100) as u8;
 
-                for (item_id, item_name, quantity) in drops.iter() {
-                    if self.hero.add_item(*item_id, item_name, *quantity) {
-                        esp_println::println!("[DROPS] Got {} x{}", item_name, quantity);
-                        // Store only the first few drops to avoid overflow
-                        if self.last_drops.len() < 4 {
-                            self.last_drops.push((*item_id, item_name, *quantity)).ok();
+                // Auto-farm drop rate: 10% (1/10)
+                if rng_value < 10 {
+                    let drop_rng = ((self.last_update_ms + kill_index as u32) % 255) as u8;
+                    let drops = crate::data::roll_drops(enemy_id, drop_rng);
+
+                    for (item_id, item_name, quantity) in drops.iter() {
+                        if self.hero.add_item(*item_id, item_name, *quantity) {
+                            esp_println::println!("[DROPS] Got {} x{}", item_name, quantity);
+                            // Store only the first few drops to avoid overflow
+                            if self.last_drops.len() < 4 {
+                                self.last_drops.push((*item_id, item_name, *quantity)).ok();
+                            }
+                        } else {
+                            esp_println::println!("[DROPS] Inventory full! Lost {}", item_name);
                         }
-                    } else {
-                        esp_println::println!("[DROPS] Inventory full! Lost {}", item_name);
                     }
                 }
             }

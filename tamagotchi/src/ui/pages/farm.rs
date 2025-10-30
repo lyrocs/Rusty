@@ -241,11 +241,14 @@ where
                     COLOR_TEXT_DIM,
                 )?;
 
-                // Expected total rewards (based on efficiency)
+                // Expected total rewards (based on efficiency, level penalty, and 1/10 rate)
                 if game_state.farm_expected_kills > 0 {
                     let mut reward_str = String::<48>::new();
-                    let total_exp = enemy.base_exp * (game_state.farm_expected_kills as u32);
-                    let total_zeny = enemy.zeny_reward * (game_state.farm_expected_kills as u32);
+                    let (total_exp, total_zeny) = crate::combat::calculate_farm_rewards(
+                        enemy,
+                        game_state.farm_expected_kills,
+                        game_state.hero.level,
+                    );
                     write!(
                         reward_str,
                         "Expected: ~{} EXP | ~{}z",
@@ -262,10 +265,15 @@ where
                 } else {
                     // Fallback for old system
                     let mut reward_str = String::<32>::new();
+                    let (exp, zeny) = crate::combat::calculate_farm_rewards(
+                        enemy,
+                        1,
+                        game_state.hero.level,
+                    );
                     write!(
                         reward_str,
                         "Rewards: EXP {} | Zeny {}",
-                        enemy.base_exp, enemy.zeny_reward
+                        exp, zeny
                     )
                     .ok();
                     draw_text(
@@ -348,9 +356,12 @@ where
                     COLOR_EXP,
                 )?;
 
-                // Calculate total rewards
-                let total_exp = enemy.base_exp * (actual_kills as u32);
-                let total_zeny = enemy.zeny_reward * (actual_kills as u32);
+                // Calculate total rewards (with level penalty and 1/10 rate)
+                let (total_exp, total_zeny) = crate::combat::calculate_farm_rewards(
+                    enemy,
+                    actual_kills,
+                    game_state.hero.level,
+                );
 
                 let mut exp_str = String::<32>::new();
                 write!(exp_str, "+{} EXP", total_exp).ok();

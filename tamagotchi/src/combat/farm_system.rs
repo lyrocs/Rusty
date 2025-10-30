@@ -104,15 +104,62 @@ pub fn calculate_kill_tick_interval(
     interval.max(1000)
 }
 
-/// Calculate total rewards for a farm session
+/// Calculate level difference EXP penalty/bonus multiplier
+///
+/// Based on iRO wiki formula (simplified version)
+/// Returns a multiplier between 0.10 and 1.40
+///
+/// Level difference = enemy_level - hero_level
+pub fn calculate_level_penalty(hero_level: u16, enemy_level: u16) -> f32 {
+    let level_diff = (enemy_level as i32) - (hero_level as i32);
+
+    match level_diff {
+        // Enemy much lower level (severe penalty)
+        i32::MIN..=-31 => 0.10,
+        -30..=-26 => 0.25,
+        -25..=-21 => 0.60,
+        -20..=-16 => 0.70,
+        -15..=-11 => 0.85,
+        -10..=-6 => 0.95,
+        -5..=-1 => 1.00,
+
+        // Same level
+        0 => 1.00,
+
+        // Enemy higher level (bonus)
+        1..=5 => 1.15,
+        6..=10 => 1.40,  // Maximum bonus at +10
+        11..=15 => 1.15,
+
+        // Enemy much higher level (reduced bonus)
+        16..=i32::MAX => 0.40,
+    }
+}
+
+/// Calculate total rewards for a farm session (AUTO FARM)
+///
+/// AUTO FARM penalties:
+/// - 1/10 reward rate (10% of manual kills)
+/// - Level difference penalty applied
 ///
 /// Returns (total_exp, total_zeny)
 pub fn calculate_farm_rewards(
     enemy: &Enemy,
     actual_kills: u16,
+    hero_level: u16,
 ) -> (u32, u32) {
-    let total_exp = (enemy.base_exp as u32) * (actual_kills as u32);
-    let total_zeny = (enemy.zeny_reward as u32) * (actual_kills as u32);
+    const AUTO_FARM_RATE: f32 = 0.10; // 1/10 of manual kill rewards
+
+    // Calculate level penalty
+    let level_mult = calculate_level_penalty(hero_level, enemy.level);
+
+    // Calculate base rewards per kill
+    let exp_per_kill = (enemy.base_exp as f32) * level_mult * AUTO_FARM_RATE;
+    let zeny_per_kill = (enemy.zeny_reward as f32) * AUTO_FARM_RATE;
+
+    // Total rewards
+    let total_exp = (exp_per_kill * (actual_kills as f32) + 0.5) as u32;
+    let total_zeny = (zeny_per_kill * (actual_kills as f32) + 0.5) as u32;
 
     (total_exp, total_zeny)
 }
