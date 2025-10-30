@@ -79,6 +79,9 @@ pub struct GameState {
     pub equipment_swap_menu_open: bool,         // Whether equipment swap menu is shown
     pub equipment_swap_slot: Option<EquipmentSlot>, // Which slot is being swapped
     pub equipment_swap_scroll: u8,              // Scroll position in swap inventory list
+    // Equipment info UI state
+    pub equipment_info_open: bool,              // Whether equipment info modal is shown
+    pub equipment_info_slot: Option<EquipmentSlot>, // Which equipment slot is being viewed
     // Crafting UI state
     pub crafting_scroll: u8,                    // Scroll position in crafting list
     pub crafting_filter: &'static str,          // Equipment slot filter ("All", "Weapon", etc.)
@@ -179,6 +182,9 @@ impl Default for GameState {
             equipment_swap_menu_open: false,
             equipment_swap_slot: None,
             equipment_swap_scroll: 0,
+            // Equipment info UI state
+            equipment_info_open: false,
+            equipment_info_slot: None,
             // Crafting UI state
             crafting_scroll: 0,
             crafting_filter: "All",

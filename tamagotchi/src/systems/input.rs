@@ -494,6 +494,12 @@ fn handle_equipment_touch(game_state: &mut GameState, x: u16, y: u16) {
         return;
     }
 
+    // Check if equipment info modal is open
+    if game_state.equipment_info_open {
+        handle_equipment_info_touch(game_state, x, y);
+        return;
+    }
+
     // Check if preset menu is open
     if game_state.preset_menu_open {
         handle_preset_menu_touch(game_state, x, y);
@@ -508,7 +514,7 @@ fn handle_equipment_touch(game_state: &mut GameState, x: u16, y: u16) {
     let start_y = 70;
     let row_spacing = 95;
 
-    // Check equipment slot clicks
+    // Check equipment slot clicks - clicking anywhere opens equipment info
     let slots = [
         (left_x, start_y, EquipmentSlot::Weapon),
         (right_x, start_y, EquipmentSlot::Armor),
@@ -519,26 +525,13 @@ fn handle_equipment_touch(game_state: &mut GameState, x: u16, y: u16) {
     ];
 
     for (slot_x, slot_y, slot) in slots.iter() {
-        // Check if [Switch] button was clicked (bottom left of equipment slot)
-        if x >= *slot_x && x <= (*slot_x + 70) && y >= (*slot_y + 65) && y <= (*slot_y + 80) {
-            esp_println::println!("[EQUIPMENT] Switch button clicked for slot");
-            game_state.equipment_swap_slot = Some(*slot);
-            game_state.equipment_swap_menu_open = true;
-            game_state.equipment_swap_scroll = 0;
+        // Check if equipment slot was clicked - open equipment info
+        if x >= (*slot_x - 5) && x <= (*slot_x + 165) && y >= (*slot_y - 5) && y <= (*slot_y + 80) {
+            esp_println::println!("[EQUIPMENT] Equipment slot clicked - opening info");
+            game_state.equipment_info_slot = Some(*slot);
+            game_state.equipment_info_open = true;
             game_state.needs_redraw = true;
             return;
-        }
-
-        // Check if [Cards] button was clicked (bottom right of equipment slot, if has card slots)
-        if x >= (*slot_x + 90) && x <= (*slot_x + 150) && y >= (*slot_y + 65) && y <= (*slot_y + 80) {
-            let equipment = game_state.hero.get_equipment(*slot);
-            if equipment.is_some() && equipment.unwrap().card_slots > 0 {
-                esp_println::println!("[EQUIPMENT] Cards button clicked - opening card menu");
-                game_state.card_socket_slot = Some(*slot);
-                game_state.card_socket_menu_open = true;
-                game_state.needs_redraw = true;
-                return;
-            }
         }
     }
 
@@ -697,6 +690,47 @@ fn handle_preset_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
     }
 }
 
+/// Handle equipment info modal touches
+fn handle_equipment_info_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::hero::equipment::EquipmentSlot;
+
+    if let Some(slot) = game_state.equipment_info_slot {
+        let equipment = game_state.hero.get_equipment(slot);
+        let has_card_slots = equipment.is_some() && equipment.unwrap().card_slots > 0;
+
+        // Switch button: x=20-170, y=350-385
+        if x >= 20 && x <= 170 && y >= 350 && y <= 385 {
+            esp_println::println!("[EQUIPMENT] Switch button clicked in info modal");
+            // Open swap menu without closing info modal
+            game_state.equipment_swap_slot = Some(slot);
+            game_state.equipment_swap_menu_open = true;
+            game_state.equipment_swap_scroll = 0;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Cards button: x=180-330, y=350-385 (only if has card slots)
+        if has_card_slots && x >= 180 && x <= 330 && y >= 350 && y <= 385 {
+            esp_println::println!("[EQUIPMENT] Cards button clicked in info modal");
+            // Close info modal and open card socket menu
+            game_state.equipment_info_open = false;
+            game_state.card_socket_slot = Some(slot);
+            game_state.card_socket_menu_open = true;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Close button: x=110-258, y=395-431
+        if x >= 110 && x <= 258 && y >= 395 && y <= 431 {
+            esp_println::println!("[EQUIPMENT] Close button clicked in info modal");
+            game_state.equipment_info_open = false;
+            game_state.equipment_info_slot = None;
+            game_state.needs_redraw = true;
+            return;
+        }
+    }
+}
+
 /// Handle equipment swap menu touches
 fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
     use crate::hero::equipment::EquipmentSlot;
@@ -740,8 +774,11 @@ fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) 
                 if let Err(e) = game_state.hero.swap_equipment(slot, *equip_id) {
                     esp_println::println!("[EQUIPMENT] Failed to swap: {}", e);
                 }
+                // Close both swap menu and info modal
                 game_state.equipment_swap_menu_open = false;
                 game_state.equipment_swap_slot = None;
+                game_state.equipment_info_open = false;
+                game_state.equipment_info_slot = None;
                 game_state.needs_redraw = true;
                 return;
             }

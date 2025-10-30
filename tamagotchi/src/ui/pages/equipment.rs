@@ -41,17 +41,6 @@ where
         COLOR_TEXT,
     )?;
 
-    // Zeny display
-    let mut zeny_str = String::<32>::new();
-    write!(zeny_str, "Zeny: {}", hero.zeny).ok();
-    draw_text(
-        display,
-        &zeny_str,
-        Point::new(220, 50),
-        &FONT_9X15,
-        COLOR_EXP,
-    )?;
-
     // Equipment display (6 slots in 2x3 grid)
     // Left column (x=20) | Right column (x=200)
     let left_x = 20;
@@ -212,7 +201,14 @@ where
         }
     }
 
-    // Draw equipment swap menu if open
+    // Draw equipment info modal if open
+    if game_state.equipment_info_open {
+        if let Some(slot) = game_state.equipment_info_slot {
+            draw_equipment_info_modal(display, game_state, slot)?;
+        }
+    }
+
+    // Draw equipment swap menu if open (shown from within equipment info)
     if game_state.equipment_swap_menu_open {
         if let Some(slot) = game_state.equipment_swap_slot {
             draw_equipment_swap_menu(display, game_state, slot)?;
@@ -222,7 +218,7 @@ where
     Ok(())
 }
 
-/// Draw equipment slot with clickable card indicator
+/// Draw equipment slot (clickable - opens equipment info)
 fn draw_equipment_slot_clickable<D>(
     display: &mut D,
     equipment: &crate::hero::equipment::Equipment,
@@ -232,28 +228,8 @@ fn draw_equipment_slot_clickable<D>(
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    // Draw the normal equipment slot
+    // Draw the equipment slot (just slot name and equipment name)
     draw_equipment_slot(display, equipment, position, slot_name)?;
-
-    // Add a "Switch" button below the equipment name
-    draw_text(
-        display,
-        "[Switch]",
-        Point::new(position.x, position.y + 65),
-        &FONT_9X15,
-        Rgb888::new(100, 200, 100),
-    )?;
-
-    // Add a small "tap to manage cards" indicator if has card slots
-    if equipment.card_slots > 0 {
-        draw_text(
-            display,
-            "[Cards]",
-            Point::new(position.x + 90, position.y + 65),
-            &FONT_9X15,
-            Rgb888::new(150, 150, 200),
-        )?;
-    }
 
     Ok(())
 }

@@ -294,7 +294,7 @@ where
         COLOR_TEXT_DIM,
     )?;
 
-    // Equipment name with refine level
+    // Equipment name with refine level (simplified - only name)
     let mut name_str = String::<48>::new();
     if equipment.refine_level > 0 {
         write!(name_str, "{} [+{}]", equipment.name, equipment.refine_level).ok();
@@ -307,86 +307,6 @@ where
         Point::new(position.x, position.y + 20),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
-    )?;
-
-    // Stats display (compact, 2 lines)
-    let mut stats_str1 = String::<64>::new();
-    let mut stats_str2 = String::<64>::new();
-
-    // Build stat string based on equipment bonuses
-    if equipment.atk_bonus > 0 {
-        let total_atk = equipment.total_atk();
-        if equipment.refine_level > 0 {
-            write!(stats_str1, "ATK:{}({}+{}) ", total_atk, equipment.atk_bonus, equipment.get_refine_bonus()).ok();
-        } else {
-            write!(stats_str1, "ATK:{} ", total_atk).ok();
-        }
-    }
-    if equipment.def_bonus > 0 {
-        let total_def = equipment.total_def();
-        if equipment.refine_level > 0 {
-            write!(stats_str1, "DEF:{}({}+{}) ", total_def, equipment.def_bonus, equipment.get_refine_bonus()).ok();
-        } else {
-            write!(stats_str1, "DEF:{} ", total_def).ok();
-        }
-    }
-    if equipment.hp_bonus > 0 {
-        write!(stats_str1, "HP+{} ", equipment.hp_bonus).ok();
-    }
-    if equipment.sp_bonus > 0 {
-        write!(stats_str1, "SP+{} ", equipment.sp_bonus).ok();
-    }
-
-    // Secondary stats
-    if equipment.str_bonus != 0 {
-        write!(stats_str2, "STR{:+} ", equipment.str_bonus).ok();
-    }
-    if equipment.agi_bonus != 0 {
-        write!(stats_str2, "AGI{:+} ", equipment.agi_bonus).ok();
-    }
-    if equipment.vit_bonus != 0 {
-        write!(stats_str2, "VIT{:+} ", equipment.vit_bonus).ok();
-    }
-    if equipment.int_bonus != 0 {
-        write!(stats_str2, "INT{:+} ", equipment.int_bonus).ok();
-    }
-    if equipment.dex_bonus != 0 {
-        write!(stats_str2, "DEX{:+} ", equipment.dex_bonus).ok();
-    }
-    if equipment.luk_bonus != 0 {
-        write!(stats_str2, "LUK{:+} ", equipment.luk_bonus).ok();
-    }
-
-    // Display stats
-    if !stats_str1.is_empty() {
-        draw_text(
-            display,
-            &stats_str1,
-            Point::new(position.x + 5, position.y + 42),
-            &FONT_9X15,
-            COLOR_TEXT_DIM,
-        )?;
-    }
-    if !stats_str2.is_empty() {
-        draw_text(
-            display,
-            &stats_str2,
-            Point::new(position.x + 5, position.y + 58),
-            &FONT_9X15,
-            COLOR_TEXT_DIM,
-        )?;
-    }
-
-    // Draw card slots indicator
-    let mut card_str = String::<32>::new();
-    let cards_socketed = equipment.socketed_cards.iter().filter(|c| c.is_some()).count();
-    write!(card_str, "Cards: {}/{}", cards_socketed, equipment.card_slots).ok();
-    draw_text(
-        display,
-        &card_str,
-        Point::new(position.x + 5, position.y + 72),
-        &FONT_9X15,
-        if cards_socketed > 0 { Rgb888::new(100, 200, 100) } else { COLOR_TEXT_DIM },
     )?;
 
     Ok(())
@@ -924,3 +844,233 @@ where
     Ok(())
 }
 
+/// Draw the equipment info modal with full details
+pub fn draw_equipment_info_modal<D>(
+    display: &mut D,
+    game_state: &GameState,
+    slot: crate::tamagotchi::models::EquipmentSlot,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    use crate::tamagotchi::models::EquipmentSlot;
+
+    let hero = &game_state.hero;
+    let equipment = match slot {
+        EquipmentSlot::Weapon => &hero.equipped_weapon,
+        EquipmentSlot::Armor => &hero.equipped_armor,
+        EquipmentSlot::Shoes => &hero.equipped_shoes,
+        EquipmentSlot::Garment => &hero.equipped_garment,
+        EquipmentSlot::Accessory1 => &hero.equipped_accessory1,
+        EquipmentSlot::Accessory2 => &hero.equipped_accessory2,
+    };
+
+    // Fullscreen dark overlay
+    Rectangle::new(Point::new(0, 0), Size::new(368, 448))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(10, 10, 20)))
+        .draw(display)?;
+
+    // Fullscreen panel
+    let panel_x = 10;
+    let panel_y = 10;
+    let panel_width = 348;
+    let panel_height = 428;
+
+    Rectangle::new(
+        Point::new(panel_x, panel_y),
+        Size::new(panel_width, panel_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+    .draw(display)?;
+
+    Rectangle::new(
+        Point::new(panel_x, panel_y),
+        Size::new(panel_width, panel_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+    .draw(display)?;
+
+    // Equipment name with refine level
+    let mut name_str = String::<48>::new();
+    if equipment.refine_level > 0 {
+        write!(name_str, "{} [+{}]", equipment.name, equipment.refine_level).ok();
+    } else {
+        write!(name_str, "{}", equipment.name).ok();
+    }
+    draw_text(
+        display,
+        &name_str,
+        Point::new(20, 30),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+
+    let mut y = 60;
+
+    // Main stats
+    if equipment.atk_bonus > 0 {
+        let total_atk = equipment.total_atk();
+        let mut stat_str = String::<64>::new();
+        if equipment.refine_level > 0 {
+            write!(stat_str, "ATK: {} ({}+{})", total_atk, equipment.atk_bonus, equipment.get_refine_bonus()).ok();
+        } else {
+            write!(stat_str, "ATK: {}", total_atk).ok();
+        }
+        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT)?;
+        y += 20;
+    }
+
+    if equipment.def_bonus > 0 {
+        let total_def = equipment.total_def();
+        let mut stat_str = String::<64>::new();
+        if equipment.refine_level > 0 {
+            write!(stat_str, "DEF: {} ({}+{})", total_def, equipment.def_bonus, equipment.get_refine_bonus()).ok();
+        } else {
+            write!(stat_str, "DEF: {}", total_def).ok();
+        }
+        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT)?;
+        y += 20;
+    }
+
+    if equipment.hp_bonus > 0 {
+        let mut stat_str = String::<32>::new();
+        write!(stat_str, "HP: +{}", equipment.hp_bonus).ok();
+        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+        y += 18;
+    }
+
+    if equipment.sp_bonus > 0 {
+        let mut stat_str = String::<32>::new();
+        write!(stat_str, "SP: +{}", equipment.sp_bonus).ok();
+        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+        y += 18;
+    }
+
+    // Stat bonuses
+    y += 10;
+    draw_text(display, "Stats:", Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+    y += 20;
+
+    let stats = [
+        ("STR", equipment.str_bonus),
+        ("AGI", equipment.agi_bonus),
+        ("VIT", equipment.vit_bonus),
+        ("INT", equipment.int_bonus),
+        ("DEX", equipment.dex_bonus),
+        ("LUK", equipment.luk_bonus),
+    ];
+
+    for (stat_name, bonus) in &stats {
+        if *bonus != 0 {
+            let mut stat_str = String::<32>::new();
+            write!(stat_str, "{}: {:+}", stat_name, bonus).ok();
+            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            y += 18;
+        }
+    }
+
+    // Special bonuses
+    let has_special = equipment.crit_rate_bonus > 0
+        || equipment.aspd_bonus > 0
+        || equipment.flee_bonus > 0
+        || equipment.hit_bonus > 0
+        || equipment.damage_reduction > 0;
+
+    if has_special {
+        y += 5;
+        draw_text(display, "Special:", Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+        y += 20;
+
+        if equipment.crit_rate_bonus > 0 {
+            let mut stat_str = String::<32>::new();
+            write!(stat_str, "Crit Rate: +{}%", equipment.crit_rate_bonus).ok();
+            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            y += 18;
+        }
+
+        if equipment.aspd_bonus > 0 {
+            let mut stat_str = String::<32>::new();
+            write!(stat_str, "ASPD: +{}%", equipment.aspd_bonus).ok();
+            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            y += 18;
+        }
+
+        if equipment.flee_bonus > 0 {
+            let mut stat_str = String::<32>::new();
+            write!(stat_str, "Flee: +{}", equipment.flee_bonus).ok();
+            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            y += 18;
+        }
+
+        if equipment.hit_bonus > 0 {
+            let mut stat_str = String::<32>::new();
+            write!(stat_str, "Hit: +{}", equipment.hit_bonus).ok();
+            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            y += 18;
+        }
+
+        if equipment.damage_reduction > 0 {
+            let mut stat_str = String::<32>::new();
+            write!(stat_str, "DMG Reduction: {}%", equipment.damage_reduction).ok();
+            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            y += 18;
+        }
+    }
+
+    // Card slots
+    y += 10;
+    let cards_socketed = equipment.socketed_cards.iter().filter(|c| c.is_some()).count();
+    let mut card_str = String::<32>::new();
+    write!(card_str, "Cards: {}/{}", cards_socketed, equipment.card_slots).ok();
+    draw_text(
+        display,
+        &card_str,
+        Point::new(20, y),
+        &FONT_9X18_BOLD,
+        if cards_socketed > 0 { Rgb888::new(100, 200, 100) } else { COLOR_TEXT_DIM },
+    )?;
+
+    // Action buttons at bottom
+    let btn_y = 350;
+
+    // Switch button
+    Rectangle::new(Point::new(20, btn_y), Size::new(150, 35))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 120, 60)))
+        .draw(display)?;
+    draw_text(
+        display,
+        "Switch",
+        Point::new(60, btn_y + 22),
+        &FONT_9X18_BOLD,
+        Rgb888::WHITE,
+    )?;
+
+    // Cards button (if has card slots)
+    if equipment.card_slots > 0 {
+        Rectangle::new(Point::new(180, btn_y), Size::new(150, 35))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 80, 120)))
+            .draw(display)?;
+        draw_text(
+            display,
+            "Cards",
+            Point::new(225, btn_y + 22),
+            &FONT_9X18_BOLD,
+            Rgb888::WHITE,
+        )?;
+    }
+
+    // Close button
+    let close_btn_y = 395;
+    Rectangle::new(Point::new(110, close_btn_y), Size::new(148, 36))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
+        .draw(display)?;
+    draw_text(
+        display,
+        "Close",
+        Point::new(150, close_btn_y + 22),
+        &FONT_9X18_BOLD,
+        Rgb888::WHITE,
+    )?;
+
+    Ok(())
+}
