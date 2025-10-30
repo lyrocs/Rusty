@@ -181,13 +181,27 @@ impl GameState {
             // Win only if enemy HP is 0 (defeated before timeout)
             if enemy.hp == 0 {
                 self.battle_state = BattleState::Victory;
-                // Award rewards based on score with card EXP bonus
+                // Award rewards based on score with card EXP bonus and level penalty
                 let exp_mult = (self.battle_score as u32).max(1);
-                let base_exp = enemy.base_exp * exp_mult / 5;
+
+                // Apply level difference penalty (manual battles get full rewards, not 1/10)
+                let level_penalty = crate::combat::calculate_level_penalty(self.hero.level, enemy.level);
+
+                // Calculate EXP with score multiplier and level penalty
+                let base_exp = (enemy.base_exp as f32) * (exp_mult as f32) / 5.0 * level_penalty;
                 let card_bonuses = self.hero.get_total_card_bonuses();
-                let exp_with_bonus = base_exp * (100 + card_bonuses.exp_bonus as u32) / 100;
+                let exp_with_bonus = (base_exp * (100.0 + card_bonuses.exp_bonus as f32) / 100.0 + 0.5) as u32;
+
+                // Calculate Zeny with score multiplier (no level penalty for zeny)
+                let zeny_earned = enemy.zeny_reward * exp_mult / 5;
+
+                // Store rewards for display
+                self.last_battle_exp = exp_with_bonus;
+                self.last_battle_zeny = zeny_earned;
+
+                // Award rewards
                 self.hero.add_exp(exp_with_bonus);
-                self.hero.add_zeny(enemy.zeny_reward * exp_mult / 5);
+                self.hero.add_zeny(zeny_earned);
 
                 // Roll for item drops
                 let rng_value = (self.last_update_ms % 255) as u8;
@@ -206,8 +220,10 @@ impl GameState {
                 }
             } else {
                 self.battle_state = BattleState::Defeat;
-                // Clear drops on defeat
+                // Clear drops and rewards on defeat
                 self.last_drops.clear();
+                self.last_battle_exp = 0;
+                self.last_battle_zeny = 0;
             }
             // Record when battle ended to prevent accidental clicks
             self.battle_end_time = self.last_update_ms;
@@ -227,6 +243,8 @@ impl GameState {
         self.battle_last_touch_y = 0;
         self.battle_last_touch_time = 0;
         self.battle_end_time = 0;
+        self.last_battle_exp = 0;
+        self.last_battle_zeny = 0;
 
         // Reset animation to Idle
         self.monster_animation = MonsterAnimation::Idle;

@@ -113,6 +113,8 @@ pub struct GameState {
     pub screen_on: bool,    // Screen power state (controlled by PWR button)
     pub show_reset_confirm: bool, // Stats page: show reset confirmation modal
     pub last_drops: HeaplessVec<(u32, &'static str, u16), 4>, // Last items that dropped
+    pub last_battle_exp: u32, // EXP earned from last battle (for display)
+    pub last_battle_zeny: u32, // Zeny earned from last battle (for display)
     pub brightness: u8,     // Screen brightness (0-255)
     pub monster_animation: MonsterAnimation, // Current monster animation
     pub monster_animation_frame: usize, // Current frame in animation
@@ -224,6 +226,8 @@ impl Default for GameState {
             screen_on: true,    // Screen starts on
             show_reset_confirm: false, // Reset confirmation modal hidden by default
             last_drops: HeaplessVec::new(),
+            last_battle_exp: 0,
+            last_battle_zeny: 0,
             brightness: DEFAULT_BRIGHTNESS, // 80% brightness by default (204/255 = 0.8)
             monster_animation: MonsterAnimation::Idle,
             monster_animation_frame: 0,

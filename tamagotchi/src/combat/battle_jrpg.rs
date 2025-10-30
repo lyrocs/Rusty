@@ -427,27 +427,30 @@ impl GameState {
         self.needs_redraw = true;
     }
 
-    /// End JRPG battle and return to map
-    pub fn end_jrpg_battle(&mut self) {
-        // Sync hero HP/SP back to main hero
-        if let Some(hero_combatant) = &self.jrpg_hero_combatant {
-            self.hero.hp = hero_combatant.hp;
-            self.hero.sp = hero_combatant.sp;
-        }
-
-        // Award rewards on victory
+    /// Calculate and award JRPG battle rewards (called when victory state is set)
+    pub fn award_jrpg_battle_rewards(&mut self) {
         if self.jrpg_battle_state == JrpgBattleState::Victory {
             // Extract enemy data before borrowing self mutably
-            let (enemy_id, base_exp, zeny_earned) = if let Some(enemy) = &self.battle_enemy {
-                (enemy.id, enemy.base_exp, enemy.zeny_reward)
+            let (enemy_id, base_exp, zeny_earned, enemy_level) = if let Some(enemy) = &self.battle_enemy {
+                (enemy.id, enemy.base_exp, enemy.zeny_reward, enemy.level)
             } else {
-                (0, 0, 0)
+                (0, 0, 0, 1)
             };
 
             if enemy_id > 0 {
+                // Apply level difference penalty (manual battles get full rewards, not 1/10)
+                let level_penalty = crate::combat::calculate_level_penalty(self.hero.level, enemy_level);
+                let exp_with_penalty = (base_exp as f32 * level_penalty + 0.5) as u32;
+
                 // Apply card EXP bonus (percentage boost)
                 let card_bonuses = self.hero.get_total_card_bonuses();
-                let exp_with_bonus = base_exp * (100 + card_bonuses.exp_bonus as u32) / 100;
+                let exp_with_bonus = exp_with_penalty * (100 + card_bonuses.exp_bonus as u32) / 100;
+
+                // Store rewards for display
+                self.last_battle_exp = exp_with_bonus;
+                self.last_battle_zeny = zeny_earned;
+
+                // Award rewards
                 self.hero.add_exp(exp_with_bonus);
                 self.hero.add_zeny(zeny_earned);
 
@@ -488,9 +491,25 @@ impl GameState {
 
                 esp_println::println!(
                     "[JRPG] Victory! Gained {} EXP, {} Zeny, {} items",
-                    base_exp, zeny_earned, self.last_drops.len()
+                    exp_with_bonus, zeny_earned, self.last_drops.len()
                 );
             }
+        }
+    }
+
+    /// End JRPG battle and return to map
+    pub fn end_jrpg_battle(&mut self) {
+        // Sync hero HP/SP back to main hero
+        if let Some(hero_combatant) = &self.jrpg_hero_combatant {
+            self.hero.hp = hero_combatant.hp;
+            self.hero.sp = hero_combatant.sp;
+        }
+
+        // Clear rewards on defeat (rewards already awarded on victory)
+        if self.jrpg_battle_state == JrpgBattleState::Defeat {
+            self.last_battle_exp = 0;
+            self.last_battle_zeny = 0;
+            self.last_drops.clear();
         }
 
         // Clean up battle state

@@ -402,6 +402,10 @@ pub fn tamagotchi_update_system(
                         game_state.jrpg_battle_message_timer = 0; // Don't auto-hide
                         // Set battle_end_time to prevent immediate accidental close
                         game_state.battle_end_time = game_state.last_update_ms;
+
+                        // Award rewards immediately when victory is achieved
+                        game_state.award_jrpg_battle_rewards();
+
                         if game_state.screen_on {
                             game_state.needs_redraw = true;
                         }

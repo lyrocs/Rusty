@@ -934,10 +934,10 @@ fn handle_location_actions(
     }
 }
 
-/// Handle field action buttons (Auto Farm and JRPG Battle)
+/// Handle field action buttons (Auto Farm, Manual Battle, and JRPG Battle)
 fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32) {
-    // Check Auto Farm button (54, 295, 130x55)
-    if x >= 54 && x <= 184 && y >= 295 && y <= 350 {
+    // Check Auto Farm button (11, 295, 110x55)
+    if x >= 11 && x <= 121 && y >= 295 && y <= 350 {
         esp_println::println!("[MAP] Auto Farm selected");
         // Spawn enemy from current map
         let enemy_ids = MapHelper::enemies(map_id);
@@ -959,8 +959,42 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             }
         }
     }
-    // Check JRPG Battle button (194, 295, 130x55)
-    else if x >= 194 && x <= 324 && y >= 295 && y <= 350 {
+    // Check Manual Battle button (129, 295, 110x55)
+    else if x >= 129 && x <= 239 && y >= 295 && y <= 350 {
+        esp_println::println!("[MAP] Manual Battle selected");
+
+        // Check HP first
+        if game_state.hero.hp == 0 {
+            esp_println::println!("[MAP] No HP! Cannot battle");
+            game_state.save_status_msg = Some("No HP! Rest to recover");
+            game_state.save_status_timeout = game_state.last_update_ms + 2000;
+            game_state.needs_redraw = true;
+        } else if game_state.hero.sp < 10 {
+            esp_println::println!("[MAP] Not enough SP for battle");
+            game_state.save_status_msg = Some("Not enough SP! (need 10)");
+            game_state.save_status_timeout = game_state.last_update_ms + 2000;
+            game_state.needs_redraw = true;
+        } else {
+            // Spawn enemy from current map for manual battle
+            let enemy_ids = MapHelper::enemies(map_id);
+            if !enemy_ids.is_empty() {
+                // Pick random enemy from map
+                let rng_value = (x.wrapping_add(y)) as u8;
+                let enemy_index = (rng_value as usize) % enemy_ids.len();
+                let enemy_id = enemy_ids[enemy_index];
+
+                if let Some(enemy) = Enemy::from_id(enemy_id) {
+                    esp_println::println!(
+                        "[MAP] Starting manual battle with {} from map",
+                        enemy.name
+                    );
+                    game_state.start_battle(enemy);
+                }
+            }
+        }
+    }
+    // Check JRPG Battle button (247, 295, 110x55)
+    else if x >= 247 && x <= 357 && y >= 295 && y <= 350 {
         esp_println::println!("[MAP] JRPG Battle selected");
 
         // Check HP first

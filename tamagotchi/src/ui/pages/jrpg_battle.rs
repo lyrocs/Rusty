@@ -377,8 +377,38 @@ where
             Rgb888::new(255, 255, 100),
         )?;
 
+        // Rewards display
+        let rewards_y = panel_y + 60;
+        draw_text(
+            display,
+            "Rewards:",
+            Point::new(panel_x + 20, rewards_y),
+            &FONT_9X15,
+            Rgb888::new(100, 255, 100),
+        )?;
+
+        let mut exp_str = String::<32>::new();
+        write!(exp_str, "+{} EXP", game_state.last_battle_exp).ok();
+        draw_text(
+            display,
+            &exp_str,
+            Point::new(panel_x + 40, rewards_y + 25),
+            &FONT_9X15,
+            Rgb888::new(150, 255, 150),
+        )?;
+
+        let mut zeny_str = String::<32>::new();
+        write!(zeny_str, "+{} Zeny", game_state.last_battle_zeny).ok();
+        draw_text(
+            display,
+            &zeny_str,
+            Point::new(panel_x + 40, rewards_y + 50),
+            &FONT_9X15,
+            Rgb888::new(255, 255, 100),
+        )?;
+
         // Items dropped header
-        let items_y = panel_y + 60;
+        let items_y = panel_y + 140;
         draw_text(
             display,
             "Items Dropped:",

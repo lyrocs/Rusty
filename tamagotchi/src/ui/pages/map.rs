@@ -187,40 +187,78 @@ where
                     }
                 }
 
-                // Action buttons (on same line, using city NPC button design)
+                // Action buttons (3 buttons in a row)
                 let button_y = 295;
-                let button_width = 130;
+                let button_width = 110;
                 let button_height = 55;
-                let button_spacing = 10;
-                let farm_x = 54; // (368 - (130*2 + 10)) / 2 = 54
-                let battle_x = farm_x + button_width + button_spacing;
+                let button_spacing = 8;
+                // Calculate positions to center 3 buttons: (368 - (110*3 + 8*2)) / 2 = (368 - 346) / 2 = 11
+                let auto_x = 11;
+                let manual_x = auto_x + button_width + button_spacing;
+                let jrpg_x = manual_x + button_width + button_spacing;
 
                 // Auto Farm button (left)
-                Rectangle::new(Point::new(farm_x, button_y), Size::new(button_width as u32, button_height))
+                Rectangle::new(Point::new(auto_x, button_y), Size::new(button_width as u32, button_height))
                     .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
                     .draw(display)?;
-                Rectangle::new(Point::new(farm_x, button_y), Size::new(button_width as u32, button_height))
+                Rectangle::new(Point::new(auto_x, button_y), Size::new(button_width as u32, button_height))
                     .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
                     .draw(display)?;
                 draw_text(
                     display,
-                    "AUTO FARM",
-                    Point::new(farm_x + 20, button_y + 30),
+                    "AUTO",
+                    Point::new(auto_x + 30, button_y + 20),
+                    &FONT_9X15,
+                    COLOR_TEXT,
+                )?;
+                draw_text(
+                    display,
+                    "FARM",
+                    Point::new(auto_x + 30, button_y + 38),
                     &FONT_9X15,
                     COLOR_TEXT,
                 )?;
 
-                // Battle button (right)
-                Rectangle::new(Point::new(battle_x, button_y), Size::new(button_width as u32, button_height))
+                // Manual Battle button (middle)
+                Rectangle::new(Point::new(manual_x, button_y), Size::new(button_width as u32, button_height))
                     .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
                     .draw(display)?;
-                Rectangle::new(Point::new(battle_x, button_y), Size::new(button_width as u32, button_height))
+                Rectangle::new(Point::new(manual_x, button_y), Size::new(button_width as u32, button_height))
                     .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
                     .draw(display)?;
                 draw_text(
                     display,
+                    "MANUAL",
+                    Point::new(manual_x + 18, button_y + 20),
+                    &FONT_9X15,
+                    COLOR_TEXT,
+                )?;
+                draw_text(
+                    display,
                     "BATTLE",
-                    Point::new(battle_x + 30, button_y + 30),
+                    Point::new(manual_x + 18, button_y + 38),
+                    &FONT_9X15,
+                    COLOR_TEXT,
+                )?;
+
+                // JRPG Battle button (right)
+                Rectangle::new(Point::new(jrpg_x, button_y), Size::new(button_width as u32, button_height))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+                    .draw(display)?;
+                Rectangle::new(Point::new(jrpg_x, button_y), Size::new(button_width as u32, button_height))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+                    .draw(display)?;
+                draw_text(
+                    display,
+                    "JRPG",
+                    Point::new(jrpg_x + 30, button_y + 20),
+                    &FONT_9X15,
+                    COLOR_TEXT,
+                )?;
+                draw_text(
+                    display,
+                    "BATTLE",
+                    Point::new(jrpg_x + 18, button_y + 38),
                     &FONT_9X15,
                     COLOR_TEXT,
                 )?;

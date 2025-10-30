@@ -298,8 +298,9 @@ where
                     COLOR_EXP,
                 )?;
 
+                // Display actual rewards earned (with level penalty and score multiplier)
                 let mut exp_str = String::<32>::new();
-                write!(exp_str, "+{} EXP", enemy.base_exp).ok();
+                write!(exp_str, "+{} EXP", game_state.last_battle_exp).ok();
                 draw_text(
                     display,
                     &exp_str,
@@ -309,7 +310,7 @@ where
                 )?;
 
                 let mut zeny_str = String::<32>::new();
-                write!(zeny_str, "+{} Zeny", enemy.zeny_reward).ok();
+                write!(zeny_str, "+{} Zeny", game_state.last_battle_zeny).ok();
                 draw_text(
                     display,
                     &zeny_str,
