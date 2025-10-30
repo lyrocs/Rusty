@@ -7,43 +7,73 @@ use crate::combat::{Enemy, EfficiencyRating, FarmDuration};
 
 /// Calculate hero power for farming efficiency
 ///
-/// Power formula:
-/// - Base ATK from equipment (most important - determines kill speed)
-/// - STR (main stat for physical damage)
-/// - AGI (affects attack speed)
-/// - DEX (affects hit rate)
-/// - LUK (affects critical rate)
+/// Improved power formula that better reflects combat capability:
+/// - Hero level (baseline power - 5 points per level)
+/// - Equipment ATK (weighted 3x - determines damage output)
+/// - STR (main damage stat - 2 points per STR)
+/// - HP (survivability - 1 point per 20 HP)
+/// - AGI/DEX/LUK (minor contributions)
+///
+/// Example: Level 23 Swordman with 50 STR, Iron Blade (18 ATK), ~400 HP:
+/// - Level: 23 × 5 = 115
+/// - Equipment: 18 × 3 = 54
+/// - STR: 52 × 2 = 104 (50 base + 2 from weapon)
+/// - HP: 400 / 20 = 20
+/// - Other: ~7
+/// - Total: ~300 power
 pub fn calculate_hero_power(hero: &Hero) -> f32 {
-    // Calculate ATK from equipment
-    let equipment_atk = hero.equipped_weapon.total_atk() as f32;
+    // Level is the foundation of power (Level 23 = 115 power)
+    let level_power = (hero.level as f32) * 5.0;
 
-    // Base stats contribute to power
-    let str_contribution = hero.base_str as f32 * 2.0;  // STR is main stat for ATK
-    let agi_contribution = hero.base_agi as f32 * 0.5; // AGI affects speed
-    let dex_contribution = hero.base_dex as f32 * 0.5; // DEX affects accuracy
-    let luk_contribution = hero.base_luk as f32 * 0.3; // LUK affects crit
+    // Equipment ATK is critical (weighted 3x to reflect importance)
+    let equipment_atk = hero.equipped_weapon.total_atk() as f32 * 3.0;
+
+    // STR is main damage stat
+    let str_power = hero.base_str as f32 * 2.0;
+
+    // HP contributes to survivability
+    let hp_power = (hero.max_hp as f32) / 20.0;
+
+    // Other stats have minor contributions
+    let agi_power = hero.base_agi as f32 * 0.5;
+    let dex_power = hero.base_dex as f32 * 0.5;
+    let luk_power = hero.base_luk as f32 * 0.3;
 
     // Total power
-    equipment_atk + str_contribution + agi_contribution + dex_contribution + luk_contribution
+    level_power + equipment_atk + str_power + hp_power + agi_power + dex_power + luk_power
 }
 
 /// Calculate enemy power for farming efficiency
 ///
-/// Power formula:
-/// - Enemy HP (main factor - how long it takes to kill)
-/// - Enemy DEF (reduces effective damage)
-/// - Enemy ATK (threat level, minor factor)
+/// Improved power formula that better balances enemy stats:
+/// - Enemy level (baseline power - 5 points per level)
+/// - HP (scaled down by 4x to prevent overweighting)
+/// - ATK (threat level - 2 points per ATK)
+/// - DEF (damage mitigation - 1.5 points per DEF)
+///
+/// Example: Thief Bug Level 21 (354 HP, 84 ATK, 24 DEF):
+/// - Level: 21 × 5 = 105
+/// - HP: 354 / 4 = 88.5
+/// - ATK: 84 × 2 = 168
+/// - DEF: 24 × 1.5 = 36
+/// - Total: ~398 power
+///
+/// Power ratio vs Level 23 Swordman: 300/398 = 0.75 (Risky) ✓
 pub fn calculate_enemy_power(enemy: &Enemy) -> f32 {
-    let hp_factor = enemy.max_hp as f32;
+    // Level is the foundation of power (Level 21 = 105 power)
+    let level_power = (enemy.level as f32) * 5.0;
 
-    // Defense reduces effective damage (1 DEF = ~1% damage reduction, capped)
-    let def_factor = 1.0 + (enemy.defense as f32 * 0.01).min(0.5);
+    // HP scaled down to prevent overweighting (354 HP = 88.5 power)
+    let hp_power = (enemy.max_hp as f32) / 4.0;
 
-    // ATK represents threat (minor contribution to power rating)
-    let threat_factor = (enemy.attack as f32) * 0.1;
+    // ATK represents threat to hero (84 ATK = 168 power)
+    let atk_power = (enemy.attack as f32) * 2.0;
 
-    // Total power: HP is main component, scaled by defense and threat
-    (hp_factor * def_factor) + threat_factor
+    // DEF makes enemy harder to kill (24 DEF = 36 power)
+    let def_power = (enemy.defense as f32) * 1.5;
+
+    // Total power
+    level_power + hp_power + atk_power + def_power
 }
 
 /// Calculate efficiency rating for hero vs enemy
