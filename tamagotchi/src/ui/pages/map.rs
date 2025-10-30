@@ -154,11 +154,11 @@ where
                         let y = 140 + row as i32 * 100;
                         let center = Point::new(x, y);
 
-                        // Draw monster name in black with white background above GIF
+                        // Draw monster name in white with black background above GIF
                         let name_x = center.x - (enemy.name.len() as i32 * 9) / 2;
                         let name_y = center.y - 40;
 
-                        // Draw white background rectangle for name
+                        // Draw black background rectangle for name
                         // Note: text y position is at baseline, so background must start higher
                         let name_width = enemy.name.len() as i32 * 9;
                         let bg_padding = 3;
@@ -170,16 +170,16 @@ where
                                 (font_height + bg_padding * 2) as u32,
                             ),
                         )
-                        .into_styled(PrimitiveStyle::with_fill(Rgb888::WHITE))
+                        .into_styled(PrimitiveStyle::with_fill(Rgb888::BLACK))
                         .draw(display)?;
 
-                        // Draw black text on top
+                        // Draw white text on top
                         draw_text(
                             display,
                             enemy.name,
                             Point::new(name_x, name_y),
                             &FONT_9X18_BOLD,
-                            Rgb888::BLACK,
+                            Rgb888::WHITE,
                         )?;
 
                         // Draw monster idle GIF (0.gif)

@@ -169,11 +169,11 @@ where
                     COLOR_TEXT,
                 )?;
 
-                // Draw hero GIF animation (left side)
-                draw_hero_gif(display, game_state, Point::new(80, 280))?;
+                // Draw monster GIF animation (left side, closer to middle)
+                draw_monster_gif(display, game_state, Point::new(110, 280), enemy.name)?;
 
-                // Draw monster GIF animation (right side)
-                draw_monster_gif(display, game_state, Point::new(280, 280), enemy.name)?;
+                // Draw hero GIF animation (right side, closer to middle)
+                draw_hero_gif(display, game_state, Point::new(250, 280))?;
 
                 // Progress bar
                 draw_text(
