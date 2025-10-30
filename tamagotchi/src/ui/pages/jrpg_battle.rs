@@ -105,11 +105,11 @@ where
     )?;
 
     // === CENTER: Battle GIFs ===
-    // Draw enemy GIF (left side)
-    draw_monster_gif(display, game_state, Point::new(80, 150), enemy.name)?;
+    // Draw enemy GIF (left side, moved right a bit)
+    draw_monster_gif(display, game_state, Point::new(100, 150), enemy.name)?;
 
-    // Draw hero GIF (right side)
-    draw_hero_gif(display, game_state, Point::new(240, 150))?;
+    // Draw hero GIF (right side, moved down a bit)
+    draw_hero_gif(display, game_state, Point::new(240, 165))?;
 
     // === BOTTOM: Hero Info ===
     // Hero name and level

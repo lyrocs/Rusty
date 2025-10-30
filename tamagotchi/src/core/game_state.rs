@@ -84,6 +84,7 @@ pub struct GameState {
     pub last_fps_update_ms: u32, // Last time FPS was calculated
     pub needs_redraw: bool, // Flag to indicate screen needs redrawing
     pub screen_on: bool,    // Screen power state (controlled by PWR button)
+    pub show_reset_confirm: bool, // Stats page: show reset confirmation modal
     pub last_drops: HeaplessVec<(u32, &'static str, u16), 4>, // Last items that dropped
     pub brightness: u8,     // Screen brightness (0-255)
     pub monster_animation: MonsterAnimation, // Current monster animation
@@ -167,6 +168,7 @@ impl Default for GameState {
             last_fps_update_ms: 0,
             needs_redraw: true, // Start with needing a redraw
             screen_on: true,    // Screen starts on
+            show_reset_confirm: false, // Reset confirmation modal hidden by default
             last_drops: HeaplessVec::new(),
             brightness: DEFAULT_BRIGHTNESS, // 80% brightness by default (204/255 = 0.8)
             monster_animation: MonsterAnimation::Idle,

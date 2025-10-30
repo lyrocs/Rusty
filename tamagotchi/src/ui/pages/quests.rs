@@ -242,77 +242,79 @@ where
         }
     }
 
-    // Navigation buttons at bottom
-    // Up arrow button (left) - only show if not at start
-    if game_state.quest_page_scroll > 0 {
-        Rectangle::new(Point::new(10, 400), Size::new(70, 40))
-            .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-            .draw(display)?;
+    // Navigation buttons - full width, taller, positioned higher
+    let button_y = 365;
+    let button_height = 55;
+    let button_width = 110i32;
+    let button_spacing = 10i32;
 
-        Rectangle::new(Point::new(10, 400), Size::new(70, 40))
-            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-            .draw(display)?;
+    // Calculate button positions (as i32 for Point::new)
+    let up_x = 15i32;
+    let back_x = 15 + button_width + button_spacing;
+    let down_x = 15 + (button_width + button_spacing) * 2;
 
-        // Draw up arrow (^)
-        draw_text(
-            display,
-            "^",
-            Point::new(35, 422),
-            &FONT_10X20,
-            COLOR_TEXT,
-        )?;
-        draw_text(
-            display,
-            "UP",
-            Point::new(28, 434),
-            &FONT_9X15,
-            COLOR_TEXT_DIM,
-        )?;
-    }
+    // Up arrow button (left) - always show but disabled if at start
+    let up_color = if game_state.quest_page_scroll > 0 {
+        COLOR_PANEL
+    } else {
+        Rgb888::new(40, 40, 40) // Darker when disabled
+    };
 
-    // Back button (center)
-    Rectangle::new(Point::new(134, 400), Size::new(100, 40))
-        .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+    Rectangle::new(Point::new(up_x, button_y), Size::new(button_width as u32, button_height))
+        .into_styled(PrimitiveStyle::with_fill(up_color))
+        .draw(display)?;
+    Rectangle::new(Point::new(up_x, button_y), Size::new(button_width as u32, button_height))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
         .draw(display)?;
 
-    Rectangle::new(Point::new(134, 400), Size::new(100, 40))
+    // Draw up arrow (^)
+    draw_text(
+        display,
+        "^ UP",
+        Point::new(up_x + 25, button_y + 30),
+        &FONT_9X18_BOLD,
+        if game_state.quest_page_scroll > 0 { COLOR_TEXT } else { COLOR_TEXT_DIM },
+    )?;
+
+    // Back button (center)
+    Rectangle::new(Point::new(back_x, button_y), Size::new(button_width as u32, button_height))
+        .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+        .draw(display)?;
+    Rectangle::new(Point::new(back_x, button_y), Size::new(button_width as u32, button_height))
         .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
         .draw(display)?;
 
     draw_text(
         display,
         "BACK",
-        Point::new(153, 422),
+        Point::new(back_x + 25, button_y + 30),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;
 
-    // Down arrow button (right) - only show if more quests below
-    if !active_quests.is_empty() && (game_state.quest_page_scroll as usize + 4) < active_quests.len() {
-        Rectangle::new(Point::new(288, 400), Size::new(70, 40))
-            .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-            .draw(display)?;
+    // Down arrow button (right) - always show but disabled if at end
+    let can_scroll_down = !active_quests.is_empty() && (game_state.quest_page_scroll as usize + 4) < active_quests.len();
+    let down_color = if can_scroll_down {
+        COLOR_PANEL
+    } else {
+        Rgb888::new(40, 40, 40) // Darker when disabled
+    };
 
-        Rectangle::new(Point::new(288, 400), Size::new(70, 40))
-            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-            .draw(display)?;
+    Rectangle::new(Point::new(down_x, button_y), Size::new(button_width as u32, button_height))
+        .into_styled(PrimitiveStyle::with_fill(down_color))
+        .draw(display)?;
+    Rectangle::new(Point::new(down_x, button_y), Size::new(button_width as u32, button_height))
+        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+        .draw(display)?;
 
-        // Draw down arrow (v)
-        draw_text(
-            display,
-            "v",
-            Point::new(313, 422),
-            &FONT_10X20,
-            COLOR_TEXT,
-        )?;
-        draw_text(
-            display,
-            "DOWN",
-            Point::new(297, 434),
-            &FONT_9X15,
-            COLOR_TEXT_DIM,
-        )?;
-    }
+    // Draw down arrow (v)
+    draw_text(
+        display,
+        "v DOWN",
+        Point::new(down_x + 20, button_y + 30),
+        &FONT_9X18_BOLD,
+        if can_scroll_down { COLOR_TEXT } else { COLOR_TEXT_DIM },
+    )?;
 
     Ok(())
 }
@@ -525,8 +527,8 @@ where
         }
     }
 
-    // Buttons at bottom
-    let button_y = 400;
+    // Buttons at bottom - positioned higher
+    let button_y = 360;
 
     // Back button (left)
     Rectangle::new(Point::new(20, button_y), Size::new(150, 60))

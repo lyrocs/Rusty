@@ -52,36 +52,32 @@ where
     write!(title, "=== {} ===", MapHelper::name(map_id)).ok();
     draw_text(display, &title, Point::new(60, 20), &FONT_10X20, COLOR_TEXT)?;
 
-    // Draw directional navigation indicators (blue circles at borders)
+    // Draw directional navigation indicators (3 concentric blue circles like waves)
     let exits = MapHelper::exits(map_id);
     for exit in exits {
-        match exit.direction {
-            "North" => {
-                // Top circle
-                EgCircle::new(Point::new(164, 5), 30)
-                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
-                    .draw(display)?;
-            }
-            "South" => {
-                // Bottom circle
-                EgCircle::new(Point::new(164, 413), 30)
-                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
-                    .draw(display)?;
-            }
-            "West" => {
-                // Left circle
-                EgCircle::new(Point::new(10, 209), 30)
-                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
-                    .draw(display)?;
-            }
-            "East" => {
-                // Right circle
-                EgCircle::new(Point::new(328, 209), 30)
-                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
-                    .draw(display)?;
-            }
-            _ => {}
-        }
+        let center = match exit.direction {
+            "North" => Point::new(164, 20),
+            "South" => Point::new(164, 428),
+            "West" => Point::new(25, 224),
+            "East" => Point::new(343, 224),
+            _ => continue,
+        };
+
+        // Draw wave circles (outermost to innermost)
+        // Outermost circle - lightest blue
+        EgCircle::new(center - Point::new(15, 15), 30)
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(100, 150, 255), 2))
+            .draw(display)?;
+
+        // Middle circle - medium blue
+        EgCircle::new(center - Point::new(10, 10), 20)
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(50, 100, 255), 2))
+            .draw(display)?;
+
+        // Inner circle - darkest blue (filled)
+        EgCircle::new(center - Point::new(5, 5), 10)
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
+            .draw(display)?;
     }
 
     // Center area for info and actions
@@ -191,35 +187,42 @@ where
                     }
                 }
 
-                // Action buttons (centered, higher to leave space for bottom navigation)
-                // Auto Farm button
-                Rectangle::new(Point::new(84, 280), Size::new(200, 50))
-                    .into_styled(PrimitiveStyle::with_fill(Rgb888::new(50, 100, 50)))
+                // Action buttons (on same line, using city NPC button design)
+                let button_y = 295;
+                let button_width = 130;
+                let button_height = 55;
+                let button_spacing = 10;
+                let farm_x = 54; // (368 - (130*2 + 10)) / 2 = 54
+                let battle_x = farm_x + button_width + button_spacing;
+
+                // Auto Farm button (left)
+                Rectangle::new(Point::new(farm_x, button_y), Size::new(button_width as u32, button_height))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
                     .draw(display)?;
-                Rectangle::new(Point::new(84, 280), Size::new(200, 50))
-                    .into_styled(PrimitiveStyle::with_stroke(Rgb888::GREEN, 3))
+                Rectangle::new(Point::new(farm_x, button_y), Size::new(button_width as u32, button_height))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
                     .draw(display)?;
                 draw_text(
                     display,
                     "AUTO FARM",
-                    Point::new(115, 300),
-                    &FONT_9X18_BOLD,
-                    Rgb888::WHITE,
+                    Point::new(farm_x + 20, button_y + 30),
+                    &FONT_9X15,
+                    COLOR_TEXT,
                 )?;
 
-                // Battle button
-                Rectangle::new(Point::new(84, 335), Size::new(200, 50))
-                    .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
+                // Battle button (right)
+                Rectangle::new(Point::new(battle_x, button_y), Size::new(button_width as u32, button_height))
+                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
                     .draw(display)?;
-                Rectangle::new(Point::new(84, 335), Size::new(200, 50))
-                    .into_styled(PrimitiveStyle::with_stroke(Rgb888::RED, 3))
+                Rectangle::new(Point::new(battle_x, button_y), Size::new(button_width as u32, button_height))
+                    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
                     .draw(display)?;
                 draw_text(
                     display,
                     "BATTLE",
-                    Point::new(140, 355),
-                    &FONT_9X18_BOLD,
-                    Rgb888::WHITE,
+                    Point::new(battle_x + 30, button_y + 30),
+                    &FONT_9X15,
+                    COLOR_TEXT,
                 )?;
             }
         }

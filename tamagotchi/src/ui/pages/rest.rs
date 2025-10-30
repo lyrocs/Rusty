@@ -40,8 +40,8 @@ where
         COLOR_TEXT,
     )?;
 
-    // Hero resting GIF animation (16.gif)
-    draw_hero_gif(display, game_state, Point::new(120, 100))?;
+    // Hero resting GIF animation (16.gif) - centered and lowered
+    draw_hero_gif(display, game_state, Point::new(180, 120))?;
 
     // HP bar
     draw_text(

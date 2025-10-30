@@ -162,10 +162,17 @@ where
     }
 
     // Buttons at bottom (2 rows x 2 buttons)
+    // Uniform button color - no multicolor
+    let button_color = Rgb888::new(60, 80, 120);
+    let button_border = Rgb888::new(100, 120, 160);
+
     // Row 1: Rest, Stats
     // Rest button (top left)
     Rectangle::new(Point::new(14, 350), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 100)))
+        .into_styled(PrimitiveStyle::with_fill(button_color))
+        .draw(display)?;
+    Rectangle::new(Point::new(14, 350), Size::new(165, 45))
+        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
         .draw(display)?;
     draw_text(
         display,
@@ -177,7 +184,10 @@ where
 
     // Stats button (top right)
     Rectangle::new(Point::new(189, 350), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(150, 100, 150)))
+        .into_styled(PrimitiveStyle::with_fill(button_color))
+        .draw(display)?;
+    Rectangle::new(Point::new(189, 350), Size::new(165, 45))
+        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
         .draw(display)?;
     draw_text(
         display,
@@ -187,10 +197,13 @@ where
         Rgb888::WHITE,
     )?;
 
-    // Row 2: Equipment, Items
+    // Row 2: Equipment, Quests
     // Equipment button (bottom left)
     Rectangle::new(Point::new(14, 403), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(180, 140, 80)))
+        .into_styled(PrimitiveStyle::with_fill(button_color))
+        .draw(display)?;
+    Rectangle::new(Point::new(14, 403), Size::new(165, 45))
+        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
         .draw(display)?;
     draw_text(
         display,
@@ -202,7 +215,10 @@ where
 
     // Quests button (bottom right)
     Rectangle::new(Point::new(189, 403), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 100, 150)))
+        .into_styled(PrimitiveStyle::with_fill(button_color))
+        .draw(display)?;
+    Rectangle::new(Point::new(189, 403), Size::new(165, 45))
+        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
         .draw(display)?;
     draw_text(
         display,

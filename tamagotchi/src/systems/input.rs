@@ -589,8 +589,8 @@ fn handle_location_actions(
 
 /// Handle field action buttons (Auto Farm and JRPG Battle)
 fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32) {
-    // Check Auto Farm button (84, 280, 200x50)
-    if x >= 84 && x <= 284 && y >= 280 && y <= 330 {
+    // Check Auto Farm button (54, 295, 130x55)
+    if x >= 54 && x <= 184 && y >= 295 && y <= 350 {
         esp_println::println!("[MAP] Auto Farm selected");
         // Spawn enemy from current map
         let enemy_ids = MapHelper::enemies(map_id);
@@ -614,8 +614,8 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             game_state.needs_redraw = true;
         }
     }
-    // Check JRPG Battle button (84, 335, 200x50)
-    else if x >= 84 && x <= 284 && y >= 335 && y <= 385 {
+    // Check JRPG Battle button (194, 295, 130x55)
+    else if x >= 194 && x <= 324 && y >= 295 && y <= 350 {
         esp_println::println!("[MAP] JRPG Battle selected");
 
         // Check HP first
@@ -652,8 +652,45 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
 
 /// Handle Stats page touches
 fn handle_stats_touch(game_state: &mut GameState, x: u16, y: u16) {
+    // Handle reset confirmation modal if showing
+    if game_state.show_reset_confirm {
+        let modal_x = 40;
+        let modal_y = 150;
+
+        // Confirm button: modal_x+20 to modal_x+130, modal_y+120 to modal_y+160
+        if x >= (modal_x + 20) as u16
+            && x <= (modal_x + 130) as u16
+            && y >= (modal_y + 120) as u16
+            && y <= (modal_y + 160) as u16
+        {
+            // Confirm reset
+            game_state.hero.reset_stats();
+            game_state.show_reset_confirm = false;
+            game_state.needs_redraw = true;
+            esp_println::println!("[STATS] Stats reset confirmed");
+            return;
+        }
+
+        // Cancel button: modal_x+150 to modal_x+260, modal_y+120 to modal_y+160
+        if x >= (modal_x + 150) as u16
+            && x <= (modal_x + 260) as u16
+            && y >= (modal_y + 120) as u16
+            && y <= (modal_y + 160) as u16
+        {
+            // Cancel reset
+            game_state.show_reset_confirm = false;
+            game_state.needs_redraw = true;
+            esp_println::println!("[STATS] Stats reset cancelled");
+            return;
+        }
+
+        // Click outside modal to cancel
+        game_state.show_reset_confirm = false;
+        game_state.needs_redraw = true;
+        return;
+    }
+
     // 6 stat increase buttons (2 columns x 3 rows): x=20-170 (left), x=190-340 (right)
-    // Buttons are now 70px tall (2x original)
     // STR button (top left): x=20-170, y=110-180
     if x >= 20 && x <= 170 && y >= 110 && y <= 180 {
         if game_state.hero.increase_stat("STR") {
@@ -690,13 +727,14 @@ fn handle_stats_touch(game_state: &mut GameState, x: u16, y: u16) {
             game_state.needs_redraw = true;
         }
     }
-    // Reset button (bottom center): x=90-270, y=345-390
-    else if x >= 90 && x <= 270 && y >= 345 && y <= 390 {
-        game_state.hero.reset_stats();
+    // Reset button (left half of bottom): x=15-180, y=350-400
+    else if x >= 15 && x <= 180 && y >= 350 && y <= 400 {
+        game_state.show_reset_confirm = true;
         game_state.needs_redraw = true;
+        esp_println::println!("[STATS] Reset confirmation requested");
     }
-    // Back button (bottom): x=100-260, y=400-440
-    else if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
+    // Back button (right half of bottom): x=195-360, y=350-400
+    else if x >= 195 && x <= 360 && y >= 350 && y <= 400 {
         game_state.current_page = GamePage::Overview;
         game_state.needs_redraw = true;
     }
@@ -708,16 +746,16 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
     if game_state.selected_quest_id.is_some() {
         // Details view - handle Back and Claim buttons
 
-        // Back button: x=20-170, y=400-460
-        if x >= 20 && x <= 170 && y >= 400 && y <= 460 {
+        // Back button: x=20-170, y=360-420
+        if x >= 20 && x <= 170 && y >= 360 && y <= 420 {
             game_state.selected_quest_id = None;
             game_state.needs_redraw = true;
             esp_println::println!("[QUEST] Back to quest list");
             return;
         }
 
-        // Claim button: x=190-340, y=400-460
-        if x >= 190 && x <= 340 && y >= 400 && y <= 460 {
+        // Claim button: x=190-340, y=360-420
+        if x >= 190 && x <= 340 && y >= 360 && y <= 420 {
             if let Some(quest_id) = game_state.selected_quest_id {
                 // Check if quest is completed and not claimed
                 if let Some(active_quest) = game_state.active_quests.iter().find(|q| q.quest_id == quest_id) {
@@ -734,8 +772,8 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
     } else {
         // List view - handle scrolling, back button, and quest card clicks
 
-        // UP arrow button: x=10-80, y=400-440
-        if x >= 10 && x <= 80 && y >= 400 && y <= 440 {
+        // UP arrow button: x=15-125, y=365-420
+        if x >= 15 && x <= 125 && y >= 365 && y <= 420 {
             if game_state.quest_page_scroll > 0 {
                 game_state.quest_page_scroll -= 1;
                 game_state.needs_redraw = true;
@@ -744,15 +782,15 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
             return;
         }
 
-        // Back button (center): x=134-234, y=400-440
-        if x >= 134 && x <= 234 && y >= 400 && y <= 440 {
+        // Back button (center): x=135-245, y=365-420
+        if x >= 135 && x <= 245 && y >= 365 && y <= 420 {
             game_state.current_page = GamePage::Overview;
             game_state.needs_redraw = true;
             return;
         }
 
-        // DOWN arrow button: x=288-358, y=400-440
-        if x >= 288 && x <= 358 && y >= 400 && y <= 440 {
+        // DOWN arrow button: x=255-365, y=365-420
+        if x >= 255 && x <= 365 && y >= 365 && y <= 420 {
             // Count total unclaimed quests
             let total_quests = game_state
                 .active_quests
