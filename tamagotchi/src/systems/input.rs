@@ -359,11 +359,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             handle_stats_touch(game_state, x, y);
         }
         GamePage::Equipment => {
-            // Back button: x=100-260, y=400-440
-            if x >= 100 && x <= 260 && y >= 400 && y <= 440 {
-                game_state.current_page = GamePage::Overview;
-                game_state.needs_redraw = true;
-            }
+            handle_equipment_touch(game_state, x, y);
         }
         GamePage::Quests => {
             handle_quests_touch(game_state, x, y);
@@ -373,6 +369,9 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         }
         GamePage::JrpgBattle => {
             handle_jrpg_battle_touch(game_state, x, y);
+        }
+        GamePage::Crafting => {
+            handle_crafting_touch(game_state, x, y);
         }
     }
 }
@@ -437,21 +436,24 @@ fn handle_map_touch(game_state: &mut GameState, x: u16, y: u16) {
 
 /// Handle equipment selection menu touches
 fn handle_equipment_selection_touch(game_state: &mut GameState, x: u16, y: u16) {
-    // Equipment slot buttons: x=50, width=268, height=50
-    // Button 1 (Weapon): y=130
-    // Button 2 (Armor): y=190
-    // Button 3 (Accessory): y=250
-    // Cancel button: x=120, y=310, width=128, height=40
+    // Fullscreen equipment selection menu
+    // Equipment slots: x=20, width=328, height=50, starting at y=55 with 55px spacing
+    // Cancel button: x=110, y=390, width=148, height=36
 
+    let start_y = 55;
+    let item_height = 55;
     let slots = [
-        (130, EquipmentSlot::Weapon, "Weapon"),
-        (190, EquipmentSlot::Armor, "Armor"),
-        (250, EquipmentSlot::Accessory, "Accessory"),
+        (start_y, EquipmentSlot::Weapon, "Weapon"),
+        (start_y + item_height, EquipmentSlot::Armor, "Armor"),
+        (start_y + item_height * 2, EquipmentSlot::Shoes, "Shoes"),
+        (start_y + item_height * 3, EquipmentSlot::Garment, "Garment"),
+        (start_y + item_height * 4, EquipmentSlot::Accessory1, "Accessory 1"),
+        (start_y + item_height * 5, EquipmentSlot::Accessory2, "Accessory 2"),
     ];
 
     // Check equipment slot buttons
     for (btn_y, slot, slot_name) in slots.iter() {
-        if x >= 50 && x <= 318 && y >= *btn_y as u16 && y <= (*btn_y + 50) as u16 {
+        if x >= 20 && x <= 348 && y >= *btn_y as u16 && y <= (*btn_y + 50) as u16 {
             // Check if equipment exists in this slot
             if game_state.hero.get_equipment(*slot).is_some() {
                 esp_println::println!("[REFINERY] Selected {} for refinement", slot_name);
@@ -470,11 +472,304 @@ fn handle_equipment_selection_touch(game_state: &mut GameState, x: u16, y: u16) 
     }
 
     // Check Cancel button
-    if x >= 120 && x <= 248 && y >= 310 && y <= 350 {
+    if x >= 110 && x <= 258 && y >= 390 && y <= 426 {
         esp_println::println!("[REFINERY] Cancel equipment selection");
         game_state.equipment_selection_open = false;
         game_state.needs_redraw = true;
         return;
+    }
+}
+
+/// Handle equipment page touches
+fn handle_equipment_touch(game_state: &mut GameState, x: u16, y: u16) {
+    // Check if equipment swap menu is open first
+    if game_state.equipment_swap_menu_open {
+        handle_equipment_swap_menu_touch(game_state, x, y);
+        return;
+    }
+
+    // Check if card socket menu is open
+    if game_state.card_socket_menu_open {
+        handle_card_socket_menu_touch(game_state, x, y);
+        return;
+    }
+
+    // Check if preset menu is open
+    if game_state.preset_menu_open {
+        handle_preset_menu_touch(game_state, x, y);
+        return;
+    }
+
+    // Equipment slots - 2x3 grid
+    // Left column x=20-170, Right column x=200-350
+    // Row 1 y=70-160, Row 2 y=165-255, Row 3 y=260-350
+    let left_x = 20;
+    let right_x = 200;
+    let start_y = 70;
+    let row_spacing = 95;
+
+    // Check equipment slot clicks
+    let slots = [
+        (left_x, start_y, EquipmentSlot::Weapon),
+        (right_x, start_y, EquipmentSlot::Armor),
+        (left_x, start_y + row_spacing, EquipmentSlot::Shoes),
+        (right_x, start_y + row_spacing, EquipmentSlot::Garment),
+        (left_x, start_y + (row_spacing * 2), EquipmentSlot::Accessory1),
+        (right_x, start_y + (row_spacing * 2), EquipmentSlot::Accessory2),
+    ];
+
+    for (slot_x, slot_y, slot) in slots.iter() {
+        // Check if [Switch] button was clicked (bottom left of equipment slot)
+        if x >= *slot_x && x <= (*slot_x + 70) && y >= (*slot_y + 65) && y <= (*slot_y + 80) {
+            esp_println::println!("[EQUIPMENT] Switch button clicked for slot");
+            game_state.equipment_swap_slot = Some(*slot);
+            game_state.equipment_swap_menu_open = true;
+            game_state.equipment_swap_scroll = 0;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Check if [Cards] button was clicked (bottom right of equipment slot, if has card slots)
+        if x >= (*slot_x + 90) && x <= (*slot_x + 150) && y >= (*slot_y + 65) && y <= (*slot_y + 80) {
+            let equipment = game_state.hero.get_equipment(*slot);
+            if equipment.is_some() && equipment.unwrap().card_slots > 0 {
+                esp_println::println!("[EQUIPMENT] Cards button clicked - opening card menu");
+                game_state.card_socket_slot = Some(*slot);
+                game_state.card_socket_menu_open = true;
+                game_state.needs_redraw = true;
+                return;
+            }
+        }
+    }
+
+    // Preset buttons: y=370-400, 3 buttons from x=20
+    let preset_y = 370;
+    for i in 0..3 {
+        let btn_x = 20 + (i * 110);
+        if x >= btn_x && x <= (btn_x + 100) && y >= preset_y && y <= (preset_y + 30) {
+            esp_println::println!("[EQUIPMENT] Preset {} button clicked", i + 1);
+            game_state.preset_selected_index = Some(i as u8);
+            game_state.preset_menu_open = true;
+            game_state.needs_redraw = true;
+            return;
+        }
+    }
+
+    // Back button: x=100-260, y=410-440
+    if x >= 100 && x <= 260 && y >= 410 && y <= 440 {
+        game_state.current_page = GamePage::Overview;
+        game_state.needs_redraw = true;
+    }
+}
+
+/// Handle card socket menu touches
+fn handle_card_socket_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::hero::equipment::EquipmentSlot;
+
+    if let Some(equipment_slot) = game_state.card_socket_slot {
+        // Get equipment
+        let equipment = match equipment_slot {
+            EquipmentSlot::Weapon => &game_state.hero.equipped_weapon,
+            EquipmentSlot::Armor => &game_state.hero.equipped_armor,
+            EquipmentSlot::Shoes => &game_state.hero.equipped_shoes,
+            EquipmentSlot::Garment => &game_state.hero.equipped_garment,
+            EquipmentSlot::Accessory1 => &game_state.hero.equipped_accessory1,
+            EquipmentSlot::Accessory2 => &game_state.hero.equipped_accessory2,
+        };
+
+        let slot_start_y = 150;
+
+        // Check card slot actions (Remove/Socket buttons)
+        for i in 0..(equipment.card_slots as usize) {
+            let slot_y = slot_start_y + (i as i32 * 50);
+
+            // Remove button: x=250-320, y=slot_y to slot_y+45
+            if x >= 250 && x <= 320 && y >= slot_y as u16 && y <= (slot_y + 45) as u16 {
+                if equipment.socketed_cards[i].is_some() {
+                    // Remove card
+                    match game_state.hero.remove_card(equipment_slot, i) {
+                        Ok(card_id) => {
+                            esp_println::println!("[CARD] Removed card {} from slot {}", card_id, i);
+                            // TODO: Add card back to inventory
+                            game_state.needs_redraw = true;
+                        }
+                        Err(e) => {
+                            esp_println::println!("[CARD] Failed to remove card: {}", e);
+                        }
+                    }
+                } else {
+                    // Socket card (placeholder - need card selection)
+                    esp_println::println!("[CARD] Socket button clicked - need card selection UI");
+                    // TODO: Show card selection from inventory
+                }
+                return;
+            }
+        }
+
+        // Add slot button (if showing)
+        if equipment.card_slots < equipment.max_card_slots {
+            let add_slot_y = slot_start_y + (equipment.card_slots as i32 * 50);
+            if x >= 35 && x <= 333 && y >= add_slot_y as u16 && y <= (add_slot_y + 40) as u16 {
+                esp_println::println!("[CARD] Add slot button clicked");
+                // TODO: Implement add slot logic (check essences in inventory)
+                // For now, just show message
+                esp_println::println!("[CARD] Add slot not yet implemented - need essence check");
+                return;
+            }
+        }
+
+        // Close button: x=124-244, y=385-415
+        if x >= 124 && x <= 244 && y >= 385 && y <= 415 {
+            game_state.card_socket_menu_open = false;
+            game_state.card_socket_slot = None;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Click outside to close
+        if x < 20 || x > 348 || y < 80 || y > 420 {
+            game_state.card_socket_menu_open = false;
+            game_state.card_socket_slot = None;
+            game_state.needs_redraw = true;
+        }
+    }
+}
+
+/// Handle preset menu touches
+fn handle_preset_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
+    if let Some(preset_index) = game_state.preset_selected_index {
+        let has_preset = game_state.hero.equipment_presets[preset_index as usize].is_some();
+
+        // Save button: x=75-293, y=200-240
+        if x >= 75 && x <= 293 && y >= 200 && y <= 240 {
+            match game_state.hero.save_equipment_preset(preset_index) {
+                Ok(_) => {
+                    esp_println::println!("[PRESET] Successfully saved preset {}", preset_index + 1);
+                }
+                Err(e) => {
+                    esp_println::println!("[PRESET] Failed to save: {}", e);
+                }
+            }
+            game_state.preset_menu_open = false;
+            game_state.preset_selected_index = None;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Load button: x=75-293, y=250-290 (only if preset exists)
+        if has_preset && x >= 75 && x <= 293 && y >= 250 && y <= 290 {
+            match game_state.hero.load_equipment_preset(preset_index) {
+                Ok(_) => {
+                    esp_println::println!("[PRESET] Successfully loaded preset {}", preset_index + 1);
+                }
+                Err(e) => {
+                    esp_println::println!("[PRESET] Failed to load: {}", e);
+                }
+            }
+            game_state.preset_menu_open = false;
+            game_state.preset_selected_index = None;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Clear button: x=75-293, y=300-340 (only if preset exists)
+        if has_preset && x >= 75 && x <= 293 && y >= 300 && y <= 340 {
+            match game_state.hero.clear_equipment_preset(preset_index) {
+                Ok(_) => {
+                    esp_println::println!("[PRESET] Successfully cleared preset {}", preset_index + 1);
+                }
+                Err(e) => {
+                    esp_println::println!("[PRESET] Failed to clear: {}", e);
+                }
+            }
+            game_state.preset_menu_open = false;
+            game_state.preset_selected_index = None;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Click outside menu to close
+        if x < 50 || x > 318 || y < 150 || y > 350 {
+            game_state.preset_menu_open = false;
+            game_state.preset_selected_index = None;
+            game_state.needs_redraw = true;
+        }
+    }
+}
+
+/// Handle equipment swap menu touches
+fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::hero::equipment::EquipmentSlot;
+
+    if let Some(slot) = game_state.equipment_swap_slot {
+        // Get equipment items from inventory that match this slot
+        let slot_str = match slot {
+            EquipmentSlot::Weapon => "Weapon",
+            EquipmentSlot::Armor => "Armor",
+            EquipmentSlot::Shoes => "Shoes",
+            EquipmentSlot::Garment => "Garment",
+            EquipmentSlot::Accessory1 | EquipmentSlot::Accessory2 => "Accessory",
+        };
+
+        // Collect equipment items from inventory
+        let mut equipment_items: heapless::Vec<u16, 16> = heapless::Vec::new();
+        for item in game_state.hero.inventory.iter() {
+            if item.id >= 1000 && item.id < 6000 {
+                if let Some(equip_data) = crate::data::get_equipment_data_by_id(item.id as u16) {
+                    if equip_data.slot == slot_str {
+                        equipment_items.push(item.id as u16).ok();
+                    }
+                }
+            }
+        }
+
+        // Check equipment item clicks (y=60 + i*60, height=55)
+        let start_y = 60;
+        let item_height = 60;
+        let scroll_offset = game_state.equipment_swap_scroll as usize;
+
+        for (i, equip_id) in equipment_items.iter()
+            .skip(scroll_offset)
+            .take(5)
+            .enumerate()
+        {
+            let btn_y = start_y + i as i32 * item_height;
+            if x >= 20 && x <= 348 && y >= btn_y as u16 && y <= (btn_y + 55) as u16 {
+                esp_println::println!("[EQUIPMENT] Selected equipment ID {} to swap", equip_id);
+                // Swap equipment
+                if let Err(e) = game_state.hero.swap_equipment(slot, *equip_id) {
+                    esp_println::println!("[EQUIPMENT] Failed to swap: {}", e);
+                }
+                game_state.equipment_swap_menu_open = false;
+                game_state.equipment_swap_slot = None;
+                game_state.needs_redraw = true;
+                return;
+            }
+        }
+
+        // Cancel button: x=110-258, y=380-416
+        if x >= 110 && x <= 258 && y >= 380 && y <= 416 {
+            esp_println::println!("[EQUIPMENT] Swap menu cancelled");
+            game_state.equipment_swap_menu_open = false;
+            game_state.equipment_swap_slot = None;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Scroll indicators (if applicable)
+        // Scroll up: y < 55
+        if y < 55 && game_state.equipment_swap_scroll > 0 {
+            game_state.equipment_swap_scroll -= 1;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Scroll down: y > 365
+        if y > 365 && equipment_items.len() > (scroll_offset + 5) {
+            game_state.equipment_swap_scroll += 1;
+            game_state.needs_redraw = true;
+            return;
+        }
     }
 }
 
@@ -576,7 +871,16 @@ fn handle_location_actions(
                             game_state.equipment_selection_open = true;
                             game_state.needs_redraw = true;
                         }
-                        // TODO: Implement other NPC interactions
+                        // Handle Blacksmith NPC
+                        else if *npc == "Blacksmith" {
+                            // Open crafting page
+                            game_state.current_page = GamePage::Crafting;
+                            game_state.crafting_scroll = 0;
+                            game_state.crafting_filter = "All";
+                            game_state.needs_redraw = true;
+                            esp_println::println!("[MAP] Opening Blacksmith crafting");
+                        }
+                        // TODO: Implement other NPC interactions (Quest Giver, etc.)
                     }
                 }
             }
@@ -972,4 +1276,142 @@ fn handle_jrpg_action_buttons_touch(game_state: &mut GameState, x: u16, y: u16) 
         }
         game_state.needs_redraw = true;
     }
+}
+
+/// Handle touch input on Crafting page
+fn handle_crafting_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::hero::inventory::InventoryExt;
+
+    // Clear craft result message on any touch (if timeout expired)
+    if game_state.craft_result_timer > 0 {
+        if game_state.last_update_ms >= game_state.craft_result_timer {
+            game_state.craft_result_message = None;
+            game_state.craft_result_timer = 0;
+        }
+        // If message is still showing, any touch clears it
+        game_state.craft_result_message = None;
+        game_state.craft_result_timer = 0;
+        game_state.needs_redraw = true;
+        return;
+    }
+
+    // Back button: x=100-260, y=410-440
+    if x >= 100 && x <= 260 && y >= 410 && y <= 440 {
+        game_state.current_page = GamePage::Map;
+        game_state.needs_redraw = true;
+        return;
+    }
+
+    // Filter buttons: y=70-98
+    if y >= 70 && y <= 98 {
+        let filters = ["All", "Weapon", "Armor", "Shoes", "Garment", "Accessory"];
+        let btn_width = 58;
+        let start_x = 5;
+
+        for (i, filter) in filters.iter().enumerate() {
+            let btn_x = start_x + (i as i32 * (btn_width + 3));
+            if x >= btn_x as u16 && x <= (btn_x + btn_width) as u16 {
+                game_state.crafting_filter = filter;
+                game_state.crafting_scroll = 0; // Reset scroll when changing filter
+                game_state.needs_redraw = true;
+                return;
+            }
+        }
+    }
+
+    // Scroll up (if showing "^ More"): y=100-120
+    if y >= 100 && y <= 120 && game_state.crafting_scroll > 0 {
+        game_state.crafting_scroll = game_state.crafting_scroll.saturating_sub(1);
+        game_state.needs_redraw = true;
+        return;
+    }
+
+    // Get craftable equipment for current city
+    let current_map = crate::data::get_map_data(game_state.current_location);
+    let city_name = if let Some(map) = current_map {
+        if crate::data::is_city(map.id) {
+            map.name
+        } else {
+            "Prontera"
+        }
+    } else {
+        "Prontera"
+    };
+
+    let craftable_items_all = crate::data::get_craftable_equipment_for_city(city_name);
+    let craftable_items: heapless::Vec<&crate::data::EquipmentData, 16> =
+        if game_state.crafting_filter == "All" {
+            craftable_items_all
+        } else {
+            let mut filtered = heapless::Vec::new();
+            for item in craftable_items_all.iter() {
+                if item.slot == game_state.crafting_filter {
+                    filtered.push(*item).ok();
+                }
+            }
+            filtered
+        };
+
+    // Scroll down (if showing "v More"): y=390-410
+    let max_visible = 4;
+    if y >= 390
+        && y <= 410
+        && craftable_items.len() > (game_state.crafting_scroll as usize + max_visible)
+    {
+        game_state.crafting_scroll = game_state.crafting_scroll.saturating_add(1);
+        game_state.needs_redraw = true;
+        return;
+    }
+
+    // Recipe list: y=120-400
+    if y >= 120 && y <= 400 {
+        let start_y = 120;
+        let item_height = 70;
+
+        for (i, equip_data) in craftable_items
+            .iter()
+            .skip(game_state.crafting_scroll as usize)
+            .take(max_visible)
+            .enumerate()
+        {
+            let item_y = start_y + (i as i32 * item_height);
+            if y >= item_y as u16 && y <= (item_y + 65) as u16 {
+                // Check if this item can be crafted
+                let hero = &game_state.hero;
+                let can_craft = hero.level >= equip_data.level_req
+                    && hero.zeny >= equip_data.craft_cost
+                    && equip_data
+                        .craft_materials
+                        .as_ref()
+                        .map(|materials| {
+                            materials
+                                .iter()
+                                .all(|(mat_id, qty)| hero.inventory.has_item(*mat_id, *qty))
+                        })
+                        .unwrap_or(false);
+
+                if can_craft {
+                    // Craft the item
+                    match game_state.hero.craft_equipment(equip_data.id) {
+                        Ok(equipment) => {
+                            // Successfully crafted - add to inventory
+                            game_state.hero.add_item(equipment.id as u32, equipment.name, 1);
+                            game_state.craft_result_message = Some("Crafted successfully!");
+                            game_state.craft_result_timer = game_state.last_update_ms + 2000;
+                            esp_println::println!("[CRAFT] Crafted {}", equipment.name);
+                        }
+                        Err(err) => {
+                            game_state.craft_result_message = Some(err);
+                            game_state.craft_result_timer = game_state.last_update_ms + 2000;
+                            esp_println::println!("[CRAFT] Failed: {}", err);
+                        }
+                    }
+                    game_state.needs_redraw = true;
+                    return;
+                }
+            }
+        }
+    }
+
+    game_state.needs_redraw = true;
 }

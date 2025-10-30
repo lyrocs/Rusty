@@ -181,9 +181,12 @@ impl GameState {
             // Win only if enemy HP is 0 (defeated before timeout)
             if enemy.hp == 0 {
                 self.battle_state = BattleState::Victory;
-                // Award rewards based on score
+                // Award rewards based on score with card EXP bonus
                 let exp_mult = (self.battle_score as u32).max(1);
-                self.hero.add_exp(enemy.base_exp * exp_mult / 5);
+                let base_exp = enemy.base_exp * exp_mult / 5;
+                let card_bonuses = self.hero.get_total_card_bonuses();
+                let exp_with_bonus = base_exp * (100 + card_bonuses.exp_bonus as u32) / 100;
+                self.hero.add_exp(exp_with_bonus);
                 self.hero.add_zeny(enemy.zeny_reward * exp_mult / 5);
 
                 // Roll for item drops

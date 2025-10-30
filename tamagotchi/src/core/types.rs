@@ -18,4 +18,5 @@ pub enum GamePage {
     Settings,   // Settings page (brightness, etc.)
     Stats,      // Character stats allocation page
     Equipment,  // Equipment management page
+    Crafting,   // Blacksmith crafting page
 }

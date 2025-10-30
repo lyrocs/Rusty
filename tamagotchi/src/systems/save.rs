@@ -32,25 +32,33 @@ pub fn tamagotchi_save_system(
         let inventory_data = game_state.hero.inventory_to_save_string();
         let inventory_result = save_inventory_to_sd(&mut sd_card_res, inventory_data.as_str());
 
+        // Try to write equipment data to SD card
+        let equipment_data = game_state.hero.equipment_to_save_string();
+        let equipment_result = save_equipment_to_sd(&mut sd_card_res, equipment_data.as_str());
+
         // Try to write quest data to SD card
         let quest_data = game_state.quests_to_save_string();
         let quest_result = save_quests_to_sd(&mut sd_card_res, quest_data.as_str());
 
         // Check results
-        match (hero_result, inventory_result, quest_result) {
-            (Ok(_), Ok(_), Ok(_)) => {
-                esp_println::println!("[SAVE] Successfully saved hero, inventory, and quests to SD card");
+        match (hero_result, inventory_result, equipment_result, quest_result) {
+            (Ok(_), Ok(_), Ok(_), Ok(_)) => {
+                esp_println::println!("[SAVE] Successfully saved hero, inventory, equipment, and quests to SD card");
                 game_state.save_status_msg = Some("Saved to SD!");
             }
-            (Ok(_), Ok(_), Err(e)) => {
-                esp_println::println!("[SAVE] Hero and inventory saved but quests failed: {:?}", e);
+            (Ok(_), Ok(_), Ok(_), Err(e)) => {
+                esp_println::println!("[SAVE] Hero, inventory, and equipment saved but quests failed: {:?}", e);
                 game_state.save_status_msg = Some("Save partial!");
             }
-            (Ok(_), Err(e), _) => {
-                esp_println::println!("[SAVE] Hero saved but inventory/quests failed: {:?}", e);
+            (Ok(_), Ok(_), Err(e), _) => {
+                esp_println::println!("[SAVE] Hero and inventory saved but equipment/quests failed: {:?}", e);
                 game_state.save_status_msg = Some("Save partial!");
             }
-            (Err(e), _, _) => {
+            (Ok(_), Err(e), _, _) => {
+                esp_println::println!("[SAVE] Hero saved but inventory/equipment/quests failed: {:?}", e);
+                game_state.save_status_msg = Some("Save partial!");
+            }
+            (Err(e), _, _, _) => {
                 esp_println::println!("[SAVE] Error saving hero to SD: {:?}", e);
                 game_state.save_status_msg = Some("Save failed!");
             }
@@ -111,6 +119,28 @@ fn save_inventory_to_sd(
 
     // Write inventory data
     file.write(inventory_data.as_bytes())?;
+
+    Ok(())
+}
+
+/// Helper function to save equipment data to SD card
+fn save_equipment_to_sd(
+    sd_card_res: &mut SdCardResource,
+    equipment_data: &str,
+) -> Result<(), embedded_sdmmc::Error<embedded_sdmmc::SdCardError>> {
+    use embedded_sdmmc::{Mode, VolumeIdx};
+
+    // Open volume
+    let mut volume = sd_card_res.volume_mgr.open_volume(VolumeIdx(0))?;
+
+    // Open root directory
+    let mut root_dir = volume.open_root_dir()?;
+
+    // Create or truncate equipment file
+    let mut file = root_dir.open_file_in_dir("EQUIP.SAV", Mode::ReadWriteCreateOrTruncate)?;
+
+    // Write equipment data
+    file.write(equipment_data.as_bytes())?;
 
     Ok(())
 }

@@ -69,6 +69,22 @@ pub struct GameState {
     pub refine_slot: Option<EquipmentSlot>,     // Which slot is being refined
     pub refine_result_message: Option<&'static str>, // Result message (success/failure)
     pub refine_result_timer: u32,               // How long to show result (0-2000ms)
+    // Equipment preset UI state
+    pub preset_menu_open: bool,                 // Whether preset action menu is shown
+    pub preset_selected_index: Option<u8>,      // Which preset is selected (0-2)
+    // Card socketing UI state
+    pub card_socket_menu_open: bool,            // Whether card socket menu is shown
+    pub card_socket_slot: Option<EquipmentSlot>, // Which equipment slot is being socketed
+    // Equipment swap UI state
+    pub equipment_swap_menu_open: bool,         // Whether equipment swap menu is shown
+    pub equipment_swap_slot: Option<EquipmentSlot>, // Which slot is being swapped
+    pub equipment_swap_scroll: u8,              // Scroll position in swap inventory list
+    // Crafting UI state
+    pub crafting_scroll: u8,                    // Scroll position in crafting list
+    pub crafting_filter: &'static str,          // Equipment slot filter ("All", "Weapon", etc.)
+    pub crafting_selected_id: Option<u16>,      // Selected equipment ID for details
+    pub craft_result_message: Option<&'static str>, // Craft result message
+    pub craft_result_timer: u32,                // How long to show craft result
     // Quest system state
     pub active_quests: HeaplessVec<ActiveQuest, 16>, // Currently active quests
     pub completed_quest_ids: HeaplessVec<u32, 64>, // IDs of all completed quests
@@ -153,6 +169,22 @@ impl Default for GameState {
             refine_slot: None,
             refine_result_message: None,
             refine_result_timer: 0,
+            // Equipment preset UI state
+            preset_menu_open: false,
+            preset_selected_index: None,
+            // Card socketing UI state
+            card_socket_menu_open: false,
+            card_socket_slot: None,
+            // Equipment swap UI state
+            equipment_swap_menu_open: false,
+            equipment_swap_slot: None,
+            equipment_swap_scroll: 0,
+            // Crafting UI state
+            crafting_scroll: 0,
+            crafting_filter: "All",
+            crafting_selected_id: None,
+            craft_result_message: None,
+            craft_result_timer: 0,
             // Quest system state
             active_quests: HeaplessVec::new(),
             completed_quest_ids: HeaplessVec::new(),

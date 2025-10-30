@@ -13,6 +13,7 @@ pub fn get_npc_name(npc_id: u32) -> &'static str {
         1002 => "Equipment Trader",
         1003 => "Skill Trader",
         1004 => "Refinery",
+        1005 => "Blacksmith",
         _ => "Unknown NPC",
     }
 }

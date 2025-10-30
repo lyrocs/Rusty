@@ -1,0 +1,47 @@
+[
+  {
+    "id": 4001,
+    "name": "Poring Card",
+    "allowed_slots": ["Accessory"],
+    "effects": {
+      "exp_bonus": 10,
+      "description": "+10% EXP gain"
+    },
+    "drop_from": "Poring",
+    "drop_rate": 0.2
+  },
+  {
+    "id": 4002,
+    "name": "Fabre Card",
+    "allowed_slots": ["Armor"],
+    "effects": {
+      "sp_regen": 5,
+      "description": "+5 SP regeneration per second"
+    },
+    "drop_from": "Fabre",
+    "drop_rate": 0.2
+  },
+  {
+    "id": 4003,
+    "name": "Hornet Card",
+    "allowed_slots": ["Weapon"],
+    "effects": {
+      "aspd_bonus": 10,
+      "description": "+10% Attack Speed"
+    },
+    "drop_from": "Hornet",
+    "drop_rate": 0.2
+  },
+  {
+    "id": 4004,
+    "name": "Thief Bug Card",
+    "allowed_slots": ["Garment"],
+    "effects": {
+      "hp_bonus": 100,
+      "vit_bonus": 5,
+      "description": "+100 HP, +5 VIT"
+    },
+    "drop_from": "Thief Bug",
+    "drop_rate": 0.2
+  }
+]

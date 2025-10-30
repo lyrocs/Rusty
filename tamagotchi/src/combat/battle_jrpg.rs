@@ -17,32 +17,57 @@ impl GameState {
         // Load skills for hero's job from JSON data
         let hero_skills = crate::data::get_skills_for_job(self.hero.job);
 
-        // Get equipment bonuses
+        // Get equipment bonuses (all 6 slots)
         let weapon = &self.hero.equipped_weapon;
         let armor = &self.hero.equipped_armor;
-        let accessory = &self.hero.equipped_accessory;
+        let shoes = &self.hero.equipped_shoes;
+        let garment = &self.hero.equipped_garment;
+        let accessory1 = &self.hero.equipped_accessory1;
+        let accessory2 = &self.hero.equipped_accessory2;
 
-        // Calculate total stats with equipment bonuses
-        let total_str = self.hero.base_str as i16 + weapon.str_bonus + armor.str_bonus + accessory.str_bonus;
-        let total_agi = self.hero.base_agi as i16 + weapon.agi_bonus + armor.agi_bonus + accessory.agi_bonus;
-        let total_vit = self.hero.base_vit as i16 + weapon.vit_bonus + armor.vit_bonus + accessory.vit_bonus;
-        let total_int = self.hero.base_int as i16 + weapon.int_bonus + armor.int_bonus + accessory.int_bonus;
-        let total_dex = self.hero.base_dex as i16 + weapon.dex_bonus + armor.dex_bonus + accessory.dex_bonus;
-        let total_luk = self.hero.base_luk as i16 + weapon.luk_bonus + armor.luk_bonus + accessory.luk_bonus;
+        // Get card bonuses from all equipped items
+        let card_bonuses = self.hero.get_total_card_bonuses();
+
+        // Calculate total stats with all equipment bonuses + card bonuses
+        let total_str = self.hero.base_str as i16
+            + weapon.str_bonus + armor.str_bonus + shoes.str_bonus
+            + garment.str_bonus + accessory1.str_bonus + accessory2.str_bonus;
+        let total_agi = self.hero.base_agi as i16
+            + weapon.agi_bonus + armor.agi_bonus + shoes.agi_bonus
+            + garment.agi_bonus + accessory1.agi_bonus + accessory2.agi_bonus;
+        let total_vit = self.hero.base_vit as i16
+            + weapon.vit_bonus + armor.vit_bonus + shoes.vit_bonus
+            + garment.vit_bonus + accessory1.vit_bonus + accessory2.vit_bonus
+            + card_bonuses.vit_bonus as i16;
+        let total_int = self.hero.base_int as i16
+            + weapon.int_bonus + armor.int_bonus + shoes.int_bonus
+            + garment.int_bonus + accessory1.int_bonus + accessory2.int_bonus;
+        let total_dex = self.hero.base_dex as i16
+            + weapon.dex_bonus + armor.dex_bonus + shoes.dex_bonus
+            + garment.dex_bonus + accessory1.dex_bonus + accessory2.dex_bonus;
+        let total_luk = self.hero.base_luk as i16
+            + weapon.luk_bonus + armor.luk_bonus + shoes.luk_bonus
+            + garment.luk_bonus + accessory1.luk_bonus + accessory2.luk_bonus;
 
         // Calculate ATK with equipment
         let weapon_atk = weapon.total_atk();
-        let total_atk = 10 + (total_str.max(0) as u16 * 2) + weapon_atk;
+        let accessory_atk = accessory1.atk_bonus + accessory2.atk_bonus;
+        let total_atk = 10 + (total_str.max(0) as u16 * 2) + weapon_atk + accessory_atk;
 
-        // Calculate DEF with equipment
+        // Calculate DEF with equipment (armor + garment both have def)
         let armor_def = armor.total_def();
-        let total_def = 5 + total_vit.max(0) as u16 + armor_def;
+        let garment_def = garment.total_def();
+        let shoes_def = shoes.def_bonus;
+        let total_def = 5 + total_vit.max(0) as u16 + armor_def + garment_def + shoes_def;
 
-        // Calculate max HP/SP with equipment
-        let equipment_hp = armor.hp_bonus;
-        let equipment_sp = weapon.sp_bonus + accessory.sp_bonus;
+        // Calculate max HP/SP with equipment (sum all bonuses) + card bonuses
+        let equipment_hp = armor.hp_bonus + shoes.hp_bonus + garment.hp_bonus
+            + accessory1.hp_bonus + accessory2.hp_bonus
+            + card_bonuses.hp_bonus;
+        let equipment_sp = weapon.sp_bonus + armor.sp_bonus + shoes.sp_bonus
+            + garment.sp_bonus + accessory1.sp_bonus + accessory2.sp_bonus;
 
-        // Create hero combatant from current hero stats + equipment
+        // Create hero combatant from current hero stats + equipment + card bonuses
         self.jrpg_hero_combatant = Some(JrpgCombatant {
             name: self.hero.name,
             level: self.hero.level,
@@ -420,7 +445,10 @@ impl GameState {
             };
 
             if enemy_id > 0 {
-                self.hero.add_exp(base_exp);
+                // Apply card EXP bonus (percentage boost)
+                let card_bonuses = self.hero.get_total_card_bonuses();
+                let exp_with_bonus = base_exp * (100 + card_bonuses.exp_bonus as u32) / 100;
+                self.hero.add_exp(exp_with_bonus);
                 self.hero.add_zeny(zeny_earned);
 
                 // Update quest progress - monster killed

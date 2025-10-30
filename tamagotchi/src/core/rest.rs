@@ -25,9 +25,11 @@ impl GameState {
             if self.rest_progress >= 1000 {
                 let seconds = self.rest_progress / 1000;
 
-                // Regenerate SP (5 SP per second by default)
+                // Regenerate SP (5 SP per second by default + card bonus)
+                let card_bonuses = self.hero.get_total_card_bonuses();
+                let total_sp_regen = self.sp_regen_rate + card_bonuses.sp_regen as u16;
                 self.hero
-                    .regenerate_sp((seconds as u16) * self.sp_regen_rate);
+                    .regenerate_sp((seconds as u16) * total_sp_regen);
 
                 // Regenerate HP (10 HP per second)
                 let hp_regen_rate = 10u16;

@@ -377,6 +377,18 @@ where
         )?;
     }
 
+    // Draw card slots indicator
+    let mut card_str = String::<32>::new();
+    let cards_socketed = equipment.socketed_cards.iter().filter(|c| c.is_some()).count();
+    write!(card_str, "Cards: {}/{}", cards_socketed, equipment.card_slots).ok();
+    draw_text(
+        display,
+        &card_str,
+        Point::new(position.x + 5, position.y + 72),
+        &FONT_9X15,
+        if cards_socketed > 0 { Rgb888::new(100, 200, 100) } else { COLOR_TEXT_DIM },
+    )?;
+
     Ok(())
 }
 
@@ -385,16 +397,16 @@ pub fn draw_equipment_selection<D>(display: &mut D, game_state: &GameState) -> R
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    // Semi-transparent overlay
+    // Fullscreen dark overlay
     Rectangle::new(Point::new(0, 0), Size::new(368, 448))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(10, 10, 20)))
         .draw(display)?;
 
-    // Popup panel (centered, slightly larger for 3 equipment slots)
-    let panel_x = 30;
-    let panel_y = 80;
-    let panel_width = 308;
-    let panel_height = 280;
+    // Fullscreen panel
+    let panel_x = 10;
+    let panel_y = 10;
+    let panel_width = 348;
+    let panel_height = 428;
 
     Rectangle::new(
         Point::new(panel_x, panel_y),
@@ -413,35 +425,47 @@ where
     // Title
     draw_text(
         display,
-        "SELECT EQUIPMENT",
-        Point::new(70, 100),
+        "SELECT EQUIPMENT TO REFINE",
+        Point::new(30, 30),
         &FONT_10X20,
         COLOR_TEXT,
     )?;
 
-    // Draw 3 equipment slot buttons (Weapon, Armor, Accessory)
+    // Draw 6 equipment slot buttons in single column
     let slots = [
         (crate::tamagotchi::models::EquipmentSlot::Weapon, "WEAPON"),
         (crate::tamagotchi::models::EquipmentSlot::Armor, "ARMOR"),
-        (crate::tamagotchi::models::EquipmentSlot::Accessory, "ACCESSORY"),
+        (crate::tamagotchi::models::EquipmentSlot::Shoes, "SHOES"),
+        (crate::tamagotchi::models::EquipmentSlot::Garment, "GARMENT"),
+        (crate::tamagotchi::models::EquipmentSlot::Accessory1, "ACCESSORY 1"),
+        (crate::tamagotchi::models::EquipmentSlot::Accessory2, "ACCESSORY 2"),
     ];
 
+    let start_y = 55;
+    let item_height = 55;
+
     for (i, (slot, label)) in slots.iter().enumerate() {
-        let btn_y = 130 + i as i32 * 60;
-        let btn_x = 50;
-        let btn_width = 268u32;
+        let btn_y = start_y + i as i32 * item_height;
+        let btn_x = 20;
+        let btn_width = 328u32;
         let btn_height = 50u32;
 
         // Get equipment for this slot
         let equipment = game_state.hero.get_equipment(*slot);
 
-        // Button background
+        // Button background - different color for equipped items
+        let bg_color = if equipment.is_some() {
+            Rgb888::new(40, 60, 80)
+        } else {
+            Rgb888::new(30, 30, 40)
+        };
+
         Rectangle::new(Point::new(btn_x, btn_y), Size::new(btn_width, btn_height))
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 60, 80)))
+            .into_styled(PrimitiveStyle::with_fill(bg_color))
             .draw(display)?;
 
         Rectangle::new(Point::new(btn_x, btn_y), Size::new(btn_width, btn_height))
-            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
             .draw(display)?;
 
         // Equipment info
@@ -457,7 +481,7 @@ where
             draw_text(
                 display,
                 label,
-                Point::new(btn_x + 10, btn_y + 20),
+                Point::new(btn_x + 10, btn_y + 18),
                 &FONT_9X15,
                 COLOR_TEXT_DIM,
             )?;
@@ -465,7 +489,7 @@ where
             draw_text(
                 display,
                 &name_str,
-                Point::new(btn_x + 10, btn_y + 38),
+                Point::new(btn_x + 10, btn_y + 36),
                 &FONT_9X15,
                 COLOR_TEXT,
             )?;
@@ -474,7 +498,7 @@ where
             draw_text(
                 display,
                 label,
-                Point::new(btn_x + 10, btn_y + 20),
+                Point::new(btn_x + 10, btn_y + 18),
                 &FONT_9X15,
                 COLOR_TEXT_DIM,
             )?;
@@ -482,27 +506,27 @@ where
             draw_text(
                 display,
                 "(Empty)",
-                Point::new(btn_x + 10, btn_y + 38),
+                Point::new(btn_x + 10, btn_y + 36),
                 &FONT_9X15,
-                Rgb888::RED,
+                Rgb888::new(150, 50, 50),
             )?;
         }
     }
 
     // Cancel button at bottom
-    let cancel_btn_y = 310;
-    Rectangle::new(Point::new(120, cancel_btn_y), Size::new(128, 40))
+    let cancel_btn_y = 390;
+    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 36))
         .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
         .draw(display)?;
 
-    Rectangle::new(Point::new(120, cancel_btn_y), Size::new(128, 40))
+    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 36))
         .into_styled(PrimitiveStyle::with_stroke(Rgb888::RED, 2))
         .draw(display)?;
 
     draw_text(
         display,
         "CANCEL",
-        Point::new(145, cancel_btn_y + 22),
+        Point::new(140, cancel_btn_y + 22),
         &FONT_9X18_BOLD,
         Rgb888::WHITE,
     )?;
@@ -525,7 +549,10 @@ where
     let equipment = match slot {
         EquipmentSlot::Weapon => &hero.equipped_weapon,
         EquipmentSlot::Armor => &hero.equipped_armor,
-        EquipmentSlot::Accessory => &hero.equipped_accessory,
+        EquipmentSlot::Shoes => &hero.equipped_shoes,
+        EquipmentSlot::Garment => &hero.equipped_garment,
+        EquipmentSlot::Accessory1 => &hero.equipped_accessory1,
+        EquipmentSlot::Accessory2 => &hero.equipped_accessory2,
     };
 
     // Semi-transparent overlay background
@@ -593,12 +620,18 @@ where
             let bonus_change = match slot {
                 EquipmentSlot::Weapon => 2,  // +2 ATK
                 EquipmentSlot::Armor => 1,   // +1 DEF
-                EquipmentSlot::Accessory => 1, // +1 stat
+                EquipmentSlot::Shoes => 1,   // +1 AGI
+                EquipmentSlot::Garment => 1, // +1 DEF
+                EquipmentSlot::Accessory1 => 1, // +1 stat
+                EquipmentSlot::Accessory2 => 1, // +1 stat
             };
             let stat_name = match slot {
                 EquipmentSlot::Weapon => "ATK",
                 EquipmentSlot::Armor => "DEF",
-                EquipmentSlot::Accessory => "Stat",
+                EquipmentSlot::Shoes => "AGI",
+                EquipmentSlot::Garment => "DEF",
+                EquipmentSlot::Accessory1 => "Stat",
+                EquipmentSlot::Accessory2 => "Stat",
             };
             let mut stat_str = String::<32>::new();
             write!(stat_str, "{} +{}", stat_name, bonus_change).ok();
@@ -709,6 +742,184 @@ where
             Rgb888::WHITE,
         )?;
     }
+
+    Ok(())
+}
+
+/// Draw the equipment swap menu overlay
+pub fn draw_equipment_swap_menu<D>(
+    display: &mut D,
+    game_state: &GameState,
+    slot: crate::tamagotchi::models::EquipmentSlot,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    use crate::tamagotchi::models::EquipmentSlot;
+
+    // Fullscreen dark overlay
+    Rectangle::new(Point::new(0, 0), Size::new(368, 448))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(10, 10, 20)))
+        .draw(display)?;
+
+    // Fullscreen panel
+    let panel_x = 10;
+    let panel_y = 10;
+    let panel_width = 348;
+    let panel_height = 428;
+
+    Rectangle::new(
+        Point::new(panel_x, panel_y),
+        Size::new(panel_width, panel_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
+    .draw(display)?;
+
+    Rectangle::new(
+        Point::new(panel_x, panel_y),
+        Size::new(panel_width, panel_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
+    .draw(display)?;
+
+    // Title
+    let slot_name = match slot {
+        EquipmentSlot::Weapon => "WEAPON",
+        EquipmentSlot::Armor => "ARMOR",
+        EquipmentSlot::Shoes => "SHOES",
+        EquipmentSlot::Garment => "GARMENT",
+        EquipmentSlot::Accessory1 | EquipmentSlot::Accessory2 => "ACCESSORY",
+    };
+
+    let mut title_str = String::<48>::new();
+    write!(title_str, "SELECT {} TO EQUIP", slot_name).ok();
+    draw_text(
+        display,
+        &title_str,
+        Point::new(30, 30),
+        &FONT_10X20,
+        COLOR_TEXT,
+    )?;
+
+    // Get equipment items from inventory that match this slot
+    let slot_str = match slot {
+        EquipmentSlot::Weapon => "Weapon",
+        EquipmentSlot::Armor => "Armor",
+        EquipmentSlot::Shoes => "Shoes",
+        EquipmentSlot::Garment => "Garment",
+        EquipmentSlot::Accessory1 | EquipmentSlot::Accessory2 => "Accessory",
+    };
+
+    // Collect equipment items from inventory
+    let mut equipment_items: heapless::Vec<(u16, &'static str, &'static str), 16> = heapless::Vec::new();
+    for item in game_state.hero.inventory.iter() {
+        // Equipment IDs: 1000-1999 (Weapons), 2000-2999 (Armor), 3000-3999 (Shoes), 4000-4999 (Garment), 5000-5999 (Accessory)
+        if item.id >= 1000 && item.id < 6000 {
+            // Get equipment data to check slot
+            if let Some(equip_data) = crate::data::get_equipment_data_by_id(item.id as u16) {
+                if equip_data.slot == slot_str {
+                    equipment_items.push((item.id as u16, item.name, equip_data.slot)).ok();
+                }
+            }
+        }
+    }
+
+    // Draw equipment list (max 5 visible items with scrolling)
+    let start_y = 60;
+    let item_height = 60;
+    let max_visible = 5;
+
+    let scroll_offset = game_state.equipment_swap_scroll as usize;
+
+    for (i, (equip_id, equip_name, _equip_slot)) in equipment_items.iter()
+        .skip(scroll_offset)
+        .take(max_visible)
+        .enumerate()
+    {
+        let btn_y = start_y + i as i32 * item_height;
+        let btn_x = 20;
+        let btn_width = 328u32;
+        let btn_height = 55u32;
+
+        // Button background
+        Rectangle::new(Point::new(btn_x, btn_y), Size::new(btn_width, btn_height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 60, 80)))
+            .draw(display)?;
+
+        Rectangle::new(Point::new(btn_x, btn_y), Size::new(btn_width, btn_height))
+            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
+            .draw(display)?;
+
+        // Equipment name
+        draw_text(
+            display,
+            equip_name,
+            Point::new(btn_x + 10, btn_y + 20),
+            &FONT_9X18_BOLD,
+            COLOR_TEXT,
+        )?;
+
+        // Equipment ID (for debugging)
+        let mut id_str = String::<32>::new();
+        write!(id_str, "ID: {}", equip_id).ok();
+        draw_text(
+            display,
+            &id_str,
+            Point::new(btn_x + 10, btn_y + 40),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    }
+
+    // Show scroll indicators
+    if scroll_offset > 0 {
+        draw_text(
+            display,
+            "^ More",
+            Point::new(155, 50),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    }
+
+    if equipment_items.len() > scroll_offset + max_visible {
+        draw_text(
+            display,
+            "v More",
+            Point::new(155, 365),
+            &FONT_9X15,
+            COLOR_TEXT_DIM,
+        )?;
+    }
+
+    // Show message if no equipment
+    if equipment_items.is_empty() {
+        draw_text(
+            display,
+            "No equipment in inventory",
+            Point::new(50, 180),
+            &FONT_9X18_BOLD,
+            Rgb888::new(150, 150, 150),
+        )?;
+    }
+
+    // Cancel button at bottom
+    let cancel_btn_y = 380;
+    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 36))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 36))
+        .into_styled(PrimitiveStyle::with_stroke(Rgb888::RED, 2))
+        .draw(display)?;
+
+    draw_text(
+        display,
+        "CANCEL",
+        Point::new(140, cancel_btn_y + 22),
+        &FONT_9X18_BOLD,
+        Rgb888::WHITE,
+    )?;
 
     Ok(())
 }

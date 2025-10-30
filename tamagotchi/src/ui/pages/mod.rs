@@ -14,6 +14,7 @@ pub mod inventory;
 pub mod quests;
 pub mod settings;
 pub mod jrpg_battle;
+pub mod crafting;
 
 // Re-export all page drawing functions
 pub use overview::draw_overview_page;
@@ -28,3 +29,4 @@ pub use inventory::draw_inventory;
 pub use quests::draw_quests_page;
 pub use settings::draw_settings_page;
 pub use jrpg_battle::draw_jrpg_battle_page;
+pub use crafting::draw_crafting_page;

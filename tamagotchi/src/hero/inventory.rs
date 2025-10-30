@@ -28,6 +28,12 @@ pub trait InventoryExt {
     /// Add item to inventory (stacks if same item exists)
     fn add_item(&mut self, id: u32, name: &'static str, quantity: u16) -> bool;
 
+    /// Remove item from inventory (returns true if successful)
+    fn remove_item(&mut self, id: u32, quantity: u16) -> bool;
+
+    /// Check if inventory has enough of an item
+    fn has_item(&self, id: u32, quantity: u16) -> bool;
+
     /// Serialize inventory to a string for saving (item_id:quantity,item_id:quantity,...)
     fn to_save_string(&self) -> String<512>;
 
@@ -64,6 +70,39 @@ impl InventoryExt for Inventory {
                 false
             }
         }
+    }
+
+    fn remove_item(&mut self, id: u32, quantity: u16) -> bool {
+        // Find the item
+        if let Some(pos) = self.iter().position(|item| item.id == id) {
+            let item = &mut self[pos];
+
+            if item.quantity >= quantity {
+                item.quantity -= quantity;
+                esp_println::println!("[INVENTORY] Removed {} x{} (remaining: {})", item.name, quantity, item.quantity);
+
+                // Remove item completely if quantity reaches 0
+                if item.quantity == 0 {
+                    self.swap_remove(pos);
+                    esp_println::println!("[INVENTORY] Item removed from inventory (quantity 0)");
+                }
+
+                return true;
+            } else {
+                esp_println::println!("[INVENTORY] Not enough {} (have {}, need {})", item.name, item.quantity, quantity);
+                return false;
+            }
+        }
+
+        esp_println::println!("[INVENTORY] Item {} not found in inventory", id);
+        false
+    }
+
+    fn has_item(&self, id: u32, quantity: u16) -> bool {
+        self.iter()
+            .find(|item| item.id == id)
+            .map(|item| item.quantity >= quantity)
+            .unwrap_or(false)
     }
 
     fn to_save_string(&self) -> String<512> {
