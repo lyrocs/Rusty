@@ -1,15 +1,14 @@
+use crate::combat::{BattleState, Circle, CircleType, Enemy, MonsterAnimation};
 /// Manual battle (Whac-A-Mole) game logic
 ///
 /// Extension methods for GameState related to manual click-based battles.
-
-use crate::core::{GameState, GamePage};
-use crate::combat::{BattleState, Circle, CircleType, Enemy, MonsterAnimation};
+use crate::core::{GamePage, GameState};
 use crate::quest::QuestAction;
 
 impl GameState {
     pub fn start_battle(&mut self, enemy: Enemy) {
-        if self.hero.use_sp(30) {
-            // Battle costs 30 SP (more than farming)
+        if self.hero.use_sp(5) {
+            // Battle costs 5 SP (more than farming)
             self.battle_enemy = Some(enemy);
             self.battle_state = BattleState::Playing;
             self.battle_circles = [None, None, None, None];
@@ -44,7 +43,14 @@ impl GameState {
                     CircleType::BadTarget
                 };
 
-                *slot = Some(Circle::new(x, y, 30, circle_type, self.last_update_ms, 2000));
+                *slot = Some(Circle::new(
+                    x,
+                    y,
+                    30,
+                    circle_type,
+                    self.last_update_ms,
+                    2000,
+                ));
                 break;
             }
         }
@@ -185,12 +191,14 @@ impl GameState {
                 let exp_mult = (self.battle_score as u32).max(1);
 
                 // Apply level difference penalty (manual battles get full rewards, not 1/10)
-                let level_penalty = crate::combat::calculate_level_penalty(self.hero.level, enemy.level);
+                let level_penalty =
+                    crate::combat::calculate_level_penalty(self.hero.level, enemy.level);
 
                 // Calculate EXP with score multiplier and level penalty
                 let base_exp = (enemy.base_exp as f32) * (exp_mult as f32) / 5.0 * level_penalty;
                 let card_bonuses = self.hero.get_total_card_bonuses();
-                let exp_with_bonus = (base_exp * (100.0 + card_bonuses.exp_bonus as f32) / 100.0 + 0.5) as u32;
+                let exp_with_bonus =
+                    (base_exp * (100.0 + card_bonuses.exp_bonus as f32) / 100.0 + 0.5) as u32;
 
                 // Calculate Zeny with score multiplier (no level penalty for zeny)
                 let zeny_earned = enemy.zeny_reward * exp_mult / 5;
