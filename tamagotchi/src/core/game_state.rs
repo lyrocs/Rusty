@@ -112,6 +112,8 @@ pub struct GameState {
     pub needs_redraw: bool, // Flag to indicate screen needs redrawing
     pub screen_on: bool,    // Screen power state (controlled by PWR button)
     pub show_reset_confirm: bool, // Stats page: show reset confirmation modal
+    pub show_shutdown_confirm: bool, // Settings page: show shutdown confirmation modal
+    pub shutdown_requested: bool, // Flag to trigger shutdown sequence
     pub last_drops: HeaplessVec<(u32, &'static str, u16), 4>, // Last items that dropped
     pub last_battle_exp: u32, // EXP earned from last battle (for display)
     pub last_battle_zeny: u32, // Zeny earned from last battle (for display)
@@ -225,6 +227,8 @@ impl Default for GameState {
             needs_redraw: true, // Start with needing a redraw
             screen_on: true,    // Screen starts on
             show_reset_confirm: false, // Reset confirmation modal hidden by default
+            show_shutdown_confirm: false, // Shutdown confirmation modal hidden by default
+            shutdown_requested: false, // No shutdown requested initially
             last_drops: HeaplessVec::new(),
             last_battle_exp: 0,
             last_battle_zeny: 0,

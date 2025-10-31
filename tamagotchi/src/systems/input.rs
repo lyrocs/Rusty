@@ -1236,9 +1236,54 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
 
 /// Handle Settings page touches
 fn handle_settings_touch(game_state: &mut GameState, x: u16, y: u16) {
+    // Handle shutdown confirmation modal if showing
+    if game_state.show_shutdown_confirm {
+        let modal_x = 40;
+        let modal_y = 150;
+
+        // Confirm button: x=60-170, y=240-280
+        let confirm_x = modal_x + 20;
+        let confirm_y = modal_y + 90;
+        let btn_w = 110;
+        let btn_h = 40;
+
+        if x >= confirm_x as u16
+            && x <= (confirm_x + btn_w) as u16
+            && y >= confirm_y as u16
+            && y <= (confirm_y + btn_h) as u16
+        {
+            // Confirm shutdown
+            esp_println::println!("[SHUTDOWN] Shutdown confirmed by user");
+            game_state.shutdown_requested = true;
+            game_state.show_shutdown_confirm = false;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Cancel button: x=190-300, y=240-280
+        let cancel_x = modal_x + 150;
+        let cancel_y = modal_y + 90;
+
+        if x >= cancel_x as u16
+            && x <= (cancel_x + btn_w) as u16
+            && y >= cancel_y as u16
+            && y <= (cancel_y + btn_h) as u16
+        {
+            // Cancel shutdown
+            esp_println::println!("[SHUTDOWN] Shutdown cancelled");
+            game_state.show_shutdown_confirm = false;
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // Click outside modal to cancel
+        game_state.show_shutdown_confirm = false;
+        game_state.needs_redraw = true;
+        return;
+    }
+
     // Brightness slider area: x=40-320, y=180-200 (horizontal bar)
     // Slider handle position based on brightness: x = 40 + (brightness * 280 / 255)
-
     if y >= 160 && y <= 220 && x >= 40 && x <= 320 {
         // Calculate new brightness from touch position
         // Left (x=40) should be 0% (dim), Right (x=320) should be 100% (bright)
@@ -1249,8 +1294,15 @@ fn handle_settings_touch(game_state: &mut GameState, x: u16, y: u16) {
             game_state.brightness = new_brightness;
             game_state.needs_redraw = true;
         }
-    } else if y >= 350 {
-        // Bottom area - go back to menu
+    }
+    // Shutdown button: x=95-265, y=280-330
+    else if x >= 95 && x <= 265 && y >= 280 && y <= 330 {
+        esp_println::println!("[SHUTDOWN] Shutdown button pressed");
+        game_state.show_shutdown_confirm = true;
+        game_state.needs_redraw = true;
+    }
+    // Bottom area - go back to menu
+    else if y >= 410 {
         game_state.current_page = GamePage::Menu;
         game_state.needs_redraw = true;
     }

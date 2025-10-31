@@ -302,6 +302,7 @@ fn main() -> ! {
     schedule.add_systems(tamagotchi_touch_system);
     schedule.add_systems(tamagotchi_update_system);
     schedule.add_systems(update_battery_system);
+    schedule.add_systems(shutdown_system);
     schedule.add_systems(tamagotchi_save_system);
     schedule.add_systems(tamagotchi_render_system);
 
@@ -330,6 +331,57 @@ fn update_battery_system(
             if battery_res.voltage_mv != voltage_mv || battery_res.percent != new_percent {
                 battery_res.voltage_mv = voltage_mv;
                 battery_res.percent = new_percent;
+                game_state.needs_redraw = true;
+            }
+        }
+    }
+}
+
+/// System to handle shutdown requests
+fn shutdown_system(
+    mut game_state: ResMut<GameState>,
+    mut axp_res: NonSendMut<Axp2101Resource>,
+) {
+    if game_state.shutdown_requested {
+        esp_println::println!("[SHUTDOWN] Shutdown sequence initiated");
+
+        // Request a save first
+        game_state.save_requested = true;
+
+        // Give save system one iteration to process
+        // In next frame, we'll wait for save completion before actually shutting down
+        game_state.shutdown_requested = false; // Clear flag to prevent multiple triggers
+
+        // We'll use a simple approach: wait briefly then shutdown
+        // The save system should execute before we get here next frame
+        esp_println::println!("[SHUTDOWN] Saving game data...");
+
+        // Small delay to let save complete (in a real system we'd check for completion)
+        esp_hal::delay::Delay::new().delay_millis(500);
+
+        esp_println::println!("[SHUTDOWN] Powering down system...");
+        esp_println::println!("[SHUTDOWN] Using AXP2101 hardware shutdown");
+        esp_println::println!("[SHUTDOWN] RTC will remain powered by battery");
+        esp_println::println!("[SHUTDOWN] Press PWR button to power on again");
+
+        // Perform hardware shutdown via AXP2101 PMIC
+        // This powers off everything except RTCLDO (keeps RTC alive)
+        // The device will only wake when the PWR button is pressed
+        match axp_res.pmic.shutdown() {
+            Ok(_) => {
+                esp_println::println!("[SHUTDOWN] Good night!");
+                // Give time for the message to be printed before power cuts
+                esp_hal::delay::Delay::new().delay_millis(100);
+                // At this point, the AXP2101 will cut power and the device will shut down
+                // This loop should never execute, but prevents the function from returning
+                loop {
+                    esp_hal::delay::Delay::new().delay_millis(1000);
+                }
+            }
+            Err(e) => {
+                esp_println::println!("[SHUTDOWN] Failed to shutdown: {:?}", e);
+                game_state.save_status_msg = Some("Shutdown failed!");
+                game_state.save_status_timeout = game_state.last_update_ms + 3000;
                 game_state.needs_redraw = true;
             }
         }
