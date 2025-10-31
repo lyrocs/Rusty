@@ -51,6 +51,8 @@ pub struct QuestData {
     pub max_level: u16,                             // Max level for quest (0 = no limit)
     #[serde(default)]
     pub priority: u16,                              // Sort order (lower = higher priority)
+    #[serde(default)]
+    pub requires: HeaplessVec<u32, 4>,              // Quest IDs that must be completed first
     pub objectives: HeaplessVec<QuestObjective, 4>, // Up to 4 objectives per quest
     pub rewards: QuestReward,
 }

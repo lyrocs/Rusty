@@ -184,6 +184,8 @@ impl GameState {
     /// Complete battle and calculate rewards
     fn complete_battle(&mut self) {
         if let Some(enemy) = &self.battle_enemy {
+            let enemy_id = enemy.id;
+
             // Win only if enemy HP is 0 (defeated before timeout)
             if enemy.hp == 0 {
                 self.battle_state = BattleState::Victory;
@@ -211,9 +213,29 @@ impl GameState {
                 self.hero.add_exp(exp_with_bonus);
                 self.hero.add_zeny(zeny_earned);
 
+                // Update quest progress - monster killed
+                crate::tamagotchi::quest_system::update_quest_progress(
+                    self,
+                    QuestAction::MonsterKilled { enemy_id },
+                );
+
+                // Update quest progress - battle completed
+                crate::tamagotchi::quest_system::update_quest_progress(
+                    self,
+                    QuestAction::BattleCompleted,
+                );
+
+                // Update quest progress - zeny earned
+                crate::tamagotchi::quest_system::update_quest_progress(
+                    self,
+                    QuestAction::ZenyEarned {
+                        amount: zeny_earned,
+                    },
+                );
+
                 // Roll for item drops
                 let rng_value = (self.last_update_ms % 255) as u8;
-                let drops = crate::data::roll_drops(enemy.id, rng_value);
+                let drops = crate::data::roll_drops(enemy_id, rng_value);
 
                 // Clear previous drops and store new ones
                 self.last_drops.clear();

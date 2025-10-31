@@ -119,6 +119,32 @@ pub fn get_achievement_quests() -> HeaplessVec<u32, 16> {
     result
 }
 
+/// Check if quest prerequisites are met
+pub fn are_prerequisites_met(game_state: &GameState, quest_id: u32) -> bool {
+    if let Some(quest_data) = get_quest_data(quest_id) {
+        // If no prerequisites, quest is available
+        if quest_data.requires.is_empty() {
+            return true;
+        }
+
+        // Check if all required quests are completed
+        for required_quest_id in quest_data.requires.iter() {
+            if !game_state.completed_quest_ids.contains(required_quest_id) {
+                esp_println::println!(
+                    "[QUEST] Quest {} requires quest {} to be completed first",
+                    quest_id,
+                    required_quest_id
+                );
+                return false;
+            }
+        }
+
+        true
+    } else {
+        false
+    }
+}
+
 /// Start a quest (add to active quests)
 pub fn start_quest(game_state: &mut GameState, quest_id: u32) -> bool {
     // Check if already active or completed
@@ -133,6 +159,12 @@ pub fn start_quest(game_state: &mut GameState, quest_id: u32) -> bool {
 
     if game_state.completed_quest_ids.contains(&quest_id) {
         esp_println::println!("[QUEST] Quest {} already completed", quest_id);
+        return false;
+    }
+
+    // Check prerequisites
+    if !are_prerequisites_met(game_state, quest_id) {
+        esp_println::println!("[QUEST] Prerequisites not met for quest {}", quest_id);
         return false;
     }
 

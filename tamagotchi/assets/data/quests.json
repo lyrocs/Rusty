@@ -185,6 +185,7 @@
     "min_level": 1,
     "max_level": 0,
     "priority": 25,
+    "requires": [100],
     "objectives": [
       {
         "type": "KillMonster",
@@ -211,6 +212,7 @@
     "min_level": 1,
     "max_level": 0,
     "priority": 21,
+    "requires": [1],
     "objectives": [
       {
         "type": "KillMonster",
@@ -323,6 +325,33 @@
       "zeny": 10000,
       "items": [
         [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0]
+      ]
+    }
+  },
+  {
+    "id": 107,
+    "name": "Poring Master",
+    "description": "Defeat 100 Porings and become a true Poring hunter",
+    "quest_type": "Achievement",
+    "min_level": 1,
+    "max_level": 0,
+    "priority": 27,
+    "requires": [102],
+    "objectives": [
+      {
+        "type": "KillMonster",
+        "enemy_id": 1002,
+        "count": 100
+      }
+    ],
+    "rewards": {
+      "base_exp": 1500,
+      "zeny": 7500,
+      "items": [
+        [909, 25],
         [0, 0],
         [0, 0],
         [0, 0]
