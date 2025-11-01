@@ -189,6 +189,7 @@ impl GameState {
             // Win only if enemy HP is 0 (defeated before timeout)
             if enemy.hp == 0 {
                 self.battle_state = BattleState::Victory;
+                self.victory_state_entered_ms = self.last_update_ms; // Track when victory started for animation delay
                 // Award rewards based on score with card EXP bonus and level penalty
                 let exp_mult = (self.battle_score as u32).max(1);
 

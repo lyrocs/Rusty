@@ -164,6 +164,7 @@ pub struct GameState {
     pub map_monster_animation_last_update: u32, // Last time map monster animation was updated
     pub gif_animation_clock_ms: u32, // Global clock for synchronized GIF animations (increments every 100ms)
     pub gif_animation_last_update_ms: u32, // Last time GIF animation clock was updated
+    pub victory_state_entered_ms: u32, // When victory/defeat state was entered (for death animation delay)
 }
 
 impl Default for GameState {
@@ -315,6 +316,7 @@ impl Default for GameState {
             map_monster_animation_last_update: 0,
             gif_animation_clock_ms: 0,
             gif_animation_last_update_ms: 0,
+            victory_state_entered_ms: 0,
         }
     }
 }

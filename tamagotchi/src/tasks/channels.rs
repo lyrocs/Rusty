@@ -65,8 +65,8 @@ pub enum SaveResponse {
 /// Input events channel (32 events buffer - enough for burst input)
 pub static INPUT_CHANNEL: Channel<CriticalSectionRawMutex, InputEvent, 32> = Channel::new();
 
-/// Render commands channel (8 commands buffer)
-pub static RENDER_CHANNEL: Channel<CriticalSectionRawMutex, RenderCommand, 8> = Channel::new();
+/// Render commands channel (32 commands buffer - increased to prevent queue saturation during animations)
+pub static RENDER_CHANNEL: Channel<CriticalSectionRawMutex, RenderCommand, 32> = Channel::new();
 
 /// Storage commands channel (4 commands buffer - saves are infrequent)
 pub static SAVE_CHANNEL: Channel<CriticalSectionRawMutex, SaveCommand, 4> = Channel::new();

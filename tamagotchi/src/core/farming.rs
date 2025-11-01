@@ -120,6 +120,7 @@ impl GameState {
             self.hero.add_exp(total_exp);
             self.hero.add_zeny(total_zeny);
             self.farm_state = FarmState::Victory;
+            self.victory_state_entered_ms = self.last_update_ms; // Track when victory started for animation delay
 
             esp_println::println!(
                 "[FARM] Completed! {} kills, +{} EXP, +{} Zeny",

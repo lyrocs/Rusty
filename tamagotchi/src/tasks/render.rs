@@ -1,10 +1,10 @@
-use embassy_executor::Spawner;
-use embassy_time::{Duration, Instant, Timer};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
 use alloc::sync::Arc;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{IntoSystem, RunSystemOnce};
+use embassy_executor::Spawner;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Instant, Timer};
 use log::{info, warn};
 
 use super::channels::{RENDER_CHANNEL, RenderCommand};
@@ -20,6 +20,7 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
     // Statistics tracking
     let mut frame_count: u32 = 0;
     let mut total_render_time_us: u64 = 0;
+    let mut queue_saturation_count: u32 = 0;
 
     loop {
         // Wait for render commands
@@ -43,10 +44,24 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                 frame_count = frame_count.wrapping_add(1);
                 total_render_time_us = total_render_time_us.wrapping_add(render_us);
 
-                // Warn if rendering takes too long (>16ms for 60 FPS)
-                if render_us > 16000 {
+                // Check if queue has backlog (indicates saturation)
+                let mut backlog_count = 0;
+                while RENDER_CHANNEL.try_receive().is_ok() {
+                    backlog_count += 1;
+                    // Consume and count excess commands (we already rendered, so discard extras)
+                }
+                if backlog_count > 0 {
+                    queue_saturation_count += 1;
                     warn!(
-                        "[RENDER] Slow frame: {}ms (target: 16ms for 60 FPS)",
+                        "[RENDER] Queue saturation detected! Discarded {} commands. Total saturations: {}",
+                        backlog_count, queue_saturation_count
+                    );
+                }
+
+                // Warn if rendering takes too long (>16ms for 60 FPS)
+                if render_us > 100_000 {
+                    warn!(
+                        "[RENDER] Slow frame: {}ms (target: 100ms for fixing animation gif)",
                         render_us / 1000
                     );
                 }
@@ -55,16 +70,18 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                 if frame_count % 60 == 0 {
                     let avg_us = total_render_time_us / 60;
                     info!(
-                        "[RENDER] Frame #{}: avg render time {}ms",
+                        "[RENDER] Frame #{}: avg render time {}ms, queue saturations: {}",
                         frame_count,
-                        avg_us / 1000
+                        avg_us / 1000,
+                        queue_saturation_count
                     );
                     total_render_time_us = 0;
+                    queue_saturation_count = 0; // Reset counter every second
                 }
 
                 // Yield to other tasks after rendering
-                // The display update is blocking SPI, so we yield to be cooperative
-                Timer::after(Duration::from_micros(100)).await;
+                // The display update is blocking SPI (12-15ms), so we yield longer to be cooperative
+                Timer::after(Duration::from_millis(1)).await;
             }
             RenderCommand::Clear => {
                 info!("[RENDER] Clear display requested");
@@ -76,8 +93,8 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                     world_guard.get_non_send_resource_mut::<DisplayResource>()
                 {
                     // Clear the display using embedded-graphics DrawTarget trait
-                    use embedded_graphics::prelude::*;
                     use embedded_graphics::pixelcolor::Rgb888;
+                    use embedded_graphics::prelude::*;
 
                     if let Err(e) = display_res.display.clear(Rgb888::BLACK) {
                         warn!("[RENDER] Failed to clear display: {:?}", e);
@@ -92,8 +109,8 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                 // Release lock
                 drop(world_guard);
 
-                // Yield
-                Timer::after(Duration::from_micros(100)).await;
+                // Yield (longer since flush is blocking SPI operation)
+                Timer::after(Duration::from_millis(1)).await;
             }
             RenderCommand::SetBrightness(level) => {
                 info!("[RENDER] Set brightness: {}", level);

@@ -1,11 +1,11 @@
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Ticker};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use alloc::sync::Arc;
-use log::info;
+use log::{info, warn};
 
 use super::channels::{INPUT_CHANNEL, RENDER_CHANNEL, SAVE_CHANNEL, InputEvent, RenderCommand, SaveCommand};
 use crate::ecs::resources::*;
@@ -22,6 +22,8 @@ pub async fn game_loop_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
 
     let mut frame_count: u32 = 0;
     let mut needs_render = true;
+    let mut last_render_time = Instant::now();
+    const RENDER_INTERVAL_MS: u64 = 100; // Throttle rendering to max 10 FPS
 
     loop {
         ticker.next().await;
@@ -147,10 +149,24 @@ pub async fn game_loop_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
             }
         }
 
-        // Request render if needed
+        // Request render if needed, but throttle to RENDER_INTERVAL_MS (prevents queue saturation)
         if needs_render {
-            let _ = RENDER_CHANNEL.try_send(RenderCommand::Redraw);
-            needs_render = false;
+            let time_since_last_render = last_render_time.elapsed().as_millis() as u64;
+
+            if time_since_last_render >= RENDER_INTERVAL_MS {
+                match RENDER_CHANNEL.try_send(RenderCommand::Redraw) {
+                    Ok(_) => {
+                        needs_render = false;
+                        last_render_time = Instant::now();
+                    }
+                    Err(_) => {
+                        // Queue is full - this is critical as it causes screen freeze
+                        warn!("[GAME] Render queue full! Screen may freeze. Frame: {}", frame_count);
+                        // Keep needs_render=true to retry on next frame
+                    }
+                }
+            }
+            // else: too soon since last render, skip this frame (keeps needs_render=true for next check)
         }
 
         // Periodic logging (every 60 frames = ~1 second)

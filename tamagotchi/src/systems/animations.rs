@@ -13,7 +13,7 @@ pub fn update_monster_animation(game_state: &mut GameState, _delta_ms: u32, mons
     let total_frames = gif.frames().count();
 
     // Dynamic frame duration: 150ms for Idle, 100ms for actions
-    // Slower action animations make them more visible and readable
+    // Action animations at 100ms match render throttling interval for smooth playback
     let frame_duration_ms = match game_state.monster_animation {
         MonsterAnimation::Idle => 150,
         MonsterAnimation::Attacking | MonsterAnimation::Attacked | MonsterAnimation::Dying => 100,
@@ -67,7 +67,7 @@ pub fn update_hero_animation(game_state: &mut GameState, _delta_ms: u32) {
     let total_frames = gif.frames().count();
 
     // Dynamic frame duration: 150ms for Idle/Resting, 100ms for actions
-    // Slower action animations make them more visible and readable
+    // Action animations at 100ms match render throttling interval for smooth playback
     let frame_duration_ms = match game_state.hero_animation {
         HeroAnimation::Idle | HeroAnimation::Resting => 150,
         HeroAnimation::Attacking | HeroAnimation::Attacked => 100,

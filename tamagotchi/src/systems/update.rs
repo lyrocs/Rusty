@@ -170,15 +170,24 @@ pub fn tamagotchi_update_system(
             FarmState::Victory => {
                 // Only update animations when screen is on
                 if game_state.screen_on {
-                    // Set to dying animation when entering victory
                     use crate::tamagotchi::models::MonsterAnimation;
-                    if game_state.monster_animation != MonsterAnimation::Dying {
-                        game_state.monster_animation = MonsterAnimation::Dying;
-                        game_state.monster_animation_frame = 0;
-                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
-                        game_state.needs_redraw = true;
+
+                    // Wait 800ms after victory before starting death animation
+                    // This gives the attack animation time to complete (8 frames × 100ms = 800ms)
+                    const DEATH_ANIMATION_DELAY_MS: u32 = 800;
+                    let time_since_victory = game_state.last_update_ms.saturating_sub(game_state.victory_state_entered_ms);
+
+                    if time_since_victory >= DEATH_ANIMATION_DELAY_MS {
+                        // Delay has passed, transition to dying animation
+                        if game_state.monster_animation != MonsterAnimation::Dying {
+                            game_state.monster_animation = MonsterAnimation::Dying;
+                            game_state.monster_animation_frame = 0;
+                            game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                            game_state.needs_redraw = true;
+                        }
                     }
-                    // Animate dying GIF (get monster name from current enemy)
+
+                    // Animate current animation (attacked->dying transition handled by delay above)
                     let monster_name = game_state.current_enemy.as_ref().map(|e| e.name);
                     if let Some(name) = monster_name {
                         update_monster_animation(&mut game_state, delta_ms, name);
@@ -198,12 +207,13 @@ pub fn tamagotchi_update_system(
         let old_progress = game_state.rest_progress;
         game_state.update_rest_progress(delta_ms);
 
-        // Redraw if HP/SP changed, state changed, or progress increased by at least 100ms
+        // Redraw if HP/SP changed, state changed, or progress increased by at least 250ms
+        // (reduced from 100ms to prevent render queue saturation - rendering takes ~92ms)
         if game_state.screen_on
             && (game_state.hero.sp != old_sp
                 || game_state.hero.hp != old_hp
                 || game_state.rest_state != RestState::Resting
-                || game_state.rest_progress / 100 != old_progress / 100)
+                || game_state.rest_progress / 250 != old_progress / 250)
         {
             game_state.needs_redraw = true;
         }
@@ -250,13 +260,13 @@ pub fn tamagotchi_update_system(
 
                 game_state.update_battle(delta_ms);
 
-                // Redraw more frequently for smooth circle animations (every 100ms)
-                // Circles are constantly shrinking and need smooth visual updates
+                // Redraw for circle animations (every 250ms)
+                // (reduced from 100ms to prevent render queue saturation - rendering takes ~92ms)
                 if game_state.screen_on
                     && (game_state.battle_score != old_score
                         || game_state.battle_missed != old_missed
                         || game_state.battle_state != old_state
-                        || game_state.battle_elapsed / 100 != old_elapsed / 100)
+                        || game_state.battle_elapsed / 250 != old_elapsed / 250)
                 {
                     game_state.needs_redraw = true;
                 }
@@ -319,15 +329,24 @@ pub fn tamagotchi_update_system(
             BattleState::Victory => {
                 // Only update animations when screen is on
                 if game_state.screen_on {
-                    // Set to dying animation when entering victory
                     use crate::tamagotchi::models::MonsterAnimation;
-                    if game_state.monster_animation != MonsterAnimation::Dying {
-                        game_state.monster_animation = MonsterAnimation::Dying;
-                        game_state.monster_animation_frame = 0;
-                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
-                        game_state.needs_redraw = true;
+
+                    // Wait 800ms after victory before starting death animation
+                    // This gives the attack animation time to complete (8 frames × 100ms = 800ms)
+                    const DEATH_ANIMATION_DELAY_MS: u32 = 800;
+                    let time_since_victory = game_state.last_update_ms.saturating_sub(game_state.victory_state_entered_ms);
+
+                    if time_since_victory >= DEATH_ANIMATION_DELAY_MS {
+                        // Delay has passed, transition to dying animation
+                        if game_state.monster_animation != MonsterAnimation::Dying {
+                            game_state.monster_animation = MonsterAnimation::Dying;
+                            game_state.monster_animation_frame = 0;
+                            game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                            game_state.needs_redraw = true;
+                        }
                     }
-                    // Animate dying GIF (get monster name from battle enemy)
+
+                    // Animate current animation (attacked->dying transition handled by delay above)
                     let monster_name = game_state.battle_enemy.as_ref().map(|e| e.name);
                     if let Some(name) = monster_name {
                         update_monster_animation(&mut game_state, delta_ms, name);
@@ -481,13 +500,13 @@ pub fn tamagotchi_update_system(
 
                 game_state.update_zelda_battle(delta_ms);
 
-                // Redraw more frequently for smooth enemy movement (every 100ms)
-                // Enemies are constantly moving and need smooth visual updates
+                // Redraw for enemy movement (every 250ms)
+                // (reduced from 100ms to prevent render queue saturation - rendering takes ~92ms)
                 if game_state.screen_on
                     && (game_state.zelda_battle_score != old_score
                         || game_state.zelda_battle_missed != old_missed
                         || game_state.zelda_battle_state != old_state
-                        || game_state.zelda_battle_elapsed / 100 != old_elapsed / 100)
+                        || game_state.zelda_battle_elapsed / 250 != old_elapsed / 250)
                 {
                     game_state.needs_redraw = true;
                 }
@@ -539,13 +558,14 @@ pub fn tamagotchi_update_system(
 
                 // Redraw if state changed, HP changed, or time elapsed (for cooldown timers and battle time)
                 // Update every 100ms for smooth cooldown display
+                // (reduced from 100ms to prevent render queue saturation - rendering takes ~92ms)
                 if game_state.screen_on
                     && (game_state.mvp_battle_state != old_state
                         || new_hp != old_hp
                         || game_state.hero.hp != old_hero_hp
                         || game_state.mvp_stagger_value != old_stagger
                         || game_state.mvp_critical_window_active != old_critical
-                        || game_state.mvp_battle_elapsed / 100 != old_elapsed / 100)
+                        || game_state.mvp_battle_elapsed / 250 != old_elapsed / 250)
                 {
                     game_state.needs_redraw = true;
                 }
