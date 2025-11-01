@@ -556,6 +556,65 @@ pub fn tamagotchi_update_system(
         }
     }
 
+    // Update BattleOverview page animations
+    if game_state.current_page == GamePage::BattleOverview && game_state.screen_on {
+        use crate::combat::{Enemy, HeroAnimation, MonsterAnimation};
+
+        // Only animate if there's an active farming session
+        if let Some(session) = &game_state.idle_farm_session {
+            if session.is_active() {
+                if let Some(enemy) = Enemy::from_id(session.enemy_id) {
+                    let current_time = game_state.last_update_ms;
+                    // Animation window: 800ms allows most attack animations to complete
+                    // Attack GIFs typically have 8-12 frames at 75ms/frame = 600-900ms
+                    const ANIMATION_WINDOW_MS: u32 = 800;
+
+                    let hero_just_attacked = current_time.saturating_sub(session.last_hero_attack_ms) < ANIMATION_WINDOW_MS;
+                    let enemy_just_attacked = current_time.saturating_sub(session.last_enemy_attack_ms) < ANIMATION_WINDOW_MS;
+
+                    // Set hero animation based on combat timing
+                    let hero_animation = if enemy_just_attacked {
+                        HeroAnimation::Attacked
+                    } else if hero_just_attacked {
+                        HeroAnimation::Attacking
+                    } else {
+                        HeroAnimation::Idle
+                    };
+
+                    // Set enemy animation based on combat timing
+                    let enemy_animation = if session.enemy_dying {
+                        MonsterAnimation::Dying  // Play death animation
+                    } else if hero_just_attacked {
+                        MonsterAnimation::Attacked  // Enemy was hit by hero
+                    } else if enemy_just_attacked {
+                        MonsterAnimation::Attacking  // Enemy is attacking
+                    } else {
+                        MonsterAnimation::Idle
+                    };
+
+                    // Update animation states if they changed
+                    if game_state.hero_animation != hero_animation {
+                        game_state.hero_animation = hero_animation;
+                        game_state.hero_animation_frame = 0;
+                        game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
+                        game_state.needs_redraw = true;
+                    }
+
+                    if game_state.monster_animation != enemy_animation {
+                        game_state.monster_animation = enemy_animation;
+                        game_state.monster_animation_frame = 0;
+                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                        game_state.needs_redraw = true;
+                    }
+
+                    // Update animations
+                    update_hero_animation(&mut game_state, delta_ms);
+                    update_monster_animation(&mut game_state, delta_ms, enemy.name);
+                }
+            }
+        }
+    }
+
     // Update IDLE farming session (runs in background regardless of page)
     super::idle_farm_update::update_idle_farm_session(&mut game_state, delta_ms);
 }

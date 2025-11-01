@@ -83,17 +83,31 @@ pub struct IdleFarmSession {
 
     // Hero combat state
     pub current_hp: u16,
+    pub hero_level: u16,                // Hero level (for hit rate and HP regen)
+    pub hero_dex: u16,                  // Hero DEX (for hit rate)
+    pub hero_vit: u16,                  // Hero VIT (for HP regen)
     pub hero_attack_delay_ms: u32,      // MS between hero attacks (based on ASPD)
     pub last_hero_attack_ms: u32,       // When hero last attacked
     pub next_hero_attack_ms: u32,       // When hero will attack next
+    pub hero_attack_pending: bool,      // Attack animation started, damage not yet applied
+    pub hero_damage_apply_ms: u32,      // When to apply the pending damage
+    pub pending_hero_damage: u16,       // Damage to apply when animation completes
+    pub pending_hero_miss: bool,        // Whether pending attack will miss
 
     // Enemy combat state
     pub current_enemy_hp: u16,          // Current enemy HP
     pub enemy_max_hp: u16,              // Enemy max HP (for respawn)
+    pub enemy_level: u16,               // Enemy level (for hit rate calculations)
     pub enemy_attack_delay_ms: u32,     // MS between enemy attacks (based on enemy ASPD)
     pub last_enemy_attack_ms: u32,      // When enemy last attacked
     pub next_enemy_attack_ms: u32,      // When enemy will attack next
-    pub enemy_spawning: bool,           // True if enemy is dead and respawning
+    pub enemy_attack_pending: bool,     // Attack animation started, damage not yet applied
+    pub enemy_damage_apply_ms: u32,     // When to apply the pending damage
+    pub pending_enemy_damage: u16,      // Damage to apply when animation completes
+    pub pending_enemy_miss: bool,       // Whether pending attack will miss
+    pub enemy_dying: bool,              // True if enemy is playing death animation
+    pub enemy_death_complete_ms: u32,   // When death animation completes
+    pub enemy_spawning: bool,           // True if enemy is respawning (after death anim)
     pub enemy_spawn_complete_ms: u32,   // When new enemy will spawn
 
     // Skill system
@@ -104,6 +118,13 @@ pub struct IdleFarmSession {
     // HP regeneration (separate from combat damage)
     pub hp_regen_rate: f32,             // HP regen per second (from VIT)
     pub last_hp_regen_ms: u32,          // When HP last regenerated
+
+    // Damage display tracking (for visual feedback)
+    pub last_hero_damage: u16,          // Last damage hero dealt to enemy
+    pub last_enemy_damage: u16,         // Last damage enemy dealt to hero
+    pub hero_attack_missed: bool,       // True if hero's last attack missed
+    pub enemy_attack_missed: bool,      // True if enemy's last attack missed
+    pub last_skill_used: bool,          // True if last hero attack was a skill
 
     // Calculated rates (per minute) - kept for display
     pub kills_per_minute: f32,
@@ -122,7 +143,8 @@ pub struct IdleFarmSession {
 impl IdleFarmSession {
     pub fn new(map_id: u32, enemy_id: u32, start_time_ms: u32, current_hp: u16,
                kills_per_min: f32, zeny_per_min: f32, damage_per_min: f32, regen_per_min: f32,
-               hero_agi: u16, hero_vit: u16, enemy_hp: u16, enemy_level: u16) -> Self {
+               hero_level: u16, hero_agi: u16, hero_vit: u16, hero_dex: u16,
+               enemy_hp: u16, enemy_level: u16) -> Self {
         let ms_per_kill = if kills_per_min > 0.0 {
             (60_000.0 / kills_per_min) as u32
         } else {
@@ -130,18 +152,22 @@ impl IdleFarmSession {
         };
 
         // Calculate hero attack delay based on AGI (ASPD formula)
-        // Base attack speed = 200ms, reduced by AGI
-        // Formula: 200 - (AGI * 1.5) = attack delay in ms
-        // Min delay = 100ms (at 66+ AGI)
-        let hero_attack_delay_ms = (2000 - (hero_agi as u32 * 15)).max(1000); // 1000-2000ms
+        // Slower attacks to allow animations to complete
+        // Formula: 4000 - (AGI * 20) = attack delay in ms
+        // Min delay = 2500ms (allows 750ms+ for attack animation + reaction time)
+        let hero_attack_delay_ms = (4000 - (hero_agi as u32 * 20)).max(2500); // 2500-4000ms
 
         // Calculate enemy attack delay based on level
-        // Higher level enemies attack faster
-        // Formula: 3000 - (level * 20) = attack delay in ms
-        let enemy_attack_delay_ms = (3000 - (enemy_level as u32 * 20)).max(1500).min(3000); // 1500-3000ms
+        // Higher level enemies attack faster but still slow enough for animations
+        // Formula: 5000 - (level * 30) = attack delay in ms
+        let enemy_attack_delay_ms = (5000 - (enemy_level as u32 * 30)).max(3000).min(5000); // 3000-5000ms
 
-        // HP regen rate from VIT: 1 HP per second per 10 VIT
-        let hp_regen_rate = (hero_vit as f32 / 10.0).max(0.1); // At least 0.1 HP/sec
+        // HP regen rate calculation:
+        // Base: VIT / 10 HP per second
+        // Level bonus: Level / 20 HP per second
+        // Total: (VIT/10 + Level/20) HP per second, minimum 1.0 HP/sec
+        // This means at Level 1 VIT 1: ~0.15 HP/sec, at Level 50 VIT 50: ~7.5 HP/sec
+        let hp_regen_rate = ((hero_vit as f32 / 10.0) + (hero_level as f32 / 20.0)).max(1.0);
 
         // Skill cooldown: 10 seconds
         let skill_cooldown_ms = 10_000;
@@ -158,15 +184,29 @@ impl IdleFarmSession {
             items_collected: 0,
             // Hero combat
             current_hp,
+            hero_level,
+            hero_dex,
+            hero_vit,
             hero_attack_delay_ms,
             last_hero_attack_ms: start_time_ms,
             next_hero_attack_ms: start_time_ms + hero_attack_delay_ms,
+            hero_attack_pending: false,
+            hero_damage_apply_ms: 0,
+            pending_hero_damage: 0,
+            pending_hero_miss: false,
             // Enemy combat
             current_enemy_hp: enemy_hp,
             enemy_max_hp: enemy_hp,
+            enemy_level,
             enemy_attack_delay_ms,
             last_enemy_attack_ms: start_time_ms,
             next_enemy_attack_ms: start_time_ms + enemy_attack_delay_ms,
+            enemy_attack_pending: false,
+            enemy_damage_apply_ms: 0,
+            pending_enemy_damage: 0,
+            pending_enemy_miss: false,
+            enemy_dying: false,
+            enemy_death_complete_ms: 0,
             enemy_spawning: false,
             enemy_spawn_complete_ms: 0,
             // Skills
@@ -176,6 +216,12 @@ impl IdleFarmSession {
             // HP regen
             hp_regen_rate,
             last_hp_regen_ms: start_time_ms,
+            // Damage display
+            last_hero_damage: 0,
+            last_enemy_damage: 0,
+            hero_attack_missed: false,
+            enemy_attack_missed: false,
+            last_skill_used: false,
             // Display rates
             kills_per_minute: kills_per_min,
             zeny_per_minute: zeny_per_min,

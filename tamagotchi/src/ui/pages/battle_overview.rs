@@ -125,17 +125,23 @@ where
             &FONT_9X18_BOLD,
             Rgb888::YELLOW,
         )?;
-    } else if session.current_enemy_hp == 0 {
-        // Show death message
+    } else if session.enemy_dying {
+        // Show death animation with DEFEATED message
+        draw_monster_gif(
+            display,
+            game_state,
+            Point::new(90, battle_center_y),
+            enemy.name,
+        )?;
         draw_text(
             display,
             "DEFEATED!",
-            Point::new(50, battle_center_y + 40),
+            Point::new(50, battle_center_y + 60),
             &FONT_9X18_BOLD,
             Rgb888::GREEN,
         )?;
     } else {
-        // Show monster GIF
+        // Show monster GIF with animation (controlled by update system)
         draw_monster_gif(
             display,
             game_state,
@@ -144,8 +150,78 @@ where
         )?;
     }
 
-    // Hero GIF (right side)
+    // Hero GIF (right side) with animation (controlled by update system)
     draw_hero_gif(display, game_state, Point::new(240, battle_center_y + 15))?;
+
+    // === DAMAGE/MISS DISPLAY ===
+    let current_time = game_state.last_update_ms;
+    const DAMAGE_DISPLAY_DURATION_MS: u32 = 1000; // Show damage for 1 second
+
+    // Show damage/miss on enemy (when hero damage is applied)
+    // Damage is applied 600ms after attack starts, show it for 1 second after that
+    let hero_damage_elapsed = current_time.saturating_sub(session.hero_damage_apply_ms);
+    if hero_damage_elapsed < DAMAGE_DISPLAY_DURATION_MS && !session.enemy_spawning && !session.enemy_dying
+       && !session.hero_attack_pending {  // Only show after damage has been applied
+        if session.hero_attack_missed {
+            // Show MISS above enemy
+            draw_text(
+                display,
+                "MISS",
+                Point::new(70, battle_center_y - 30),
+                &FONT_9X18_BOLD,
+                Rgb888::new(150, 150, 150), // Gray
+            )?;
+        } else if session.last_hero_damage > 0 {
+            // Show damage number above enemy
+            let mut damage_text = String::<16>::new();
+            if session.last_skill_used {
+                write!(damage_text, "-{} SKILL!", session.last_hero_damage).ok();
+                draw_text(
+                    display,
+                    &damage_text,
+                    Point::new(40, battle_center_y - 30),
+                    &FONT_9X18_BOLD,
+                    Rgb888::new(255, 200, 0), // Gold for skill
+                )?;
+            } else {
+                write!(damage_text, "-{}", session.last_hero_damage).ok();
+                draw_text(
+                    display,
+                    &damage_text,
+                    Point::new(60, battle_center_y - 30),
+                    &FONT_9X18_BOLD,
+                    Rgb888::RED,
+                )?;
+            }
+        }
+    }
+
+    // Show damage/miss on hero (when enemy damage is applied)
+    let enemy_damage_elapsed = current_time.saturating_sub(session.enemy_damage_apply_ms);
+    if enemy_damage_elapsed < DAMAGE_DISPLAY_DURATION_MS && !session.enemy_spawning && !session.enemy_dying
+       && !session.enemy_attack_pending {  // Only show after damage has been applied
+        if session.enemy_attack_missed {
+            // Show MISS above hero
+            draw_text(
+                display,
+                "MISS",
+                Point::new(220, battle_center_y - 15),
+                &FONT_9X18_BOLD,
+                Rgb888::new(150, 150, 150), // Gray
+            )?;
+        } else if session.last_enemy_damage > 0 {
+            // Show damage number above hero
+            let mut damage_text = String::<16>::new();
+            write!(damage_text, "-{}", session.last_enemy_damage).ok();
+            draw_text(
+                display,
+                &damage_text,
+                Point::new(220, battle_center_y - 15),
+                &FONT_9X18_BOLD,
+                Rgb888::new(255, 100, 100), // Light red
+            )?;
+        }
+    }
 
     // === BOTTOM LEFT: Hero Info ===
     let hero_info_y = 280;

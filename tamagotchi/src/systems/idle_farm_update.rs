@@ -29,29 +29,55 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                 session.last_hp_regen_ms = current_time;
             }
 
+            // === ENEMY DEATH ANIMATION ===
+            if session.enemy_dying {
+                if current_time >= session.enemy_death_complete_ms {
+                    // Death animation complete, start spawning phase
+                    session.enemy_dying = false;
+                    session.enemy_spawning = true;
+                    session.enemy_spawn_complete_ms = current_time + 2000; // 2 second spawn delay
+                    esp_println::println!("[COMBAT] Enemy death animation complete, spawning...");
+                }
+                return; // Skip combat while dying
+            }
+
             // === ENEMY SPAWN HANDLING ===
             if session.enemy_spawning {
                 if current_time >= session.enemy_spawn_complete_ms {
                     // Spawn new enemy
                     session.enemy_spawning = false;
                     session.current_enemy_hp = session.enemy_max_hp;
-                    session.next_enemy_attack_ms = current_time + session.enemy_attack_delay_ms;
+
+                    // Add 1-second delay before first attacks after spawn
+                    // This creates a visible idle moment before combat resumes
+                    session.next_hero_attack_ms = current_time + 1000;
+                    session.next_enemy_attack_ms = current_time + session.enemy_attack_delay_ms + 1000;
+
                     esp_println::println!("[COMBAT] New enemy spawned!");
                 }
                 return; // Skip combat while spawning
             }
 
-            // === HERO ATTACK ===
-            if current_time >= session.next_hero_attack_ms {
+            // === HERO ATTACK INITIATION ===
+            // Start attack animation and calculate damage, but don't apply yet
+            if current_time >= session.next_hero_attack_ms && !session.hero_attack_pending {
                 if let Some(enemy) = Enemy::from_id(session.enemy_id) {
                     // Calculate hero stats
                     let hero_atk = game_state.hero.base_str * 2 + game_state.hero.equipped_weapon.atk_bonus;
-                    let hero_agi = game_state.hero.base_agi;
 
-                    // Check if attack misses (AGI vs enemy level)
-                    // Miss rate = max(5%, 30% - AGI)
-                    let miss_chance = ((30.0 - hero_agi as f32).max(5.0)) as u8;
-                    let hit_roll = (current_time % 100) as u8;
+                    // Check if attack misses (DEX + Level vs Enemy Level)
+                    // Hit rate formula: 80% + (Hero DEX / 5) + (Hero Level - Enemy Level)
+                    // Base hit rate: 80%
+                    // DEX bonus: +1% hit per 5 DEX (so 50 DEX = +10% hit)
+                    // Level difference: +1% hit per level above enemy, -1% per level below
+                    // Final hit rate clamped between 20% and 95%
+                    let base_hit_rate = 80.0;
+                    let dex_bonus = session.hero_dex as f32 / 5.0;
+                    let level_diff = session.hero_level as i32 - session.enemy_level as i32;
+                    let hit_rate = (base_hit_rate + dex_bonus + level_diff as f32).max(20.0).min(95.0);
+                    let miss_chance = 100.0 - hit_rate;
+
+                    let hit_roll = (current_time % 100) as f32;
                     let is_miss = hit_roll < miss_chance;
 
                     if !is_miss {
@@ -65,16 +91,49 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                         // Check if skill is available for use
                         let use_skill = current_time >= session.next_skill_use_ms;
                         let damage = if use_skill {
-                            // Skill does 2x damage
-                            let skill_damage = base_damage * 2;
                             session.last_skill_use_ms = current_time;
                             session.next_skill_use_ms = current_time + session.skill_cooldown_ms;
-                            esp_println::println!("[COMBAT] Hero uses SKILL! Damage: {}", skill_damage);
-                            skill_damage
+                            session.last_skill_used = true;
+                            esp_println::println!("[COMBAT] Hero starts SKILL attack!");
+                            base_damage * 2
                         } else {
-                            esp_println::println!("[COMBAT] Hero attacks! Damage: {}", base_damage);
+                            session.last_skill_used = false;
+                            esp_println::println!("[COMBAT] Hero starts attack!");
                             base_damage
                         };
+
+                        // Store damage to apply later (after animation plays)
+                        session.pending_hero_damage = damage;
+                        session.pending_hero_miss = false;
+                    } else {
+                        esp_println::println!("[COMBAT] Hero attack will MISS!");
+                        session.pending_hero_damage = 0;
+                        session.pending_hero_miss = true;
+                        session.last_skill_used = false;
+                    }
+
+                    // Start attack animation, damage applies after 600ms windup
+                    session.hero_attack_pending = true;
+                    session.hero_damage_apply_ms = current_time + 600;
+                    session.last_hero_attack_ms = current_time;
+                    session.next_hero_attack_ms = current_time + session.hero_attack_delay_ms;
+                }
+            }
+
+            // === HERO DAMAGE APPLICATION ===
+            // Apply damage after attack animation has played
+            if session.hero_attack_pending && current_time >= session.hero_damage_apply_ms {
+                if let Some(enemy) = Enemy::from_id(session.enemy_id) {
+                    session.hero_attack_pending = false;
+
+                    if !session.pending_hero_miss {
+                        let damage = session.pending_hero_damage;
+
+                        // Update display tracking
+                        session.last_hero_damage = damage;
+                        session.hero_attack_missed = false;
+
+                        esp_println::println!("[COMBAT] Hero attack lands! Damage: {}", damage);
 
                         // Apply damage to enemy
                         if session.current_enemy_hp > damage {
@@ -104,22 +163,23 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
 
                             esp_println::println!("[COMBAT] Enemy killed! Total: {}", session.monsters_killed);
 
-                            // Start enemy respawn (death animation + spawn delay = 2 seconds)
-                            session.enemy_spawning = true;
-                            session.enemy_spawn_complete_ms = current_time + 2000;
+                            // Start death animation phase
+                            session.enemy_dying = true;
+                            session.enemy_death_complete_ms = current_time + 1500;
                         }
                     } else {
+                        // Attack missed
+                        session.hero_attack_missed = true;
+                        session.last_hero_damage = 0;
                         esp_println::println!("[COMBAT] Hero attack MISSED!");
                     }
-
-                    // Schedule next hero attack
-                    session.last_hero_attack_ms = current_time;
-                    session.next_hero_attack_ms = current_time + session.hero_attack_delay_ms;
                 }
             }
 
-            // === ENEMY ATTACK ===
-            if !session.enemy_spawning && current_time >= session.next_enemy_attack_ms {
+            // === ENEMY ATTACK INITIATION ===
+            // Start attack animation and calculate damage, but don't apply yet
+            if !session.enemy_spawning && !session.enemy_dying
+               && current_time >= session.next_enemy_attack_ms && !session.enemy_attack_pending {
                 if let Some(enemy) = Enemy::from_id(session.enemy_id) {
                     // Calculate hero defense
                     let hero_def = (game_state.hero.base_vit / 2) +
@@ -127,7 +187,7 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                                    game_state.hero.equipped_garment.def_bonus +
                                    game_state.hero.equipped_shoes.def_bonus;
 
-                    // Enemy miss chance (lower than hero, ~10-20%)
+                    // Enemy miss chance
                     let enemy_miss_chance = 15u8;
                     let enemy_hit_roll = ((current_time + 50) % 100) as u8;
                     let is_miss = enemy_hit_roll < enemy_miss_chance;
@@ -140,7 +200,37 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                             1
                         };
 
-                        esp_println::println!("[COMBAT] Enemy attacks! Damage: {}", damage);
+                        esp_println::println!("[COMBAT] Enemy starts attack!");
+                        session.pending_enemy_damage = damage;
+                        session.pending_enemy_miss = false;
+                    } else {
+                        esp_println::println!("[COMBAT] Enemy attack will MISS!");
+                        session.pending_enemy_damage = 0;
+                        session.pending_enemy_miss = true;
+                    }
+
+                    // Start attack animation, damage applies after 600ms windup
+                    session.enemy_attack_pending = true;
+                    session.enemy_damage_apply_ms = current_time + 600;
+                    session.last_enemy_attack_ms = current_time;
+                    session.next_enemy_attack_ms = current_time + session.enemy_attack_delay_ms;
+                }
+            }
+
+            // === ENEMY DAMAGE APPLICATION ===
+            // Apply damage after attack animation has played
+            if session.enemy_attack_pending && current_time >= session.enemy_damage_apply_ms {
+                if let Some(_enemy) = Enemy::from_id(session.enemy_id) {
+                    session.enemy_attack_pending = false;
+
+                    if !session.pending_enemy_miss {
+                        let damage = session.pending_enemy_damage;
+
+                        // Track damage for display
+                        session.last_enemy_damage = damage;
+                        session.enemy_attack_missed = false;
+
+                        esp_println::println!("[COMBAT] Enemy attack lands! Damage: {}", damage);
 
                         // Apply damage to hero
                         if session.current_hp > damage {
@@ -151,7 +241,7 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                             session.current_hp = 0;
                             game_state.hero.hp = 0;
                             session.state = IdleFarmState::Cooldown;
-                            session.cooldown_end_ms = current_time + 60_000; // 60 second cooldown
+                            session.cooldown_end_ms = current_time + 60_000;
 
                             esp_println::println!("[COMBAT] Hero DIED!");
 
@@ -162,12 +252,11 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                             return;
                         }
                     } else {
+                        // Attack missed
+                        session.enemy_attack_missed = true;
+                        session.last_enemy_damage = 0;
                         esp_println::println!("[COMBAT] Enemy attack MISSED!");
                     }
-
-                    // Schedule next enemy attack
-                    session.last_enemy_attack_ms = current_time;
-                    session.next_enemy_attack_ms = current_time + session.enemy_attack_delay_ms;
                 }
             }
 
@@ -216,6 +305,19 @@ pub fn start_idle_farm_session(
 
         use crate::combat::IdleFarmSession;
 
+        // Calculate total stats including equipment bonuses
+        let total_vit = (game_state.hero.base_vit as i32
+            + game_state.hero.equipped_armor.vit_bonus as i32
+            + game_state.hero.equipped_garment.vit_bonus as i32
+            + game_state.hero.equipped_shoes.vit_bonus as i32)
+            .max(1) as u16;
+
+        let total_dex = (game_state.hero.base_dex as i32
+            + game_state.hero.equipped_weapon.dex_bonus as i32
+            + game_state.hero.equipped_accessory1.dex_bonus as i32
+            + game_state.hero.equipped_accessory2.dex_bonus as i32)
+            .max(1) as u16;
+
         let session = IdleFarmSession::new(
             map_id,
             enemy_id,
@@ -225,8 +327,10 @@ pub fn start_idle_farm_session(
             rates.zeny_per_minute,
             rates.damage_per_minute,
             rates.regen_per_minute,
-            game_state.hero.base_agi,  // Total AGI
-            game_state.hero.base_vit,  // Total VIT
+            game_state.hero.level,
+            game_state.hero.base_agi,
+            total_vit,  // VIT with equipment bonuses
+            total_dex,  // DEX with equipment bonuses
             enemy.max_hp,
             enemy.level,
         );
