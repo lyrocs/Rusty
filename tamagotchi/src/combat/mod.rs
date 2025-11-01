@@ -12,6 +12,7 @@ pub mod skills;
 pub mod skills_db;
 pub mod battle_manual;
 pub mod battle_jrpg;
+pub mod battle_zelda;
 pub mod farm_system;
 
 pub use models::*;

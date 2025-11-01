@@ -1,18 +1,17 @@
 /// Input handling systems
 ///
 /// Button and touch input processing for game interaction.
-
 use bevy_ecs::prelude::*;
 use core::fmt::Write;
 use ft3x68_rs::{TouchPoint, TouchState};
 use heapless::String;
 
-use crate::ecs::resources::{ButtonResource, TouchResource};
-use crate::core::GameState;
 use crate::combat::{BattleState, Enemy};
+use crate::core::GameState;
+use crate::ecs::resources::{ButtonResource, TouchResource};
 use crate::hero::EquipmentSlot;
-use crate::tamagotchi::models::{FarmState, GamePage, MapHelper, RestState};
 use crate::quest::system as quest_system;
+use crate::tamagotchi::models::{FarmState, GamePage, MapHelper, RestState};
 
 const DEBOUNCE_THRESHOLD: u8 = 3;
 
@@ -370,6 +369,9 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         GamePage::JrpgBattle => {
             handle_jrpg_battle_touch(game_state, x, y);
         }
+        GamePage::ZeldaBattle => {
+            handle_zelda_battle_touch(game_state, x, y);
+        }
         GamePage::Crafting => {
             handle_crafting_touch(game_state, x, y);
         }
@@ -453,8 +455,16 @@ fn handle_equipment_selection_touch(game_state: &mut GameState, x: u16, y: u16) 
         (start_y + item_height, EquipmentSlot::Armor, "Armor"),
         (start_y + item_height * 2, EquipmentSlot::Shoes, "Shoes"),
         (start_y + item_height * 3, EquipmentSlot::Garment, "Garment"),
-        (start_y + item_height * 4, EquipmentSlot::Accessory1, "Accessory 1"),
-        (start_y + item_height * 5, EquipmentSlot::Accessory2, "Accessory 2"),
+        (
+            start_y + item_height * 4,
+            EquipmentSlot::Accessory1,
+            "Accessory 1",
+        ),
+        (
+            start_y + item_height * 5,
+            EquipmentSlot::Accessory2,
+            "Accessory 2",
+        ),
     ];
 
     // Check equipment slot buttons
@@ -526,8 +536,16 @@ fn handle_equipment_touch(game_state: &mut GameState, x: u16, y: u16) {
         (right_x, start_y, EquipmentSlot::Armor),
         (left_x, start_y + row_spacing, EquipmentSlot::Shoes),
         (right_x, start_y + row_spacing, EquipmentSlot::Garment),
-        (left_x, start_y + (row_spacing * 2), EquipmentSlot::Accessory1),
-        (right_x, start_y + (row_spacing * 2), EquipmentSlot::Accessory2),
+        (
+            left_x,
+            start_y + (row_spacing * 2),
+            EquipmentSlot::Accessory1,
+        ),
+        (
+            right_x,
+            start_y + (row_spacing * 2),
+            EquipmentSlot::Accessory2,
+        ),
     ];
 
     for (slot_x, slot_y, slot) in slots.iter() {
@@ -588,7 +606,11 @@ fn handle_card_socket_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
                     // Remove card
                     match game_state.hero.remove_card(equipment_slot, i) {
                         Ok(card_id) => {
-                            esp_println::println!("[CARD] Removed card {} from slot {}", card_id, i);
+                            esp_println::println!(
+                                "[CARD] Removed card {} from slot {}",
+                                card_id,
+                                i
+                            );
                             // TODO: Add card back to inventory
                             game_state.needs_redraw = true;
                         }
@@ -643,7 +665,10 @@ fn handle_preset_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
         if x >= 75 && x <= 293 && y >= 200 && y <= 240 {
             match game_state.hero.save_equipment_preset(preset_index) {
                 Ok(_) => {
-                    esp_println::println!("[PRESET] Successfully saved preset {}", preset_index + 1);
+                    esp_println::println!(
+                        "[PRESET] Successfully saved preset {}",
+                        preset_index + 1
+                    );
                 }
                 Err(e) => {
                     esp_println::println!("[PRESET] Failed to save: {}", e);
@@ -659,7 +684,10 @@ fn handle_preset_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
         if has_preset && x >= 75 && x <= 293 && y >= 250 && y <= 290 {
             match game_state.hero.load_equipment_preset(preset_index) {
                 Ok(_) => {
-                    esp_println::println!("[PRESET] Successfully loaded preset {}", preset_index + 1);
+                    esp_println::println!(
+                        "[PRESET] Successfully loaded preset {}",
+                        preset_index + 1
+                    );
                 }
                 Err(e) => {
                     esp_println::println!("[PRESET] Failed to load: {}", e);
@@ -675,7 +703,10 @@ fn handle_preset_menu_touch(game_state: &mut GameState, x: u16, y: u16) {
         if has_preset && x >= 75 && x <= 293 && y >= 300 && y <= 340 {
             match game_state.hero.clear_equipment_preset(preset_index) {
                 Ok(_) => {
-                    esp_println::println!("[PRESET] Successfully cleared preset {}", preset_index + 1);
+                    esp_println::println!(
+                        "[PRESET] Successfully cleared preset {}",
+                        preset_index + 1
+                    );
                 }
                 Err(e) => {
                     esp_println::println!("[PRESET] Failed to clear: {}", e);
@@ -768,7 +799,8 @@ fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) 
         let item_height = 60;
         let scroll_offset = game_state.equipment_swap_scroll as usize;
 
-        for (i, equip_id) in equipment_items.iter()
+        for (i, equip_id) in equipment_items
+            .iter()
             .skip(scroll_offset)
             .take(5)
             .enumerate()
@@ -948,10 +980,7 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             let enemy_id = enemy_ids[enemy_index];
 
             if let Some(enemy) = Enemy::from_id(enemy_id) {
-                esp_println::println!(
-                    "[MAP] Opening farm duration selection for {}",
-                    enemy.name
-                );
+                esp_println::println!("[MAP] Opening farm duration selection for {}", enemy.name);
                 // Store enemy and open duration selection modal
                 game_state.current_enemy = Some(enemy);
                 game_state.farm_selection_open = true;
@@ -1022,7 +1051,8 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
                         "[MAP] Starting JRPG battle with {} from map",
                         enemy.name
                     );
-                    game_state.start_jrpg_battle(enemy);
+                    game_state.start_zelda_battle(enemy);
+                    // game_state.start_jrpg_battle(enemy);
                 }
             }
         }
@@ -1137,7 +1167,11 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
         if x >= 190 && x <= 340 && y >= 360 && y <= 420 {
             if let Some(quest_id) = game_state.selected_quest_id {
                 // Check if quest is completed and not claimed
-                if let Some(active_quest) = game_state.active_quests.iter().find(|q| q.quest_id == quest_id) {
+                if let Some(active_quest) = game_state
+                    .active_quests
+                    .iter()
+                    .find(|q| q.quest_id == quest_id)
+                {
                     if active_quest.completed && !active_quest.claimed {
                         esp_println::println!("[QUEST] Claiming quest ID: {}", quest_id);
                         quest_system::claim_quest_reward(game_state, quest_id);
@@ -1190,11 +1224,12 @@ fn handle_quests_touch(game_state: &mut GameState, x: u16, y: u16) {
         // Quest cards: x=10-358, y=60-140, 148-228, 236-316, 324-404 (height 80, spacing 8)
 
         // Filter and sort quests the same way as the UI does
-        let mut sorted_quests: heapless::Vec<&crate::tamagotchi::models::ActiveQuest, 16> = game_state
-            .active_quests
-            .iter()
-            .filter(|q| !q.claimed)
-            .collect();
+        let mut sorted_quests: heapless::Vec<&crate::tamagotchi::models::ActiveQuest, 16> =
+            game_state
+                .active_quests
+                .iter()
+                .filter(|q| !q.claimed)
+                .collect();
 
         // Sort by priority (lower priority value = higher priority)
         sorted_quests.sort_by(|a, b| {
@@ -1310,7 +1345,7 @@ fn handle_settings_touch(game_state: &mut GameState, x: u16, y: u16) {
 
 /// Handle JRPG Battle page touches
 fn handle_jrpg_battle_touch(game_state: &mut GameState, x: u16, y: u16) {
-    use crate::combat::{JrpgBattleState};
+    use crate::combat::JrpgBattleState;
 
     match game_state.jrpg_battle_state {
         JrpgBattleState::PlayerTurn => {
@@ -1564,7 +1599,9 @@ fn handle_crafting_details_touch(game_state: &mut GameState, x: u16, y: u16) {
                     match game_state.hero.craft_equipment(equip_data.id) {
                         Ok(equipment) => {
                             // Successfully crafted - add to inventory
-                            game_state.hero.add_item(equipment.id as u32, equipment.name, 1);
+                            game_state
+                                .hero
+                                .add_item(equipment.id as u32, equipment.name, 1);
                             game_state.craft_result_message = Some("Crafted successfully!");
                             game_state.craft_result_timer = game_state.last_update_ms + 2000;
                             esp_println::println!("[CRAFT] Crafted {}", equipment.name);
@@ -1681,10 +1718,70 @@ fn handle_farm_duration_selection_touch(game_state: &mut GameState, x: u16, y: u
                 game_state.needs_redraw = true;
                 return;
             } else {
-                esp_println::println!("[FARM] Not enough SP for {} (need {}, have {})",
-                    duration.display_name(), sp_cost, game_state.hero.sp);
+                esp_println::println!(
+                    "[FARM] Not enough SP for {} (need {}, have {})",
+                    duration.display_name(),
+                    sp_cost,
+                    game_state.hero.sp
+                );
                 // Could show a message here, but for now just ignore the click
             }
+        }
+    }
+}
+
+/// Handle touch input on Zelda Battle page
+fn handle_zelda_battle_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::combat::ZeldaBattleState;
+
+    match game_state.zelda_battle_state {
+        ZeldaBattleState::Idle => {
+            // Start battle if player has enough SP
+            if game_state.hero.sp >= 5 {
+                // Get enemy from current map location
+                use crate::combat::Enemy;
+                use crate::tamagotchi::models::MapHelper;
+                let map_id = game_state.current_location;
+                let enemy_ids = MapHelper::enemies(map_id);
+                if !enemy_ids.is_empty() {
+                    // Pick random enemy from map using touch coordinates as seed
+                    let rng_value = (x.wrapping_add(y)) as u8;
+                    let enemy_index = (rng_value as usize) % enemy_ids.len();
+                    let enemy_id = enemy_ids[enemy_index];
+
+                    if let Some(enemy) = Enemy::from_id(enemy_id) {
+                        game_state.start_zelda_battle(enemy);
+                    }
+                } else {
+                    // No enemies on this map, return to map
+                    game_state.current_page = GamePage::Map;
+                    game_state.needs_redraw = true;
+                }
+            } else {
+                // Not enough SP, return to map
+                game_state.current_page = GamePage::Map;
+                game_state.needs_redraw = true;
+            }
+        }
+        ZeldaBattleState::Playing => {
+            // Handle tap during gameplay - try to hit enemies in hit zone
+            game_state.handle_zelda_battle_touch(x as i32, y as i32);
+        }
+        ZeldaBattleState::Victory | ZeldaBattleState::Defeat => {
+            // Prevent accidental clicks - require 500ms delay after battle ends
+            let time_since_end = game_state
+                .last_update_ms
+                .saturating_sub(game_state.battle_end_time);
+            if time_since_end < 500 {
+                esp_println::println!(
+                    "[ZELDA] Ignoring click too soon after battle end ({}ms)",
+                    time_since_end
+                );
+                return;
+            }
+
+            // Exit battle and return to map
+            game_state.exit_zelda_battle();
         }
     }
 }

@@ -13,7 +13,7 @@ use crate::quest::ActiveQuest;
 use crate::combat::{
     BattleAnimationPhase, BattleState, Circle, CombatResult, Enemy,
     FarmState, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
-    JrpgCombatant, MonsterAnimation, RestState,
+    JrpgCombatant, MonsterAnimation, RestState, ZeldaBattleState, ZeldaEnemy,
 };
 
 /// Main game state containing all game data and UI state
@@ -70,6 +70,17 @@ pub struct GameState {
     pub jrpg_last_combat_result: CombatResult, // Last attack result (normal/crit/lucky)
     pub jrpg_skill_menu_selection: u8,         // Selected skill in skill menu (0-2)
     pub jrpg_selected_skill_index: Option<usize>, // Index of skill being used
+    // Zelda Battle state
+    pub zelda_battle_state: ZeldaBattleState,    // Current Zelda battle state
+    pub zelda_battle_enemy: Option<Enemy>,       // Main enemy being fought
+    pub zelda_battle_enemies: [Option<ZeldaEnemy>; 6], // Active enemies on screen (max 6)
+    pub zelda_battle_score: u16,                 // Enemies defeated
+    pub zelda_battle_missed: u16,                // Enemies that reached hero
+    pub zelda_battle_combo: u16,                 // Current combo count
+    pub zelda_battle_next_spawn: u32,            // When next enemy spawns
+    pub zelda_battle_spawn_interval: u32,        // Time between spawns (1500ms)
+    pub zelda_battle_duration: u32,              // Total battle time (60 seconds)
+    pub zelda_battle_elapsed: u32,               // Time elapsed in battle
     // Equipment refinement UI state
     pub equipment_selection_open: bool,         // Whether equipment selection menu is shown
     pub refine_popup_open: bool,                // Whether refine popup is shown
@@ -185,6 +196,17 @@ impl Default for GameState {
             jrpg_last_combat_result: CombatResult::Normal,
             jrpg_skill_menu_selection: 0,
             jrpg_selected_skill_index: None,
+            // Zelda Battle state
+            zelda_battle_state: ZeldaBattleState::Idle,
+            zelda_battle_enemy: None,
+            zelda_battle_enemies: [None, None, None, None, None, None],
+            zelda_battle_score: 0,
+            zelda_battle_missed: 0,
+            zelda_battle_combo: 0,
+            zelda_battle_next_spawn: 0,
+            zelda_battle_spawn_interval: 1500, // 1.5 seconds between spawns
+            zelda_battle_duration: 60000,      // 60 seconds
+            zelda_battle_elapsed: 0,
             // Equipment refinement UI state
             equipment_selection_open: false,
             refine_popup_open: false,

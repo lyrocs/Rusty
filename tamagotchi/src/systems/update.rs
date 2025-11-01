@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::RtcResource;
 use crate::core::GameState;
-use crate::combat::BattleState;
+use crate::combat::{BattleState, ZeldaBattleState};
 use crate::tamagotchi::models::{FarmState, GamePage, RestState};
 use super::animations::{
     update_hero_animation, update_monster_animation,
@@ -450,6 +450,62 @@ pub fn tamagotchi_update_system(
             let enemy_name = game_state.jrpg_enemy_combatant.as_ref().map(|e| e.name);
             if let Some(name) = enemy_name {
                 update_monster_animation(&mut game_state, delta_ms, name);
+            }
+        }
+    }
+
+    // Update Zelda battle progress (spawn enemies, update positions, handle hits)
+    if game_state.current_page == GamePage::ZeldaBattle {
+        match game_state.zelda_battle_state {
+            ZeldaBattleState::Idle => {
+                // Only update animations when screen is on
+                if game_state.screen_on {
+                    // Ensure animation is reset to Idle when on idle state
+                    use crate::tamagotchi::models::MonsterAnimation;
+                    if game_state.monster_animation != MonsterAnimation::Idle {
+                        game_state.monster_animation = MonsterAnimation::Idle;
+                        game_state.monster_animation_frame = 0;
+                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                        game_state.needs_redraw = true;
+                    }
+                }
+            }
+            ZeldaBattleState::Playing => {
+                // Update battle mechanics (ALWAYS runs - game logic)
+                let old_score = game_state.zelda_battle_score;
+                let old_missed = game_state.zelda_battle_missed;
+                let old_state = game_state.zelda_battle_state;
+                let old_time_sec = (game_state.zelda_battle_duration - game_state.zelda_battle_elapsed) / 1000;
+
+                game_state.update_zelda_battle(delta_ms);
+
+                let new_time_sec = (game_state.zelda_battle_duration - game_state.zelda_battle_elapsed) / 1000;
+
+                // Redraw if score/missed/timer/state changed AND screen is on
+                if (game_state.zelda_battle_score != old_score
+                    || game_state.zelda_battle_missed != old_missed
+                    || game_state.zelda_battle_state != old_state
+                    || new_time_sec != old_time_sec)
+                    && game_state.screen_on
+                {
+                    game_state.needs_redraw = true;
+                }
+
+                // Only update animations when screen is on
+                if game_state.screen_on {
+                    // Update hero and monster animations
+                    update_hero_animation(&mut game_state, delta_ms);
+
+                    // Update monster animations for all active enemies
+                    // Save enemy name to avoid borrow checker issues
+                    let enemy_name = game_state.zelda_battle_enemy.as_ref().map(|e| e.name);
+                    if let Some(name) = enemy_name {
+                        update_monster_animation(&mut game_state, delta_ms, name);
+                    }
+                }
+            }
+            ZeldaBattleState::Victory | ZeldaBattleState::Defeat => {
+                // Static screens, no updates needed
             }
         }
     }
