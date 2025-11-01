@@ -191,16 +191,19 @@ pub fn tamagotchi_update_system(
         }
     }
 
-    // Update rest progress (only redraw when HP or SP actually changes)
+    // Update rest progress (redraw every 100ms to show smooth progress bar)
     if game_state.current_page == GamePage::Rest && game_state.rest_state == RestState::Resting {
         let old_sp = game_state.hero.sp;
         let old_hp = game_state.hero.hp;
+        let old_progress = game_state.rest_progress;
         game_state.update_rest_progress(delta_ms);
-        // Only redraw if HP or SP changed or state changed AND screen is on
-        if (game_state.hero.sp != old_sp
-            || game_state.hero.hp != old_hp
-            || game_state.rest_state != RestState::Resting)
-            && game_state.screen_on
+
+        // Redraw if HP/SP changed, state changed, or progress increased by at least 100ms
+        if game_state.screen_on
+            && (game_state.hero.sp != old_sp
+                || game_state.hero.hp != old_hp
+                || game_state.rest_state != RestState::Resting
+                || game_state.rest_progress / 100 != old_progress / 100)
         {
             game_state.needs_redraw = true;
         }
@@ -243,18 +246,17 @@ pub fn tamagotchi_update_system(
                 let old_score = game_state.battle_score;
                 let old_missed = game_state.battle_missed;
                 let old_state = game_state.battle_state;
-                let old_time_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
+                let old_elapsed = game_state.battle_elapsed;
 
                 game_state.update_battle(delta_ms);
 
-                let new_time_sec = (game_state.battle_duration - game_state.battle_elapsed) / 1000;
-
-                // Redraw if score/missed/timer/state changed AND screen is on
-                if (game_state.battle_score != old_score
-                    || game_state.battle_missed != old_missed
-                    || game_state.battle_state != old_state
-                    || new_time_sec != old_time_sec)
-                    && game_state.screen_on
+                // Redraw more frequently for smooth circle animations (every 100ms)
+                // Circles are constantly shrinking and need smooth visual updates
+                if game_state.screen_on
+                    && (game_state.battle_score != old_score
+                        || game_state.battle_missed != old_missed
+                        || game_state.battle_state != old_state
+                        || game_state.battle_elapsed / 100 != old_elapsed / 100)
                 {
                     game_state.needs_redraw = true;
                 }
@@ -475,18 +477,17 @@ pub fn tamagotchi_update_system(
                 let old_score = game_state.zelda_battle_score;
                 let old_missed = game_state.zelda_battle_missed;
                 let old_state = game_state.zelda_battle_state;
-                let old_time_sec = (game_state.zelda_battle_duration - game_state.zelda_battle_elapsed) / 1000;
+                let old_elapsed = game_state.zelda_battle_elapsed;
 
                 game_state.update_zelda_battle(delta_ms);
 
-                let new_time_sec = (game_state.zelda_battle_duration - game_state.zelda_battle_elapsed) / 1000;
-
-                // Redraw if score/missed/timer/state changed AND screen is on
-                if (game_state.zelda_battle_score != old_score
-                    || game_state.zelda_battle_missed != old_missed
-                    || game_state.zelda_battle_state != old_state
-                    || new_time_sec != old_time_sec)
-                    && game_state.screen_on
+                // Redraw more frequently for smooth enemy movement (every 100ms)
+                // Enemies are constantly moving and need smooth visual updates
+                if game_state.screen_on
+                    && (game_state.zelda_battle_score != old_score
+                        || game_state.zelda_battle_missed != old_missed
+                        || game_state.zelda_battle_state != old_state
+                        || game_state.zelda_battle_elapsed / 100 != old_elapsed / 100)
                 {
                     game_state.needs_redraw = true;
                 }
@@ -530,18 +531,21 @@ pub fn tamagotchi_update_system(
                 let old_hero_hp = game_state.hero.hp;
                 let old_stagger = game_state.mvp_stagger_value;
                 let old_critical = game_state.mvp_critical_window_active;
+                let old_elapsed = game_state.mvp_battle_elapsed;
 
                 game_state.update_mvp_battle(delta_ms);
 
                 let new_hp = game_state.mvp_battle_enemy.as_ref().map(|e| e.hp);
 
-                // Redraw if state changed AND screen is on
-                if (game_state.mvp_battle_state != old_state
-                    || new_hp != old_hp
-                    || game_state.hero.hp != old_hero_hp
-                    || game_state.mvp_stagger_value != old_stagger
-                    || game_state.mvp_critical_window_active != old_critical)
-                    && game_state.screen_on
+                // Redraw if state changed, HP changed, or time elapsed (for cooldown timers and battle time)
+                // Update every 100ms for smooth cooldown display
+                if game_state.screen_on
+                    && (game_state.mvp_battle_state != old_state
+                        || new_hp != old_hp
+                        || game_state.hero.hp != old_hero_hp
+                        || game_state.mvp_stagger_value != old_stagger
+                        || game_state.mvp_critical_window_active != old_critical
+                        || game_state.mvp_battle_elapsed / 100 != old_elapsed / 100)
                 {
                     game_state.needs_redraw = true;
                 }

@@ -58,27 +58,42 @@ pub async fn storage_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                         level, job, exp, item_count
                     );
 
-                    // Lock again to access SD card
-                    let mut world_guard = world.lock().await;
+                    // CRITICAL FIX: Remove SD card from world, release lock, perform I/O
+                    // This prevents blocking the render task during slow SD card operations
+                    let mut sd_card_opt = {
+                        let mut world_guard = world.lock().await;
+                        world_guard.remove_non_send_resource::<SdCardResource>()
+                    };
+                    // Lock is released here - render and update can run during SD I/O!
 
-                    if let Some(mut sd_card_res) =
-                        world_guard.get_non_send_resource_mut::<SdCardResource>()
+                    // Perform SD card I/O WITHOUT holding world lock
+                    let (hero_result, inv_result, equip_result, quest_result) =
+                        if let Some(ref mut sd_card_res) = sd_card_opt {
+                            (
+                                save_to_sd(sd_card_res, "HERO.SAV", &hero_data),
+                                save_to_sd(sd_card_res, "ITEMS.SAV", &inventory_data),
+                                save_to_sd(sd_card_res, "EQUIP.SAV", &equipment_data),
+                                save_to_sd(sd_card_res, "QUESTS.SAV", &quest_data),
+                            )
+                        } else {
+                            warn!("[STORAGE] Cannot save - SD card resource not available");
+                            (Err("No SD"), Err("No SD"), Err("No SD"), Err("No SD"))
+                        };
+
+                    // Check results
+                    let success = hero_result.is_ok()
+                        && inv_result.is_ok()
+                        && equip_result.is_ok()
+                        && quest_result.is_ok();
+
+                    // Lock world again to update status and restore SD card
                     {
-                        // Perform saves (blocking operations, but in this task)
-                        let hero_result = save_to_sd(&mut sd_card_res, "HERO.SAV", &hero_data);
-                        let inv_result = save_to_sd(&mut sd_card_res, "ITEMS.SAV", &inventory_data);
-                        let equip_result =
-                            save_to_sd(&mut sd_card_res, "EQUIP.SAV", &equipment_data);
-                        let quest_result = save_to_sd(&mut sd_card_res, "QUESTS.SAV", &quest_data);
+                        let mut world_guard = world.lock().await;
 
-                        // Check results
-                        let success = hero_result.is_ok()
-                            && inv_result.is_ok()
-                            && equip_result.is_ok()
-                            && quest_result.is_ok();
-
-                        // Release SD card lock
-                        drop(sd_card_res);
+                        // Restore SD card resource
+                        if let Some(sd_card_res) = sd_card_opt {
+                            world_guard.insert_non_send_resource(sd_card_res);
+                        }
 
                         // Update game state with results
                         if let Some(mut game_state) = world_guard.get_resource_mut::<GameState>() {
@@ -91,16 +106,15 @@ pub async fn storage_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                                 game_state.needs_redraw = true;
                                 warn!("[STORAGE] ✗ Some save operations failed");
                             }
+                            game_state.save_status_timeout = game_state.last_update_ms + 2000;
                         }
+                    }
+                    // Lock released
 
-                        if success {
-                            Ok(())
-                        } else {
-                            Err("Save failed")
-                        }
+                    if success {
+                        Ok(())
                     } else {
-                        warn!("[STORAGE] Cannot save - SD card resource not available");
-                        Err("SD card unavailable")
+                        Err("Save failed")
                     }
                 } else {
                     warn!("[STORAGE] Cannot save - game state not available");
