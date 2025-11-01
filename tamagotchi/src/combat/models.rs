@@ -58,6 +58,149 @@ pub enum FarmState {
     Defeat,
 }
 
+/// IDLE farming state (new continuous farming system)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleFarmState {
+    Idle,           // Not farming
+    Active,         // Currently farming
+    Cooldown,       // Died, waiting for cooldown
+}
+
+/// IDLE farming session data (with real-time combat simulation)
+#[derive(Debug, Clone)]
+pub struct IdleFarmSession {
+    pub state: IdleFarmState,
+    pub map_id: u32,
+    pub enemy_id: u32,
+    pub start_time_ms: u32,
+    pub last_update_ms: u32,
+
+    // Session statistics
+    pub monsters_killed: u32,
+    pub zeny_earned: u32,
+    pub exp_gained: u32,
+    pub items_collected: u16,
+
+    // Hero combat state
+    pub current_hp: u16,
+    pub hero_attack_delay_ms: u32,      // MS between hero attacks (based on ASPD)
+    pub last_hero_attack_ms: u32,       // When hero last attacked
+    pub next_hero_attack_ms: u32,       // When hero will attack next
+
+    // Enemy combat state
+    pub current_enemy_hp: u16,          // Current enemy HP
+    pub enemy_max_hp: u16,              // Enemy max HP (for respawn)
+    pub enemy_attack_delay_ms: u32,     // MS between enemy attacks (based on enemy ASPD)
+    pub last_enemy_attack_ms: u32,      // When enemy last attacked
+    pub next_enemy_attack_ms: u32,      // When enemy will attack next
+    pub enemy_spawning: bool,           // True if enemy is dead and respawning
+    pub enemy_spawn_complete_ms: u32,   // When new enemy will spawn
+
+    // Skill system
+    pub skill_cooldown_ms: u32,         // Skill cooldown duration
+    pub last_skill_use_ms: u32,         // When hero last used skill
+    pub next_skill_use_ms: u32,         // When skill will be available
+
+    // HP regeneration (separate from combat damage)
+    pub hp_regen_rate: f32,             // HP regen per second (from VIT)
+    pub last_hp_regen_ms: u32,          // When HP last regenerated
+
+    // Calculated rates (per minute) - kept for display
+    pub kills_per_minute: f32,
+    pub zeny_per_minute: f32,
+    pub damage_per_minute: f32,
+    pub regen_per_minute: f32,
+
+    // Old kill tracking (deprecated but kept for compatibility)
+    pub time_since_last_kill_ms: u32,
+    pub ms_per_kill: u32,
+
+    // Cooldown (after death)
+    pub cooldown_end_ms: u32,
+}
+
+impl IdleFarmSession {
+    pub fn new(map_id: u32, enemy_id: u32, start_time_ms: u32, current_hp: u16,
+               kills_per_min: f32, zeny_per_min: f32, damage_per_min: f32, regen_per_min: f32,
+               hero_agi: u16, hero_vit: u16, enemy_hp: u16, enemy_level: u16) -> Self {
+        let ms_per_kill = if kills_per_min > 0.0 {
+            (60_000.0 / kills_per_min) as u32
+        } else {
+            10_000 // Default to 10 seconds if calculation fails
+        };
+
+        // Calculate hero attack delay based on AGI (ASPD formula)
+        // Base attack speed = 200ms, reduced by AGI
+        // Formula: 200 - (AGI * 1.5) = attack delay in ms
+        // Min delay = 100ms (at 66+ AGI)
+        let hero_attack_delay_ms = (2000 - (hero_agi as u32 * 15)).max(1000); // 1000-2000ms
+
+        // Calculate enemy attack delay based on level
+        // Higher level enemies attack faster
+        // Formula: 3000 - (level * 20) = attack delay in ms
+        let enemy_attack_delay_ms = (3000 - (enemy_level as u32 * 20)).max(1500).min(3000); // 1500-3000ms
+
+        // HP regen rate from VIT: 1 HP per second per 10 VIT
+        let hp_regen_rate = (hero_vit as f32 / 10.0).max(0.1); // At least 0.1 HP/sec
+
+        // Skill cooldown: 10 seconds
+        let skill_cooldown_ms = 10_000;
+
+        Self {
+            state: IdleFarmState::Active,
+            map_id,
+            enemy_id,
+            start_time_ms,
+            last_update_ms: start_time_ms,
+            monsters_killed: 0,
+            zeny_earned: 0,
+            exp_gained: 0,
+            items_collected: 0,
+            // Hero combat
+            current_hp,
+            hero_attack_delay_ms,
+            last_hero_attack_ms: start_time_ms,
+            next_hero_attack_ms: start_time_ms + hero_attack_delay_ms,
+            // Enemy combat
+            current_enemy_hp: enemy_hp,
+            enemy_max_hp: enemy_hp,
+            enemy_attack_delay_ms,
+            last_enemy_attack_ms: start_time_ms,
+            next_enemy_attack_ms: start_time_ms + enemy_attack_delay_ms,
+            enemy_spawning: false,
+            enemy_spawn_complete_ms: 0,
+            // Skills
+            skill_cooldown_ms,
+            last_skill_use_ms: 0,
+            next_skill_use_ms: start_time_ms + skill_cooldown_ms, // Available after first cooldown
+            // HP regen
+            hp_regen_rate,
+            last_hp_regen_ms: start_time_ms,
+            // Display rates
+            kills_per_minute: kills_per_min,
+            zeny_per_minute: zeny_per_min,
+            damage_per_minute: damage_per_min,
+            regen_per_minute: regen_per_min,
+            // Legacy
+            time_since_last_kill_ms: 0,
+            ms_per_kill,
+            cooldown_end_ms: 0,
+        }
+    }
+
+    pub fn duration_ms(&self, current_time_ms: u32) -> u32 {
+        current_time_ms.saturating_sub(self.start_time_ms)
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.state == IdleFarmState::Active
+    }
+
+    pub fn is_in_cooldown(&self) -> bool {
+        self.state == IdleFarmState::Cooldown
+    }
+}
+
 /// Rest state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestState {

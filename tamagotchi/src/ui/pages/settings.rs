@@ -33,10 +33,15 @@ where
     // Clear display
     display.clear(COLOR_BG)?;
 
+    // Draw farming header if active
+    use crate::ui::farming_header::draw_farming_header;
+    let has_farming_header = draw_farming_header(display, game_state)?;
+    let title_y = if has_farming_header { 40 } else { 20 };
+
     draw_text(
         display,
         "=== SETTINGS ===",
-        Point::new(85, 20),
+        Point::new(85, title_y),
         &FONT_10X20,
         COLOR_TEXT,
     )?;

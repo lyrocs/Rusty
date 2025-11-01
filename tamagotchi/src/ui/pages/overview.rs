@@ -33,11 +33,18 @@ where
     // Clear background
     display.clear(COLOR_BG)?;
 
+    // Draw farming header if active (must be drawn first, on top)
+    use crate::ui::farming_header::draw_farming_header;
+    let has_farming_header = draw_farming_header(display, game_state)?;
+
+    // Adjust title position if farming header is present
+    let title_y = if has_farming_header { 40 } else { 20 };
+
     // Title
     draw_text(
         display,
         "=== HERO STATUS ===",
-        Point::new(60, 20),
+        Point::new(60, title_y),
         &FONT_10X20,
         COLOR_TEXT,
     )?;
@@ -162,71 +169,74 @@ where
     }
 
     // Buttons at bottom (2 rows x 2 buttons)
-    // Uniform button color - no multicolor
-    let button_color = Rgb888::new(60, 80, 120);
-    let button_border = Rgb888::new(100, 120, 160);
+    {
+        // Show buttons
+        // Uniform button color - no multicolor
+        let button_color = Rgb888::new(60, 80, 120);
+        let button_border = Rgb888::new(100, 120, 160);
 
-    // Row 1: Rest, Stats
-    // Rest button (top left)
-    Rectangle::new(Point::new(14, 350), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(button_color))
-        .draw(display)?;
-    Rectangle::new(Point::new(14, 350), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-        .draw(display)?;
-    draw_text(
-        display,
-        "Rest",
-        Point::new(75, 368),
-        &FONT_10X20,
-        Rgb888::WHITE,
-    )?;
+        // Row 1: Rest, Stats
+        // Rest button (top left)
+        Rectangle::new(Point::new(14, 350), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_fill(button_color))
+            .draw(display)?;
+        Rectangle::new(Point::new(14, 350), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
+            .draw(display)?;
+        draw_text(
+            display,
+            "Rest",
+            Point::new(75, 368),
+            &FONT_10X20,
+            Rgb888::WHITE,
+        )?;
 
-    // Stats button (top right)
-    Rectangle::new(Point::new(189, 350), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(button_color))
-        .draw(display)?;
-    Rectangle::new(Point::new(189, 350), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-        .draw(display)?;
-    draw_text(
-        display,
-        "Stats",
-        Point::new(245, 368),
-        &FONT_10X20,
-        Rgb888::WHITE,
-    )?;
+        // Stats button (top right)
+        Rectangle::new(Point::new(189, 350), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_fill(button_color))
+            .draw(display)?;
+        Rectangle::new(Point::new(189, 350), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
+            .draw(display)?;
+        draw_text(
+            display,
+            "Stats",
+            Point::new(245, 368),
+            &FONT_10X20,
+            Rgb888::WHITE,
+        )?;
 
-    // Row 2: Equipment, Quests
-    // Equipment button (bottom left)
-    Rectangle::new(Point::new(14, 403), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(button_color))
-        .draw(display)?;
-    Rectangle::new(Point::new(14, 403), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-        .draw(display)?;
-    draw_text(
-        display,
-        "Equip",
-        Point::new(65, 421),
-        &FONT_10X20,
-        Rgb888::WHITE,
-    )?;
+        // Row 2: Equipment, Inventory
+        // Equipment button (bottom left)
+        Rectangle::new(Point::new(14, 403), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_fill(button_color))
+            .draw(display)?;
+        Rectangle::new(Point::new(14, 403), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
+            .draw(display)?;
+        draw_text(
+            display,
+            "Equip",
+            Point::new(65, 421),
+            &FONT_10X20,
+            Rgb888::WHITE,
+        )?;
 
-    // Quests button (bottom right)
-    Rectangle::new(Point::new(189, 403), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_fill(button_color))
-        .draw(display)?;
-    Rectangle::new(Point::new(189, 403), Size::new(165, 45))
-        .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-        .draw(display)?;
-    draw_text(
-        display,
-        "Quests",
-        Point::new(225, 421),
-        &FONT_10X20,
-        Rgb888::WHITE,
-    )?;
+        // Inventory button (bottom right)
+        Rectangle::new(Point::new(189, 403), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_fill(button_color))
+            .draw(display)?;
+        Rectangle::new(Point::new(189, 403), Size::new(165, 45))
+            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
+            .draw(display)?;
+        draw_text(
+            display,
+            "Invent",
+            Point::new(225, 421),
+            &FONT_10X20,
+            Rgb888::WHITE,
+        )?;
+    }
 
     Ok(())
 }

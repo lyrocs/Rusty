@@ -130,6 +130,18 @@ pub fn tamagotchi_touch_system(
 /// Handle touch input based on current page
 fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
     game_state.needs_redraw = true; // Mark for redraw on any touch
+
+    // Check if farming header was tapped (works on all pages)
+    use crate::ui::farming_header::is_farming_header_touched;
+    if is_farming_header_touched(x, y) {
+        // Check if there's an active farming session
+        if game_state.idle_farm_session.as_ref().map_or(false, |s| s.is_active()) {
+            esp_println::println!("[INPUT] Farming header tapped - opening battle summary");
+            game_state.current_page = GamePage::IdleFarmResult;
+            return;
+        }
+    }
+
     match game_state.current_page {
         GamePage::Menu => {
             // Menu item selection based on button position (2 columns x 3 rows)
@@ -325,9 +337,17 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
             handle_map_touch(game_state, x, y);
         }
         GamePage::Overview => {
+            // Check for STOP FARMING button first (if active)
+            // STOP FARMING button: x=60-310, y=350-400
+            if game_state.idle_farm_session.as_ref().map_or(false, |s| s.is_active())
+                && x >= 60 && x <= 310 && y >= 350 && y <= 400 {
+                esp_println::println!("[OVERVIEW] Stop Farming button pressed");
+                use crate::systems::stop_idle_farm_session;
+                stop_idle_farm_session(game_state);
+            }
             // Row 1: Rest and Stats
             // Rest button: x=14-179, y=350-395
-            if x >= 14 && x <= 179 && y >= 350 && y <= 395 {
+            else if x >= 14 && x <= 179 && y >= 350 && y <= 395 {
                 game_state.current_page = GamePage::Rest;
                 game_state.init_rest_state();
                 game_state.needs_redraw = true;
@@ -343,16 +363,86 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 game_state.current_page = GamePage::Equipment;
                 game_state.needs_redraw = true;
             }
-            // Quests button: x=189-354, y=403-448
+            // Inventory button: x=189-354, y=403-448
             else if x >= 189 && x <= 354 && y >= 403 && y <= 448 {
-                game_state.current_page = GamePage::Quests;
+                game_state.current_page = GamePage::Inventory;
                 game_state.needs_redraw = true;
             }
         }
         GamePage::Inventory => {
-            // Go back to menu on touch
+            let inventory = &game_state.hero.inventory;
+            let items_per_page = 20;
+            let offset = game_state.inventory_scroll_offset;
+            let total_items = inventory.len();
+            let total_pages = (total_items + items_per_page - 1) / items_per_page;
+            let current_page = (offset / items_per_page) + 1;
+
+            // UP button: x=30-110, y=460-500
+            if x >= 30 && x <= 110 && y >= 460 && y <= 500 && current_page > 1 {
+                game_state.inventory_scroll_offset = offset.saturating_sub(items_per_page);
+                esp_println::println!("[INVENTORY] UP pressed - new offset: {}", game_state.inventory_scroll_offset);
+                return;
+            }
+
+            // DOWN button: x=250-330, y=460-500
+            if x >= 250 && x <= 330 && y >= 460 && y <= 500 && current_page < total_pages {
+                game_state.inventory_scroll_offset = (offset + items_per_page).min((total_pages - 1) * items_per_page);
+                esp_println::println!("[INVENTORY] DOWN pressed - new offset: {}", game_state.inventory_scroll_offset);
+                return;
+            }
+
+            // Item clicks: 2 columns, 10 rows, starting at y=60, row height=40
+            // Left column: x=10-185, Right column: x=190-360
+            // Rows: y=60-100, 100-140, 140-180, etc.
+            if y >= 60 && y < 460 {
+                let row = ((y - 60) / 40) as usize;
+                let col = if x >= 10 && x < 190 { 0 } else if x >= 190 && x < 360 { 1 } else { 999 };
+
+                if col < 2 && row < 10 {
+                    let item_index = offset + (row * 2 + col);
+                    if item_index < total_items {
+                        if let Some(item) = inventory.get(item_index) {
+                            esp_println::println!("[INVENTORY] Item {} clicked: {}", item.id, item.name);
+                            game_state.selected_item_id = Some(item.id);
+                            game_state.current_page = GamePage::ItemDetail;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Otherwise, go back to menu
             game_state.current_page = GamePage::Menu;
             game_state.needs_redraw = true;
+        }
+        GamePage::IdleFarmResult => {
+            // CONTINUE button: x=80-280, y=320-370 OR y=370-420 (if cooldown shown)
+            // Accept touch anywhere to continue for simplicity
+            esp_println::println!("[IDLE FARM RESULT] Continue button pressed");
+
+            // Clear the session data
+            game_state.idle_farm_session = None;
+
+            // Return to overview
+            game_state.current_page = GamePage::Overview;
+            game_state.needs_redraw = true;
+        }
+        GamePage::ItemDetail => {
+            // BACK button: x=100-260, y=450-500
+            if x >= 100 && x <= 260 && y >= 450 && y <= 500 {
+                esp_println::println!("[ITEM DETAIL] BACK button pressed");
+                game_state.selected_item_id = None;
+                game_state.current_page = GamePage::Inventory;
+            }
+        }
+        GamePage::BattleOverview => {
+            // STOP FARMING button: x=19-349, y=410-470
+            if x >= 19 && x <= 349 && y >= 410 && y <= 470 {
+                esp_println::println!("[BATTLE OVERVIEW] STOP FARMING button clicked");
+                use crate::systems::idle_farm_update::stop_idle_farm_session;
+                stop_idle_farm_session(game_state);
+                game_state.needs_redraw = true;
+            }
         }
         GamePage::Stats => {
             handle_stats_touch(game_state, x, y);
@@ -969,11 +1059,42 @@ fn handle_location_actions(
     }
 }
 
-/// Handle field action buttons (Auto Farm, Manual Battle, and JRPG Battle)
+/// Handle field action button (VIEW/START/STOP FARMING)
 fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32) {
-    // Check Auto Farm button (11, 295, 110x55)
-    if x >= 11 && x <= 121 && y >= 295 && y <= 350 {
-        esp_println::println!("[MAP] Auto Farm selected");
+    // Check button (centered, 305-365 y, 19-349 x)
+    if x >= 19 && x <= 349 && y >= 305 && y <= 365 {
+        // Determine which button based on farming state
+        let has_active_farming = game_state.idle_farm_session.as_ref().map_or(false, |s| s.is_active());
+        let farming_on_this_map = game_state.idle_farm_session.as_ref()
+            .map_or(false, |s| s.map_id == map_id && s.is_active());
+
+        if farming_on_this_map {
+            // VIEW BATTLE clicked - go to BattleOverview page
+            esp_println::println!("[MAP] VIEW BATTLE clicked - opening battle overview");
+            game_state.current_page = GamePage::BattleOverview;
+            game_state.needs_redraw = true;
+            return;
+        } else if has_active_farming {
+            // STOP FARMING clicked - stop the session
+            esp_println::println!("[MAP] STOP FARMING clicked - ending session");
+            use crate::systems::stop_idle_farm_session;
+            stop_idle_farm_session(game_state);
+            game_state.needs_redraw = true;
+            return;
+        }
+
+        // START FARMING clicked
+        esp_println::println!("[MAP] START FARMING selected");
+
+        // Check HP first
+        if game_state.hero.hp == 0 {
+            esp_println::println!("[MAP] No HP! Cannot start farming");
+            game_state.save_status_msg = Some("No HP! Rest to recover");
+            game_state.save_status_timeout = game_state.last_update_ms + 2000;
+            game_state.needs_redraw = true;
+            return;
+        }
+
         // Spawn enemy from current map
         let enemy_ids = MapHelper::enemies(map_id);
         if !enemy_ids.is_empty() {
@@ -983,79 +1104,10 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             let enemy_id = enemy_ids[enemy_index];
 
             if let Some(enemy) = Enemy::from_id(enemy_id) {
-                esp_println::println!("[MAP] Opening farm duration selection for {}", enemy.name);
-                // Store enemy and open duration selection modal
-                game_state.current_enemy = Some(enemy);
-                game_state.farm_selection_open = true;
-                game_state.needs_redraw = true;
-            }
-        }
-    }
-    // Check Manual Battle button (129, 295, 110x55)
-    else if x >= 129 && x <= 239 && y >= 295 && y <= 350 {
-        esp_println::println!("[MAP] Manual Battle selected");
-
-        // Check HP first
-        if game_state.hero.hp == 0 {
-            esp_println::println!("[MAP] No HP! Cannot battle");
-            game_state.save_status_msg = Some("No HP! Rest to recover");
-            game_state.save_status_timeout = game_state.last_update_ms + 2000;
-            game_state.needs_redraw = true;
-        } else if game_state.hero.sp < 10 {
-            esp_println::println!("[MAP] Not enough SP for battle");
-            game_state.save_status_msg = Some("Not enough SP! (need 10)");
-            game_state.save_status_timeout = game_state.last_update_ms + 2000;
-            game_state.needs_redraw = true;
-        } else {
-            // Spawn enemy from current map for manual battle
-            let enemy_ids = MapHelper::enemies(map_id);
-            if !enemy_ids.is_empty() {
-                // Pick random enemy from map
-                let rng_value = (x.wrapping_add(y)) as u8;
-                let enemy_index = (rng_value as usize) % enemy_ids.len();
-                let enemy_id = enemy_ids[enemy_index];
-
-                if let Some(enemy) = Enemy::from_id(enemy_id) {
-                    esp_println::println!(
-                        "[MAP] Starting manual battle with {} from map",
-                        enemy.name
-                    );
-                    game_state.start_battle(enemy);
-                }
-            }
-        }
-    }
-    // Check MVP Battle button (247, 295, 110x55)
-    else if x >= 247 && x <= 357 && y >= 295 && y <= 350 {
-        esp_println::println!("[MAP] MVP Battle selected");
-
-        // Check HP first
-        if game_state.hero.hp == 0 {
-            esp_println::println!("[MAP] No HP! Cannot battle");
-            game_state.save_status_msg = Some("No HP! Rest to recover");
-            game_state.save_status_timeout = game_state.last_update_ms + 2000;
-            game_state.needs_redraw = true;
-        } else if game_state.hero.sp < 10 {
-            esp_println::println!("[MAP] Not enough SP for battle");
-            game_state.save_status_msg = Some("Not enough SP! (need 10)");
-            game_state.save_status_timeout = game_state.last_update_ms + 2000;
-            game_state.needs_redraw = true;
-        } else {
-            // Spawn enemy from current map for MVP battle
-            let enemy_ids = MapHelper::enemies(map_id);
-            if !enemy_ids.is_empty() {
-                // Pick random enemy from map
-                let rng_value = (x.wrapping_add(y)) as u8;
-                let enemy_index = (rng_value as usize) % enemy_ids.len();
-                let enemy_id = enemy_ids[enemy_index];
-
-                if let Some(enemy) = Enemy::from_id(enemy_id) {
-                    esp_println::println!(
-                        "[MAP] Starting MVP battle with {} from map",
-                        enemy.name
-                    );
-                    game_state.start_mvp_battle(enemy);
-                }
+                esp_println::println!("[MAP] Starting IDLE farming with {}", enemy.name);
+                // Start IDLE farming session
+                use crate::systems::start_idle_farm_session;
+                start_idle_farm_session(game_state, map_id, enemy_id);
             }
         }
     }

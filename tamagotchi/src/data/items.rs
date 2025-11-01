@@ -34,3 +34,15 @@ pub fn get_item_name(item_id: u32) -> &'static str {
         _ => "Unknown Item",
     }
 }
+
+/// Get item icon GIF data by ID (returns compiled-in bytes)
+pub fn get_item_icon(item_id: u32) -> Option<&'static [u8]> {
+    match item_id {
+        909 => Some(include_bytes!("../../assets/images/items/909.gif")),  // Jellopy
+        914 => Some(include_bytes!("../../assets/images/items/914.gif")),  // Fluff
+        938 => Some(include_bytes!("../../assets/images/items/938.gif")),  // Sticky Mucus
+        939 => Some(include_bytes!("../../assets/images/items/939.gif")),  // Bee Sting
+        // Add more item icons as they become available
+        _ => None,
+    }
+}

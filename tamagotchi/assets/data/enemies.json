@@ -8,10 +8,35 @@
     "defense": 2,
     "base_exp": 150,
     "drops": [
-      { "item_id": 909, "name": "Jellopy", "type": "material", "quantity": 1, "chance": 70.0 },
-      { "item_id": 910, "name": "Sticky Mucus", "type": "material", "quantity": 1, "chance": 30.0 },
-      { "item_id": 911, "name": "Poring Essence", "type": "material", "quantity": 1, "chance": 5.0 },
-      { "item_id": 4001, "name": "Poring Card", "type": "card", "quantity": 1, "chance": 0.2, "allowed_slots": ["Accessory"] }
+      {
+        "item_id": 909,
+        "name": "Jellopy",
+        "type": "material",
+        "quantity": 1,
+        "chance": 70.0
+      },
+      {
+        "item_id": 938,
+        "name": "Sticky Mucus",
+        "type": "material",
+        "quantity": 1,
+        "chance": 30.0
+      },
+      {
+        "item_id": 911,
+        "name": "Poring Essence",
+        "type": "material",
+        "quantity": 1,
+        "chance": 5.0
+      },
+      {
+        "item_id": 4001,
+        "name": "Poring Card",
+        "type": "card",
+        "quantity": 1,
+        "chance": 0.2,
+        "allowed_slots": ["Accessory"]
+      }
     ]
   },
   {
@@ -23,10 +48,35 @@
     "defense": 24,
     "base_exp": 158,
     "drops": [
-      { "item_id": 914, "name": "Fluff", "type": "material", "quantity": 1, "chance": 70.0 },
-      { "item_id": 915, "name": "Spider Silk", "type": "material", "quantity": 1, "chance": 30.0 },
-      { "item_id": 916, "name": "Fabre Essence", "type": "material", "quantity": 1, "chance": 5.0 },
-      { "item_id": 4002, "name": "Fabre Card", "type": "card", "quantity": 1, "chance": 0.2, "allowed_slots": ["Armor"] }
+      {
+        "item_id": 914,
+        "name": "Fluff",
+        "type": "material",
+        "quantity": 1,
+        "chance": 70.0
+      },
+      {
+        "item_id": 915,
+        "name": "Spider Silk",
+        "type": "material",
+        "quantity": 1,
+        "chance": 30.0
+      },
+      {
+        "item_id": 916,
+        "name": "Fabre Essence",
+        "type": "material",
+        "quantity": 1,
+        "chance": 5.0
+      },
+      {
+        "item_id": 4002,
+        "name": "Fabre Card",
+        "type": "card",
+        "quantity": 1,
+        "chance": 0.2,
+        "allowed_slots": ["Armor"]
+      }
     ]
   },
   {
@@ -38,10 +88,35 @@
     "defense": 7,
     "base_exp": 158,
     "drops": [
-      { "item_id": 939, "name": "Bee Sting", "type": "material", "quantity": 1, "chance": 70.0 },
-      { "item_id": 940, "name": "Royal Jelly", "type": "material", "quantity": 1, "chance": 30.0 },
-      { "item_id": 941, "name": "Hornet Essence", "type": "material", "quantity": 1, "chance": 5.0 },
-      { "item_id": 4003, "name": "Hornet Card", "type": "card", "quantity": 1, "chance": 0.2, "allowed_slots": ["Weapon"] }
+      {
+        "item_id": 939,
+        "name": "Bee Sting",
+        "type": "material",
+        "quantity": 1,
+        "chance": 70.0
+      },
+      {
+        "item_id": 940,
+        "name": "Royal Jelly",
+        "type": "material",
+        "quantity": 1,
+        "chance": 30.0
+      },
+      {
+        "item_id": 941,
+        "name": "Hornet Essence",
+        "type": "material",
+        "quantity": 1,
+        "chance": 5.0
+      },
+      {
+        "item_id": 4003,
+        "name": "Hornet Card",
+        "type": "card",
+        "quantity": 1,
+        "chance": 0.2,
+        "allowed_slots": ["Weapon"]
+      }
     ]
   },
   {
@@ -53,10 +128,35 @@
     "defense": 24,
     "base_exp": 188,
     "drops": [
-      { "item_id": 955, "name": "Worm Peeling", "type": "material", "quantity": 1, "chance": 70.0 },
-      { "item_id": 956, "name": "Chitin Shell", "type": "material", "quantity": 1, "chance": 30.0 },
-      { "item_id": 957, "name": "Bug Essence", "type": "material", "quantity": 1, "chance": 5.0 },
-      { "item_id": 4004, "name": "Thief Bug Card", "type": "card", "quantity": 1, "chance": 0.2, "allowed_slots": ["Garment"] }
+      {
+        "item_id": 955,
+        "name": "Worm Peeling",
+        "type": "material",
+        "quantity": 1,
+        "chance": 70.0
+      },
+      {
+        "item_id": 956,
+        "name": "Chitin Shell",
+        "type": "material",
+        "quantity": 1,
+        "chance": 30.0
+      },
+      {
+        "item_id": 957,
+        "name": "Bug Essence",
+        "type": "material",
+        "quantity": 1,
+        "chance": 5.0
+      },
+      {
+        "item_id": 4004,
+        "name": "Thief Bug Card",
+        "type": "card",
+        "quantity": 1,
+        "chance": 0.2,
+        "allowed_slots": ["Garment"]
+      }
     ]
   }
 ]

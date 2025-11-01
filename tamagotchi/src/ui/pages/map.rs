@@ -26,6 +26,10 @@ where
 {
     display.clear(COLOR_BG)?;
 
+    // Draw farming header if active
+    use crate::ui::farming_header::draw_farming_header;
+    draw_farming_header(display, game_state)?;
+
     let map_id = game_state.current_location;
 
     // Draw map background image if available
@@ -155,31 +159,50 @@ where
                         let center = Point::new(x, y);
 
                         // Draw monster name in white with black background above GIF
-                        let name_x = center.x - (enemy.name.len() as i32 * 9) / 2;
-                        let name_y = center.y - 40;
+                        let label_len = (enemy.name.len() + 5) as i32; // name + " Lv##"
+                        let name_x = center.x - (label_len * 9) / 2;
+                        let name_y = center.y - 50; // Move up to make room for stars
 
-                        // Draw black background rectangle for name
+                        // Draw black background rectangle for name and stars
                         // Note: text y position is at baseline, so background must start higher
-                        let name_width = enemy.name.len() as i32 * 9;
+                        let name_width = label_len * 9 + 10;
                         let bg_padding = 3;
-                        let font_height = 18; // FONT_9X18_BOLD height
+                        let total_height = 40; // Height for both name and stars
                         Rectangle::new(
-                            Point::new(name_x - bg_padding, name_y - font_height - bg_padding + 2),
+                            Point::new(name_x - bg_padding - 5, name_y - 18 - bg_padding),
                             Size::new(
                                 (name_width + bg_padding * 2) as u32,
-                                (font_height + bg_padding * 2) as u32,
+                                (total_height + bg_padding * 2) as u32,
                             ),
                         )
                         .into_styled(PrimitiveStyle::with_fill(Rgb888::BLACK))
                         .draw(display)?;
 
-                        // Draw white text on top
+                        // Draw white text on top with level
+                        let mut enemy_label = String::<32>::new();
+                        write!(enemy_label, "{} Lv{}", enemy.name, enemy.level).ok();
                         draw_text(
                             display,
-                            enemy.name,
+                            &enemy_label,
                             Point::new(name_x, name_y),
                             &FONT_9X18_BOLD,
                             Rgb888::WHITE,
+                        )?;
+
+                        // Draw difficulty stars below name
+                        let difficulty_stars = if enemy.level <= 5 { "★" }
+                            else if enemy.level <= 15 { "★★" }
+                            else if enemy.level <= 25 { "★★★" }
+                            else if enemy.level <= 35 { "★★★★" }
+                            else { "★★★★★" };
+
+                        let stars_x = center.x - (difficulty_stars.len() as i32 * 9) / 2;
+                        draw_text(
+                            display,
+                            difficulty_stars,
+                            Point::new(stars_x, name_y + 18),
+                            &FONT_9X15,
+                            Rgb888::YELLOW,
                         )?;
 
                         // Draw monster idle GIF (0.gif)
@@ -187,81 +210,109 @@ where
                     }
                 }
 
-                // Action buttons (3 buttons in a row)
-                let button_y = 295;
-                let button_width = 110;
-                let button_height = 55;
-                let button_spacing = 8;
-                // Calculate positions to center 3 buttons: (368 - (110*3 + 8*2)) / 2 = (368 - 346) / 2 = 11
-                let auto_x = 11;
-                let manual_x = auto_x + button_width + button_spacing;
-                let jrpg_x = manual_x + button_width + button_spacing;
+                // Farming Info Panel (above button)
+                let info_y = 265;
+                let info_x = 20;
 
-                // Auto Farm button (left)
-                Rectangle::new(Point::new(auto_x, button_y), Size::new(button_width as u32, button_height))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-                    .draw(display)?;
-                Rectangle::new(Point::new(auto_x, button_y), Size::new(button_width as u32, button_height))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-                    .draw(display)?;
-                draw_text(
-                    display,
-                    "AUTO",
-                    Point::new(auto_x + 30, button_y + 20),
-                    &FONT_9X15,
-                    COLOR_TEXT,
-                )?;
-                draw_text(
-                    display,
-                    "FARM",
-                    Point::new(auto_x + 30, button_y + 38),
-                    &FONT_9X15,
-                    COLOR_TEXT,
-                )?;
+                // Calculate farming estimates based on first enemy in map
+                let (kills_est, zeny_est, damage_est, rec_level) = if !enemy_ids.is_empty() {
+                    if let Some(enemy) = Enemy::from_id(enemy_ids[0]) {
+                        use crate::combat::{calculate_farming_rates, calculate_recommended_level};
+                        let rates = calculate_farming_rates(&game_state.hero, &enemy);
+                        (
+                            rates.kills_per_minute as u32,
+                            rates.zeny_per_minute as u32,
+                            rates.damage_per_minute as u32,
+                            calculate_recommended_level(enemy.level),
+                        )
+                    } else {
+                        (45, 120, 5, "1-10")
+                    }
+                } else {
+                    (45, 120, 5, "1-10")
+                };
 
-                // Manual Battle button (middle)
-                Rectangle::new(Point::new(manual_x, button_y), Size::new(button_width as u32, button_height))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-                    .draw(display)?;
-                Rectangle::new(Point::new(manual_x, button_y), Size::new(button_width as u32, button_height))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-                    .draw(display)?;
+                // Farming estimates text
+                let mut est_text = String::<64>::new();
+                write!(est_text, "Est. Kills/min: ~{}  Zeny: ~{}", kills_est, zeny_est).ok();
                 draw_text(
                     display,
-                    "MANUAL",
-                    Point::new(manual_x + 18, button_y + 20),
+                    &est_text,
+                    Point::new(info_x, info_y),
                     &FONT_9X15,
-                    COLOR_TEXT,
-                )?;
-                draw_text(
-                    display,
-                    "BATTLE",
-                    Point::new(manual_x + 18, button_y + 38),
-                    &FONT_9X15,
-                    COLOR_TEXT,
+                    COLOR_TEXT_DIM,
                 )?;
 
-                // MVP Battle button (right)
-                Rectangle::new(Point::new(jrpg_x, button_y), Size::new(button_width as u32, button_height))
-                    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-                    .draw(display)?;
-                Rectangle::new(Point::new(jrpg_x, button_y), Size::new(button_width as u32, button_height))
-                    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-                    .draw(display)?;
+                let mut dmg_text = String::<64>::new();
+                write!(dmg_text, "Damage/min: ~{}  Rec. Lv: {}", damage_est, rec_level).ok();
                 draw_text(
                     display,
-                    "MVP",
-                    Point::new(jrpg_x + 36, button_y + 20),
+                    &dmg_text,
+                    Point::new(info_x, info_y + 20),
                     &FONT_9X15,
-                    COLOR_TEXT,
+                    COLOR_TEXT_DIM,
                 )?;
-                draw_text(
-                    display,
-                    "BATTLE",
-                    Point::new(jrpg_x + 18, button_y + 38),
-                    &FONT_9X15,
-                    COLOR_TEXT,
-                )?;
+
+                // Battle button (changes based on current farming state)
+                let button_y = 305;
+                let button_width = 330;
+                let button_height = 60;
+                let button_x = (368 - button_width) / 2; // Center horizontally
+
+                // Check farming session state
+                let has_active_farming = game_state.idle_farm_session.as_ref().map_or(false, |s| s.is_active());
+                let farming_on_this_map = game_state.idle_farm_session.as_ref()
+                    .map_or(false, |s| s.map_id == map_id && s.is_active());
+
+                if farming_on_this_map {
+                    // VIEW BATTLE button (green, highlighted)
+                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_width as u32, button_height))
+                        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 180, 100)))
+                        .draw(display)?;
+                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_width as u32, button_height))
+                        .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(100, 220, 140), 3))
+                        .draw(display)?;
+
+                    draw_text(
+                        display,
+                        "VIEW BATTLE",
+                        Point::new(button_x + 70, button_y + 35),
+                        &FONT_10X20,
+                        Rgb888::WHITE,
+                    )?;
+                } else if has_active_farming {
+                    // STOP FARMING button (red, warning)
+                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_width as u32, button_height))
+                        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(180, 40, 40)))
+                        .draw(display)?;
+                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_width as u32, button_height))
+                        .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(220, 60, 60), 3))
+                        .draw(display)?;
+
+                    draw_text(
+                        display,
+                        "STOP FARMING",
+                        Point::new(button_x + 50, button_y + 35),
+                        &FONT_10X20,
+                        Rgb888::WHITE,
+                    )?;
+                } else {
+                    // START FARMING button (normal green)
+                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_width as u32, button_height))
+                        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 120, 80)))
+                        .draw(display)?;
+                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_width as u32, button_height))
+                        .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(60, 180, 100), 3))
+                        .draw(display)?;
+
+                    draw_text(
+                        display,
+                        "START FARMING",
+                        Point::new(button_x + 60, button_y + 35),
+                        &FONT_10X20,
+                        Rgb888::WHITE,
+                    )?;
+                }
             }
         }
     }

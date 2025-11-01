@@ -18,7 +18,7 @@ pub use common::*;
 pub use enemies::{get_enemy_data, get_all_enemies, EnemyData};
 pub use maps::{get_map_data, get_all_maps, get_map_name, get_map_connections,
                get_map_enemies, get_map_enemy_data, is_city, MapData, MAP_PRONTERA_ID};
-pub use items::get_item_name;
+pub use items::{get_item_name, get_item_icon};
 pub use npcs::{get_npc_name, get_city_npcs};
 pub use drops::{roll_drops, DropEntry};
 pub use equipments::{get_equipment_by_id, get_all_equipments, get_craftable_equipment_for_city,

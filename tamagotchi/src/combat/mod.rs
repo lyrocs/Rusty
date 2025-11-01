@@ -15,6 +15,7 @@ pub mod battle_jrpg;
 pub mod battle_zelda;
 pub mod battle_mvp;
 pub mod farm_system;
+pub mod idle_farm;
 
 pub use models::*;
 pub use battle::*;
@@ -23,3 +24,4 @@ pub use damage::*;
 pub use jrpg::*;
 pub use skills::*;
 pub use farm_system::*;
+pub use idle_farm::*;

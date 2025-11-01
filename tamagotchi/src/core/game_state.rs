@@ -12,7 +12,7 @@ use crate::hero::{EquipmentSlot, Hero};
 use crate::quest::ActiveQuest;
 use crate::combat::{
     BattleAnimationPhase, BattleState, Circle, CombatResult, Enemy,
-    FarmState, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
+    FarmState, HeroAnimation, IdleFarmSession, JrpgBattleMenu, JrpgBattleState,
     JrpgCombatant, MonsterAnimation, MvpBattlePhase, MvpBattleRank,
     MvpBattleState, MvpSkillCooldown, MvpSkillType, RestState,
     ZeldaBattleState, ZeldaEnemy,
@@ -36,6 +36,8 @@ pub struct GameState {
     pub farm_expected_kills: u16, // Expected kills based on efficiency
     pub farm_last_kill_time: u32, // Last time a kill tick occurred
     pub farm_selection_open: bool, // Whether farm duration selection modal is open
+    // IDLE farming system (new continuous background farming)
+    pub idle_farm_session: Option<IdleFarmSession>, // Current IDLE farming session
     pub rest_state: RestState,
     pub rest_progress: u32,                  // Progress in milliseconds
     pub sp_regen_rate: u16,                  // SP per second while resting
@@ -131,6 +133,9 @@ pub struct GameState {
     pub daily_quest_refresh_time: u32,          // When daily quests last refreshed (ms)
     pub quest_page_scroll: u8,                  // Scroll position in quest list (0-255)
     pub selected_quest_id: Option<u32>,         // Quest ID for details view (None = list view)
+    // Inventory state
+    pub inventory_scroll_offset: usize,         // Current page offset in inventory (0, 20, 40, ...)
+    pub selected_item_id: Option<u32>,          // Item ID for detail view (None = list view)
     pub last_update_ms: u32, // Last update time for progress tracking
     pub save_requested: bool, // Flag to trigger save
     pub save_status_msg: Option<&'static str>, // Status message after save
@@ -179,6 +184,8 @@ impl Default for GameState {
             farm_expected_kills: 0,
             farm_last_kill_time: 0,
             farm_selection_open: false,
+            // IDLE farming system
+            idle_farm_session: None,
             rest_state: RestState::Resting,
             rest_progress: 0,
             sp_regen_rate: DEFAULT_SP_REGEN_RATE, // 5 SP per second
@@ -277,6 +284,9 @@ impl Default for GameState {
             daily_quest_refresh_time: 0,
             quest_page_scroll: 0,
             selected_quest_id: None,
+            // Inventory
+            inventory_scroll_offset: 0,
+            selected_item_id: None,
             last_update_ms: 0,
             save_requested: false,
             save_status_msg: None,

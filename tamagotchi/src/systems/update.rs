@@ -555,5 +555,8 @@ pub fn tamagotchi_update_system(
             }
         }
     }
+
+    // Update IDLE farming session (runs in background regardless of page)
+    super::idle_farm_update::update_idle_farm_session(&mut game_state, delta_ms);
 }
 

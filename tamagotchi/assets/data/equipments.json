@@ -23,7 +23,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[939, 5], [909, 10]],
+    "craft_materials": [
+      [939, 5],
+      [909, 10]
+    ],
     "craft_cost": 500,
     "craft_city": "Prontera"
   },
@@ -51,7 +54,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[939, 8], [914, 5]],
+    "craft_materials": [
+      [939, 8],
+      [914, 5]
+    ],
     "craft_cost": 500,
     "craft_city": "Prontera"
   },
@@ -79,7 +85,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[914, 15], [909, 5]],
+    "craft_materials": [
+      [914, 15],
+      [909, 5]
+    ],
     "craft_cost": 400,
     "craft_city": "Prontera"
   },
@@ -107,7 +116,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[914, 10], [940, 3]],
+    "craft_materials": [
+      [914, 10],
+      [940, 3]
+    ],
     "craft_cost": 600,
     "craft_city": "Prontera"
   },
@@ -136,7 +148,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[909, 8], [915, 2]],
+    "craft_materials": [
+      [909, 8],
+      [915, 2]
+    ],
     "craft_cost": 350,
     "craft_city": "Prontera"
   },
@@ -165,7 +180,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[914, 8], [910, 3]],
+    "craft_materials": [
+      [914, 8],
+      [938, 3]
+    ],
     "craft_cost": 350,
     "craft_city": "Prontera"
   },
@@ -194,7 +212,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[915, 4], [914, 6]],
+    "craft_materials": [
+      [915, 4],
+      [914, 6]
+    ],
     "craft_cost": 400,
     "craft_city": "Prontera"
   },
@@ -223,7 +244,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[910, 5], [914, 8]],
+    "craft_materials": [
+      [938, 5],
+      [914, 8]
+    ],
     "craft_cost": 400,
     "craft_city": "Prontera"
   },
@@ -252,7 +276,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[909, 10], [939, 2]],
+    "craft_materials": [
+      [909, 10],
+      [939, 2]
+    ],
     "craft_cost": 300,
     "craft_city": "Prontera"
   },
@@ -281,7 +308,10 @@
     "max_refine": 10,
     "card_slots": 1,
     "max_card_slots": 2,
-    "craft_materials": [[910, 3], [909, 8]],
+    "craft_materials": [
+      [938, 3],
+      [909, 8]
+    ],
     "craft_cost": 300,
     "craft_city": "Prontera"
   },

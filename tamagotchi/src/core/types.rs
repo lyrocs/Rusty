@@ -21,4 +21,7 @@ pub enum GamePage {
     Stats,       // Character stats allocation page
     Equipment,   // Equipment management page
     Crafting,    // Blacksmith crafting page
+    IdleFarmResult, // IDLE farming session results screen
+    ItemDetail,  // Item detail view from inventory
+    BattleOverview, // Live battle view with animations
 }

@@ -17,6 +17,9 @@ pub mod jrpg_battle;
 pub mod zelda_battle;
 pub mod mvp_battle;
 pub mod crafting;
+pub mod idle_farm_result;
+pub mod item_detail;
+pub mod battle_overview;
 
 // Re-export all page drawing functions
 pub use overview::draw_overview_page;
@@ -34,3 +37,6 @@ pub use jrpg_battle::draw_jrpg_battle_page;
 pub use zelda_battle::draw_zelda_battle_page;
 pub use mvp_battle::draw_mvp_battle_page;
 pub use crafting::draw_crafting_page;
+pub use idle_farm_result::draw_idle_farm_result_page;
+pub use item_detail::draw_item_detail_page;
+pub use battle_overview::draw_battle_overview_page;

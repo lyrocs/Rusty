@@ -26,6 +26,10 @@ where
 {
     display.clear(COLOR_BG)?;
 
+    // Draw farming header if active
+    use crate::ui::farming_header::draw_farming_header;
+    let has_farming_header = draw_farming_header(display, game_state)?;
+
     // Check if viewing quest details or quest list
     if let Some(quest_id) = game_state.selected_quest_id {
         return draw_quest_details(display, game_state, quest_id);
@@ -33,11 +37,13 @@ where
 
     // === Quest List View ===
 
+    let title_y = if has_farming_header { 40 } else { 20 };
+
     // Header
     draw_text(
         display,
         "=== QUESTS ===",
-        Point::new(100, 20),
+        Point::new(100, title_y),
         &FONT_10X20,
         COLOR_TEXT,
     )?;
