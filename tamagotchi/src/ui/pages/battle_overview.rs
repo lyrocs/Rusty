@@ -115,22 +115,20 @@ where
     // === CENTER: Battle Animations ===
     let battle_center_y = 150;
 
-    // Enemy GIF (left side)
-    if session.enemy_spawning {
-        // Show "Spawning..." text during spawn delay
-        draw_text(
-            display,
-            "Spawning...",
-            Point::new(50, battle_center_y + 40),
-            &FONT_9X18_BOLD,
-            Rgb888::YELLOW,
-        )?;
-    } else if session.enemy_dying {
+    // Enemy GIF (left side) - position changes during spawn animation
+    let enemy_x = if session.enemy_spawning {
+        session.enemy_spawn_position_x  // Animated position during walk-in
+    } else {
+        90  // Normal battle position
+    };
+
+    // Draw enemy at appropriate position
+    if session.enemy_dying {
         // Show death animation with DEFEATED message
         draw_monster_gif(
             display,
             game_state,
-            Point::new(90, battle_center_y),
+            Point::new(90, battle_center_y),  // Always at normal position for death
             enemy.name,
         )?;
         draw_text(
@@ -141,11 +139,11 @@ where
             Rgb888::GREEN,
         )?;
     } else {
-        // Show monster GIF with animation (controlled by update system)
+        // Show monster GIF with animation (walk-in during spawn, normal otherwise)
         draw_monster_gif(
             display,
             game_state,
-            Point::new(90, battle_center_y),
+            Point::new(enemy_x, battle_center_y),
             enemy.name,
         )?;
     }

@@ -32,19 +32,10 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
             // === ENEMY DEATH ANIMATION ===
             if session.enemy_dying {
                 if current_time >= session.enemy_death_complete_ms {
-                    // Death animation complete, start spawning phase
+                    // Death animation complete, select new enemy and start spawning phase
                     session.enemy_dying = false;
-                    session.enemy_spawning = true;
-                    session.enemy_spawn_complete_ms = current_time + 2000; // 2 second spawn delay
-                    esp_println::println!("[COMBAT] Enemy death animation complete, spawning...");
-                }
-                return; // Skip combat while dying
-            }
 
-            // === ENEMY SPAWN HANDLING ===
-            if session.enemy_spawning {
-                if current_time >= session.enemy_spawn_complete_ms {
-                    // Randomly select new enemy from pool
+                    // Randomly select new enemy from pool BEFORE starting walk-in animation
                     if !session.enemy_pool.is_empty() {
                         // Use current time as RNG seed to pick random enemy
                         let enemy_index = (current_time % session.enemy_pool.len() as u32) as usize;
@@ -60,19 +51,48 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                             // Recalculate enemy attack delay for new enemy
                             session.enemy_attack_delay_ms = (5000 - (new_enemy.level as u32 * 30)).max(3000).min(5000);
 
-                            esp_println::println!("[COMBAT] New enemy spawned: {} (Level {})", new_enemy.name, new_enemy.level);
+                            esp_println::println!("[COMBAT] New enemy selected: {} (Level {}) - walking in...", new_enemy.name, new_enemy.level);
                         } else {
                             // Fallback: use existing enemy_id if new one is invalid
                             session.current_enemy_hp = session.enemy_max_hp;
-                            esp_println::println!("[COMBAT] New enemy spawned!");
+                            esp_println::println!("[COMBAT] Enemy respawning - walking in...");
                         }
                     } else {
                         // Fallback: respawn same enemy if pool is empty
                         session.current_enemy_hp = session.enemy_max_hp;
-                        esp_println::println!("[COMBAT] New enemy spawned!");
+                        esp_println::println!("[COMBAT] Enemy respawning - walking in...");
                     }
 
+                    session.enemy_spawning = true;
+                    session.enemy_spawn_complete_ms = current_time + 2000; // 2 second spawn delay
+                    session.enemy_spawn_position_x = -64; // Start off-screen left for walk-in animation
+                }
+                return; // Skip combat while dying
+            }
+
+            // === ENEMY SPAWN HANDLING ===
+            if session.enemy_spawning {
+                // Animate enemy walking in from left side
+                // Target position: 90, Start position: -64, Distance: 154 pixels over 2000ms
+                const TARGET_X: i32 = 90;
+                const SPAWN_DURATION_MS: u32 = 2000;
+
+                let spawn_start_ms = session.enemy_spawn_complete_ms - SPAWN_DURATION_MS;
+                let spawn_elapsed_ms = current_time.saturating_sub(spawn_start_ms);
+                let spawn_progress = (spawn_elapsed_ms as f32 / SPAWN_DURATION_MS as f32).min(1.0);
+
+                // Smooth walk-in animation
+                session.enemy_spawn_position_x = -64 + ((TARGET_X - (-64)) as f32 * spawn_progress) as i32;
+
+                // Trigger redraw for animation
+                game_state.needs_redraw = true;
+
+                if current_time >= session.enemy_spawn_complete_ms {
+                    // Walk-in animation complete, enemy has reached battle position
                     session.enemy_spawning = false;
+                    session.enemy_spawn_position_x = TARGET_X; // Ensure final position is exact
+
+                    esp_println::println!("[COMBAT] Enemy reached battle position - combat starting!");
 
                     // Add 1-second delay before first attacks after spawn
                     // This creates a visible idle moment before combat resumes

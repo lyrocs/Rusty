@@ -111,6 +111,7 @@ pub struct IdleFarmSession {
     pub enemy_death_complete_ms: u32,   // When death animation completes
     pub enemy_spawning: bool,           // True if enemy is respawning (after death anim)
     pub enemy_spawn_complete_ms: u32,   // When new enemy will spawn
+    pub enemy_spawn_position_x: i32,    // Enemy x position during spawn animation (-64 to 90)
 
     // Skill system
     pub skill_cooldown_ms: u32,         // Skill cooldown duration
@@ -213,6 +214,7 @@ impl IdleFarmSession {
             enemy_death_complete_ms: 0,
             enemy_spawning: false,
             enemy_spawn_complete_ms: 0,
+            enemy_spawn_position_x: 90,  // Start at final position (no animation for first enemy)
             // Skills
             skill_cooldown_ms,
             last_skill_use_ms: 0,
