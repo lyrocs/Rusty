@@ -44,16 +44,40 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
             // === ENEMY SPAWN HANDLING ===
             if session.enemy_spawning {
                 if current_time >= session.enemy_spawn_complete_ms {
-                    // Spawn new enemy
+                    // Randomly select new enemy from pool
+                    if !session.enemy_pool.is_empty() {
+                        // Use current time as RNG seed to pick random enemy
+                        let enemy_index = (current_time % session.enemy_pool.len() as u32) as usize;
+                        let new_enemy_id = session.enemy_pool[enemy_index];
+
+                        if let Some(new_enemy) = Enemy::from_id(new_enemy_id) {
+                            // Update session with new enemy data
+                            session.enemy_id = new_enemy_id;
+                            session.enemy_max_hp = new_enemy.max_hp;
+                            session.current_enemy_hp = new_enemy.max_hp;
+                            session.enemy_level = new_enemy.level;
+
+                            // Recalculate enemy attack delay for new enemy
+                            session.enemy_attack_delay_ms = (5000 - (new_enemy.level as u32 * 30)).max(3000).min(5000);
+
+                            esp_println::println!("[COMBAT] New enemy spawned: {} (Level {})", new_enemy.name, new_enemy.level);
+                        } else {
+                            // Fallback: use existing enemy_id if new one is invalid
+                            session.current_enemy_hp = session.enemy_max_hp;
+                            esp_println::println!("[COMBAT] New enemy spawned!");
+                        }
+                    } else {
+                        // Fallback: respawn same enemy if pool is empty
+                        session.current_enemy_hp = session.enemy_max_hp;
+                        esp_println::println!("[COMBAT] New enemy spawned!");
+                    }
+
                     session.enemy_spawning = false;
-                    session.current_enemy_hp = session.enemy_max_hp;
 
                     // Add 1-second delay before first attacks after spawn
                     // This creates a visible idle moment before combat resumes
                     session.next_hero_attack_ms = current_time + 1000;
                     session.next_enemy_attack_ms = current_time + session.enemy_attack_delay_ms + 1000;
-
-                    esp_println::println!("[COMBAT] New enemy spawned!");
                 }
                 return; // Skip combat while spawning
             }
@@ -283,6 +307,15 @@ pub fn start_idle_farm_session(
     map_id: u32,
     enemy_id: u32,
 ) {
+    // Get enemy pool from map
+    use crate::world::MapHelper;
+    let enemy_pool = MapHelper::enemies(map_id);
+
+    if enemy_pool.is_empty() {
+        esp_println::println!("[IDLE FARM] ERROR: No enemies found for map {}", map_id);
+        return;
+    }
+
     // Calculate farming rates
     if let Some(enemy) = Enemy::from_id(enemy_id) {
         use crate::combat::calculate_farming_rates;
@@ -321,6 +354,7 @@ pub fn start_idle_farm_session(
         let session = IdleFarmSession::new(
             map_id,
             enemy_id,
+            enemy_pool,
             game_state.last_update_ms,
             game_state.hero.hp,
             rates.kills_per_minute,

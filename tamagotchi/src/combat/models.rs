@@ -2,6 +2,7 @@
 ///
 /// Core combat entities including Enemy and basic combat states.
 use crate::tamagotchi::get_enemy_data;
+use heapless::Vec as HeaplessVec;
 
 /// Enemy data (based on data/enemies.json)
 /// Note: JSON files in data/ folder serve as source of truth
@@ -72,6 +73,7 @@ pub struct IdleFarmSession {
     pub state: IdleFarmState,
     pub map_id: u32,
     pub enemy_id: u32,
+    pub enemy_pool: HeaplessVec<u32, 8>,  // Pool of enemy IDs from the map
     pub start_time_ms: u32,
     pub last_update_ms: u32,
 
@@ -141,7 +143,8 @@ pub struct IdleFarmSession {
 }
 
 impl IdleFarmSession {
-    pub fn new(map_id: u32, enemy_id: u32, start_time_ms: u32, current_hp: u16,
+    pub fn new(map_id: u32, enemy_id: u32, enemy_pool: HeaplessVec<u32, 8>,
+               start_time_ms: u32, current_hp: u16,
                kills_per_min: f32, zeny_per_min: f32, damage_per_min: f32, regen_per_min: f32,
                hero_level: u16, hero_agi: u16, hero_vit: u16, hero_dex: u16,
                enemy_hp: u16, enemy_level: u16) -> Self {
@@ -176,6 +179,7 @@ impl IdleFarmSession {
             state: IdleFarmState::Active,
             map_id,
             enemy_id,
+            enemy_pool,
             start_time_ms,
             last_update_ms: start_time_ms,
             monsters_killed: 0,
