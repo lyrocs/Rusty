@@ -15,6 +15,7 @@ pub mod quests;
 pub mod settings;
 pub mod jrpg_battle;
 pub mod zelda_battle;
+pub mod mvp_battle;
 pub mod crafting;
 
 // Re-export all page drawing functions
@@ -31,4 +32,5 @@ pub use quests::draw_quests_page;
 pub use settings::draw_settings_page;
 pub use jrpg_battle::draw_jrpg_battle_page;
 pub use zelda_battle::draw_zelda_battle_page;
+pub use mvp_battle::draw_mvp_battle_page;
 pub use crafting::draw_crafting_page;

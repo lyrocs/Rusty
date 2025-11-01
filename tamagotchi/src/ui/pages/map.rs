@@ -241,7 +241,7 @@ where
                     COLOR_TEXT,
                 )?;
 
-                // JRPG Battle button (right)
+                // MVP Battle button (right)
                 Rectangle::new(Point::new(jrpg_x, button_y), Size::new(button_width as u32, button_height))
                     .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
                     .draw(display)?;
@@ -250,8 +250,8 @@ where
                     .draw(display)?;
                 draw_text(
                     display,
-                    "JRPG",
-                    Point::new(jrpg_x + 30, button_y + 20),
+                    "MVP",
+                    Point::new(jrpg_x + 36, button_y + 20),
                     &FONT_9X15,
                     COLOR_TEXT,
                 )?;

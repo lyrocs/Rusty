@@ -194,3 +194,175 @@ pub enum CombatResult {
     Lucky,
     Miss,
 }
+
+/// MVP Battle state
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MvpBattleState {
+    Idle,          // No battle active
+    Start,         // Battle starting
+    Playing,       // Battle in progress
+    Victory,       // Battle won
+    Defeat,        // Battle lost
+}
+
+/// MVP Battle phase (difficulty progression)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MvpBattlePhase {
+    Phase1,  // 100-70% HP: Learning phase
+    Phase2,  // 70-30% HP: Boss enraged
+    Phase3,  // 30-0% HP: Berserk mode
+}
+
+impl MvpBattlePhase {
+    /// Get phase based on boss HP percentage
+    pub fn from_hp_percent(hp_percent: u8) -> Self {
+        if hp_percent > 70 {
+            MvpBattlePhase::Phase1
+        } else if hp_percent > 30 {
+            MvpBattlePhase::Phase2
+        } else {
+            MvpBattlePhase::Phase3
+        }
+    }
+}
+
+/// MVP Battle rank (based on performance)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MvpBattleRank {
+    S,  // Perfect performance
+    A,  // Excellent
+    B,  // Good
+    C,  // Average
+    D,  // Poor
+}
+
+impl MvpBattleRank {
+    /// Calculate rank based on combat time, perfect hits, and health remaining
+    pub fn calculate(combat_time_ms: u32, perfect_hits: u16, hero_hp_percent: u8) -> Self {
+        let mut score = 0;
+
+        // Time bonus (faster = better)
+        if combat_time_ms < 60_000 {  // < 1 minute
+            score += 3;
+        } else if combat_time_ms < 120_000 {  // < 2 minutes
+            score += 2;
+        } else if combat_time_ms < 180_000 {  // < 3 minutes
+            score += 1;
+        }
+
+        // Perfect hits bonus
+        if perfect_hits > 20 {
+            score += 3;
+        } else if perfect_hits > 10 {
+            score += 2;
+        } else if perfect_hits > 5 {
+            score += 1;
+        }
+
+        // Health remaining bonus
+        if hero_hp_percent > 80 {
+            score += 3;
+        } else if hero_hp_percent > 50 {
+            score += 2;
+        } else if hero_hp_percent > 20 {
+            score += 1;
+        }
+
+        // Map score to rank
+        match score {
+            9 => MvpBattleRank::S,
+            7..=8 => MvpBattleRank::A,
+            5..=6 => MvpBattleRank::B,
+            3..=4 => MvpBattleRank::C,
+            _ => MvpBattleRank::D,
+        }
+    }
+
+    /// Get display name
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            MvpBattleRank::S => "S",
+            MvpBattleRank::A => "A",
+            MvpBattleRank::B => "B",
+            MvpBattleRank::C => "C",
+            MvpBattleRank::D => "D",
+        }
+    }
+
+    /// Get reward multiplier based on rank
+    pub fn reward_multiplier(&self) -> f32 {
+        match self {
+            MvpBattleRank::S => 2.0,
+            MvpBattleRank::A => 1.5,
+            MvpBattleRank::B => 1.2,
+            MvpBattleRank::C => 1.0,
+            MvpBattleRank::D => 0.8,
+        }
+    }
+}
+
+/// MVP Battle skill definition
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MvpSkillType {
+    Bash,     // Quick tap for burst damage (3s cooldown)
+    Provoke,  // Long press to reduce boss DEF (8s cooldown)
+    Potion,   // Swipe up for emergency heal (6s cooldown)
+}
+
+impl MvpSkillType {
+    /// Get cooldown in milliseconds
+    pub fn cooldown_ms(&self) -> u32 {
+        match self {
+            MvpSkillType::Bash => 3_000,
+            MvpSkillType::Provoke => 8_000,
+            MvpSkillType::Potion => 6_000, // Balanced at 6s
+        }
+    }
+
+    /// Get display name
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            MvpSkillType::Bash => "Bash",
+            MvpSkillType::Provoke => "Provoke",
+            MvpSkillType::Potion => "Potion",
+        }
+    }
+}
+
+/// Active MVP skill cooldown
+#[derive(Debug, Clone, Copy)]
+pub struct MvpSkillCooldown {
+    pub skill_type: MvpSkillType,
+    pub last_used_ms: u32,  // When skill was last used
+}
+
+impl MvpSkillCooldown {
+    /// Create new cooldown tracker
+    pub fn new(skill_type: MvpSkillType, last_used_ms: u32) -> Self {
+        Self {
+            skill_type,
+            last_used_ms,
+        }
+    }
+
+    /// Check if skill is ready to use
+    pub fn is_ready(&self, current_ms: u32) -> bool {
+        current_ms >= self.last_used_ms + self.skill_type.cooldown_ms()
+    }
+
+    /// Get remaining cooldown in milliseconds
+    pub fn remaining_ms(&self, current_ms: u32) -> u32 {
+        let ready_at = self.last_used_ms + self.skill_type.cooldown_ms();
+        ready_at.saturating_sub(current_ms)
+    }
+
+    /// Get cooldown progress (0.0 to 1.0)
+    pub fn progress(&self, current_ms: u32) -> f32 {
+        if self.is_ready(current_ms) {
+            return 1.0;
+        }
+        let elapsed = current_ms.saturating_sub(self.last_used_ms) as f32;
+        let total = self.skill_type.cooldown_ms() as f32;
+        (elapsed / total).min(1.0)
+    }
+}

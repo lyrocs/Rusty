@@ -372,6 +372,9 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         GamePage::ZeldaBattle => {
             handle_zelda_battle_touch(game_state, x, y);
         }
+        GamePage::MvpBattle => {
+            handle_mvp_battle_touch(game_state, x, y);
+        }
         GamePage::Crafting => {
             handle_crafting_touch(game_state, x, y);
         }
@@ -1022,9 +1025,9 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             }
         }
     }
-    // Check JRPG Battle button (247, 295, 110x55)
+    // Check MVP Battle button (247, 295, 110x55)
     else if x >= 247 && x <= 357 && y >= 295 && y <= 350 {
-        esp_println::println!("[MAP] JRPG Battle selected");
+        esp_println::println!("[MAP] MVP Battle selected");
 
         // Check HP first
         if game_state.hero.hp == 0 {
@@ -1038,7 +1041,7 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             game_state.save_status_timeout = game_state.last_update_ms + 2000;
             game_state.needs_redraw = true;
         } else {
-            // Spawn enemy from current map for JRPG battle
+            // Spawn enemy from current map for MVP battle
             let enemy_ids = MapHelper::enemies(map_id);
             if !enemy_ids.is_empty() {
                 // Pick random enemy from map
@@ -1048,11 +1051,10 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
 
                 if let Some(enemy) = Enemy::from_id(enemy_id) {
                     esp_println::println!(
-                        "[MAP] Starting JRPG battle with {} from map",
+                        "[MAP] Starting MVP battle with {} from map",
                         enemy.name
                     );
-                    game_state.start_zelda_battle(enemy);
-                    // game_state.start_jrpg_battle(enemy);
+                    game_state.start_mvp_battle(enemy);
                 }
             }
         }
@@ -1782,6 +1784,68 @@ fn handle_zelda_battle_touch(game_state: &mut GameState, x: u16, y: u16) {
 
             // Exit battle and return to map
             game_state.exit_zelda_battle();
+        }
+    }
+}
+
+/// Handle touch input on MVP Battle page
+fn handle_mvp_battle_touch(game_state: &mut GameState, x: u16, y: u16) {
+    use crate::combat::MvpBattleState;
+
+    match game_state.mvp_battle_state {
+        MvpBattleState::Idle => {
+            // Return to map
+            game_state.current_page = GamePage::Map;
+            game_state.needs_redraw = true;
+        }
+        MvpBattleState::Start => {
+            // Transition to playing (handled by update system)
+        }
+        MvpBattleState::Playing => {
+            // Skill buttons: 3 buttons at y=350, height=65, width=110, spacing=8
+            let button_y = 350;
+            let button_width = 110;
+            let button_height = 65;
+            let button_spacing = 8;
+            let start_x = 11;
+
+            // Check which skill button was clicked
+            for i in 0..3 {
+                let btn_x = start_x + i * (button_width + button_spacing);
+                if x >= btn_x as u16
+                    && x <= (btn_x + button_width) as u16
+                    && y >= button_y as u16
+                    && y <= (button_y + button_height) as u16
+                {
+                    // Skill button clicked
+                    match i {
+                        0 => {
+                            // Bash
+                            esp_println::println!("[MVP] Bash button clicked");
+                            game_state.mvp_use_bash();
+                        }
+                        1 => {
+                            // Provoke
+                            esp_println::println!("[MVP] Provoke button clicked");
+                            game_state.mvp_use_provoke();
+                        }
+                        2 => {
+                            // Potion
+                            esp_println::println!("[MVP] Potion button clicked");
+                            game_state.mvp_use_potion();
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+        MvpBattleState::Victory | MvpBattleState::Defeat => {
+            // Exit battle and return to map
+            esp_println::println!("[MVP] Battle ended, returning to map");
+            game_state.reset_mvp_battle();
+            game_state.current_page = GamePage::Map;
+            game_state.needs_redraw = true;
         }
     }
 }

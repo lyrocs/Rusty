@@ -509,5 +509,47 @@ pub fn tamagotchi_update_system(
             }
         }
     }
+
+    // Update MVP battle progress (auto-attacks, skills, phases)
+    if game_state.current_page == GamePage::MvpBattle {
+        use crate::combat::MvpBattleState;
+
+        match game_state.mvp_battle_state {
+            MvpBattleState::Idle => {
+                // Nothing to update
+            }
+            MvpBattleState::Start => {
+                // Quick transition to Playing
+                game_state.mvp_battle_state = MvpBattleState::Playing;
+                game_state.needs_redraw = true;
+            }
+            MvpBattleState::Playing => {
+                // Update battle mechanics (ALWAYS runs - game logic)
+                let old_state = game_state.mvp_battle_state;
+                let old_hp = game_state.mvp_battle_enemy.as_ref().map(|e| e.hp);
+                let old_hero_hp = game_state.hero.hp;
+                let old_stagger = game_state.mvp_stagger_value;
+                let old_critical = game_state.mvp_critical_window_active;
+
+                game_state.update_mvp_battle(delta_ms);
+
+                let new_hp = game_state.mvp_battle_enemy.as_ref().map(|e| e.hp);
+
+                // Redraw if state changed AND screen is on
+                if (game_state.mvp_battle_state != old_state
+                    || new_hp != old_hp
+                    || game_state.hero.hp != old_hero_hp
+                    || game_state.mvp_stagger_value != old_stagger
+                    || game_state.mvp_critical_window_active != old_critical)
+                    && game_state.screen_on
+                {
+                    game_state.needs_redraw = true;
+                }
+            }
+            MvpBattleState::Victory | MvpBattleState::Defeat => {
+                // Battle ended - waiting for user input to continue
+            }
+        }
+    }
 }
 

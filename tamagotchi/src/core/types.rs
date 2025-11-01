@@ -12,6 +12,7 @@ pub enum GamePage {
     Battle,      // Whac-A-Mole mini-game
     JrpgBattle,  // Turn-based JRPG battle
     ZeldaBattle, // Timing-based action battle (Zelda-style)
+    MvpBattle,   // Semi-active MVP boss battle with auto-attacks and manual skills
     Map,         // Navigation and world map
     Menu,
     Inventory,   // Item inventory

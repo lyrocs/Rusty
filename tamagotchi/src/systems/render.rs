@@ -7,8 +7,8 @@ use crate::core::GameState;
 use crate::tamagotchi::models::GamePage;
 use crate::tamagotchi::ui::{
     draw_battle_page, draw_crafting_page, draw_equipment_page, draw_farm_page, draw_inventory,
-    draw_jrpg_battle_page, draw_map_page, draw_menu, draw_overview_page, draw_quests_page,
-    draw_rest_page, draw_settings_page, draw_stats_page, draw_zelda_battle_page,
+    draw_jrpg_battle_page, draw_map_page, draw_menu, draw_mvp_battle_page, draw_overview_page,
+    draw_quests_page, draw_rest_page, draw_settings_page, draw_stats_page, draw_zelda_battle_page,
 };
 
 /// System to render the current page
@@ -146,6 +146,9 @@ pub fn tamagotchi_render_system(
                 should_full_redraw,
             )
             .ok();
+        }
+        GamePage::MvpBattle => {
+            draw_mvp_battle_page(&mut display_res.display, &game_state).ok();
         }
     }
 

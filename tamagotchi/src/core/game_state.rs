@@ -13,7 +13,9 @@ use crate::quest::ActiveQuest;
 use crate::combat::{
     BattleAnimationPhase, BattleState, Circle, CombatResult, Enemy,
     FarmState, HeroAnimation, JrpgBattleMenu, JrpgBattleState,
-    JrpgCombatant, MonsterAnimation, RestState, ZeldaBattleState, ZeldaEnemy,
+    JrpgCombatant, MonsterAnimation, MvpBattlePhase, MvpBattleRank,
+    MvpBattleState, MvpSkillCooldown, MvpSkillType, RestState,
+    ZeldaBattleState, ZeldaEnemy,
 };
 
 /// Main game state containing all game data and UI state
@@ -81,6 +83,22 @@ pub struct GameState {
     pub zelda_battle_spawn_interval: u32,        // Time between spawns (1500ms)
     pub zelda_battle_duration: u32,              // Total battle time (60 seconds)
     pub zelda_battle_elapsed: u32,               // Time elapsed in battle
+    // MVP Battle state
+    pub mvp_battle_state: MvpBattleState,        // Current MVP battle state
+    pub mvp_battle_enemy: Option<Enemy>,         // MVP boss being fought
+    pub mvp_battle_phase: MvpBattlePhase,        // Current battle phase (1-3)
+    pub mvp_skill_cooldowns: [MvpSkillCooldown; 3], // Cooldowns for 3 skills
+    pub mvp_stagger_value: u16,                  // Current stagger bar fill (0-100)
+    pub mvp_stagger_max: u16,                    // Max stagger value (100)
+    pub mvp_critical_window_active: bool,        // Is critical window active?
+    pub mvp_critical_window_end: u32,            // When critical window ends (ms)
+    pub mvp_auto_attack_next: u32,               // When next auto-attack triggers
+    pub mvp_auto_attack_interval: u32,           // Auto-attack interval (800ms)
+    pub mvp_battle_elapsed: u32,                 // Time elapsed in battle
+    pub mvp_perfect_hits: u16,                   // Perfect hits during critical windows
+    pub mvp_boss_def_debuff: u16,                // Boss DEF debuff from Provoke (%)
+    pub mvp_boss_def_debuff_end: u32,            // When DEF debuff ends (ms)
+    pub mvp_battle_rank: Option<MvpBattleRank>,  // Battle rank (S, A, B, C, D)
     // Equipment refinement UI state
     pub equipment_selection_open: bool,         // Whether equipment selection menu is shown
     pub refine_popup_open: bool,                // Whether refine popup is shown
@@ -207,6 +225,26 @@ impl Default for GameState {
             zelda_battle_spawn_interval: 1500, // 1.5 seconds between spawns
             zelda_battle_duration: 60000,      // 60 seconds
             zelda_battle_elapsed: 0,
+            // MVP Battle state
+            mvp_battle_state: MvpBattleState::Idle,
+            mvp_battle_enemy: None,
+            mvp_battle_phase: MvpBattlePhase::Phase1,
+            mvp_skill_cooldowns: [
+                MvpSkillCooldown::new(MvpSkillType::Bash, 0),
+                MvpSkillCooldown::new(MvpSkillType::Provoke, 0),
+                MvpSkillCooldown::new(MvpSkillType::Potion, 0),
+            ],
+            mvp_stagger_value: 0,
+            mvp_stagger_max: 150, // Increased from 100 for longer buildup to critical windows
+            mvp_critical_window_active: false,
+            mvp_critical_window_end: 0,
+            mvp_auto_attack_next: 0,
+            mvp_auto_attack_interval: 1500, // 1.5 seconds (slower for better pacing)
+            mvp_battle_elapsed: 0,
+            mvp_perfect_hits: 0,
+            mvp_boss_def_debuff: 0,
+            mvp_boss_def_debuff_end: 0,
+            mvp_battle_rank: None,
             // Equipment refinement UI state
             equipment_selection_open: false,
             refine_popup_open: false,
