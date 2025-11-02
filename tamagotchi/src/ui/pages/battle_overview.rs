@@ -159,7 +159,7 @@ where
     }
 
     // === CENTER: Battle Animations (always re-rendered for smooth animation) ===
-    let battle_center_y = 150;
+    let battle_center_y = 200;
 
     // Enemy GIF (left side) - position changes during spawn animation
     let enemy_x = if session.enemy_spawning {

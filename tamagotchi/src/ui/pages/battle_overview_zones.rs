@@ -1,6 +1,5 @@
 /// Zone-based rendering functions for Battle Overview page
 /// Each function clears and redraws only its specific zone
-
 use core::fmt::Write;
 use embedded_graphics::{
     mono_font::ascii::{FONT_9X15, FONT_9X18_BOLD},
@@ -10,9 +9,9 @@ use embedded_graphics::{
 };
 use heapless::String;
 
-use crate::ui::helpers::*;
-use crate::ui::colors::*;
 use crate::combat::{Enemy, IdleFarmSession};
+use crate::ui::colors::*;
+use crate::ui::helpers::*;
 
 /// Draw enemy info zone (name, level, HP bar)
 /// Zone: x=20-350, y=45-95
@@ -26,16 +25,16 @@ where
     D: DrawTarget<Color = Rgb888>,
 {
     let zone_x = 20;
-    let zone_y = 45;
+    let zone_y = 25;
     let zone_width = 330;
-    let zone_height = 50;
+    let zone_height = 60;
 
     // Clear zone
     Rectangle::new(
         Point::new(zone_x, zone_y),
         Size::new(zone_width, zone_height),
     )
-    .into_styled(PrimitiveStyle::with_fill(COLOR_BG))
+    .into_styled(PrimitiveStyle::with_fill(COLOR_HP))
     .draw(display)?;
 
     // Enemy name with level
@@ -44,7 +43,7 @@ where
     draw_text(
         display,
         &enemy_label,
-        Point::new(zone_x, zone_y),
+        Point::new(zone_x, zone_y + 18),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;
@@ -176,10 +175,7 @@ where
 
 /// Draw session stats panel zone
 /// Zone: x=200-358, y=280-400
-pub fn draw_stats_panel_zone<D>(
-    display: &mut D,
-    session: &IdleFarmSession,
-) -> Result<(), D::Error>
+pub fn draw_stats_panel_zone<D>(display: &mut D, session: &IdleFarmSession) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
