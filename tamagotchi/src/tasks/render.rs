@@ -6,10 +6,15 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 use log::{info, warn};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::channels::{RENDER_CHANNEL, RenderCommand};
 use crate::ecs::resources::DisplayResource;
 use crate::systems::render::tamagotchi_render_system;
+
+/// Global flag to prevent render queue buildup
+/// When true, a render is currently in progress
+pub static IS_RENDERING: AtomicBool = AtomicBool::new(false);
 
 /// Render task - handles display updates
 /// Responds to render commands and executes the render system
@@ -26,6 +31,9 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
         // Wait for render commands
         match RENDER_CHANNEL.receive().await {
             RenderCommand::Redraw => {
+                // Set rendering flag to prevent queue buildup
+                IS_RENDERING.store(true, Ordering::Release);
+
                 let start = Instant::now();
 
                 // Lock the world to run the render system
@@ -40,6 +48,9 @@ pub async fn render_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                 // Track rendering performance
                 let render_time = start.elapsed();
                 let render_us = render_time.as_micros();
+
+                // Clear rendering flag
+                IS_RENDERING.store(false, Ordering::Release);
 
                 frame_count = frame_count.wrapping_add(1);
                 total_render_time_us = total_render_time_us.wrapping_add(render_us);

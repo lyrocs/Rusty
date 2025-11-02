@@ -6,8 +6,10 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use alloc::sync::Arc;
 use log::{info, warn};
+use core::sync::atomic::Ordering;
 
 use super::channels::{INPUT_CHANNEL, RENDER_CHANNEL, SAVE_CHANNEL, InputEvent, RenderCommand, SaveCommand};
+use super::render::IS_RENDERING;
 use crate::ecs::resources::*;
 use crate::core::GameState;
 use crate::systems::{tamagotchi_button_system, tamagotchi_touch_system, tamagotchi_update_system};
@@ -153,18 +155,25 @@ pub async fn game_loop_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
         if needs_render {
             let time_since_last_render = last_render_time.elapsed().as_millis() as u64;
 
+            // Only send render command if:
+            // 1. Enough time has elapsed (time-based throttle)
+            // 2. No render is currently in progress (prevents queue buildup)
             if time_since_last_render >= RENDER_INTERVAL_MS {
-                match RENDER_CHANNEL.try_send(RenderCommand::Redraw) {
-                    Ok(_) => {
-                        needs_render = false;
-                        last_render_time = Instant::now();
-                    }
-                    Err(_) => {
-                        // Queue is full - this is critical as it causes screen freeze
-                        warn!("[GAME] Render queue full! Screen may freeze. Frame: {}", frame_count);
-                        // Keep needs_render=true to retry on next frame
+                // Check if a render is already in progress
+                if !IS_RENDERING.load(Ordering::Acquire) {
+                    match RENDER_CHANNEL.try_send(RenderCommand::Redraw) {
+                        Ok(_) => {
+                            needs_render = false;
+                            last_render_time = Instant::now();
+                        }
+                        Err(_) => {
+                            // Queue is full - this is critical as it causes screen freeze
+                            warn!("[GAME] Render queue full! Screen may freeze. Frame: {}", frame_count);
+                            // Keep needs_render=true to retry on next frame
+                        }
                     }
                 }
+                // else: render in progress, skip this frame (keeps needs_render=true for next check)
             }
             // else: too soon since last render, skip this frame (keeps needs_render=true for next check)
         }
