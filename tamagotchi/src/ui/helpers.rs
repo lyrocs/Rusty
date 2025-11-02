@@ -1,7 +1,6 @@
 /// UI Helper Functions
 ///
 /// Common drawing utilities shared across multiple pages.
-
 use core::fmt::Write;
 use embedded_graphics::{
     image::Image,
@@ -17,8 +16,8 @@ use embedded_graphics::{
 use heapless::String;
 use tinygif::Gif;
 
-use crate::core::GameState;
 use super::colors::*;
+use crate::core::GameState;
 
 pub fn draw_monster_gif<D>(
     display: &mut D,
@@ -142,6 +141,7 @@ where
 }
 
 /// Helper: Draw hero GIF animation with specific animation state
+/// This function clears only the GIF zone and draws the frame within it
 pub fn draw_hero_gif_with_animation<D>(
     display: &mut D,
     game_state: &GameState,
@@ -163,6 +163,14 @@ where
         center_position.x - (gif_width / 2),
         center_position.y - gif_height,
     );
+
+    // // Clear ONLY the GIF zone with background color
+    // Rectangle::new(
+    //     top_left,
+    //     Size::new(gif_width as u32, gif_height as u32),
+    // )
+    // .into_styled(PrimitiveStyle::with_fill(super::colors::COLOR_BG))
+    // .draw(display)?;
 
     // Get current frame
     let frame_index = game_state.hero_animation_frame;
@@ -351,7 +359,6 @@ where
     Ok(())
 }
 
-
 // Equipment helper functions
 pub fn draw_equipment_slot<D>(
     display: &mut D,
@@ -363,13 +370,7 @@ where
     D: DrawTarget<Color = Rgb888>,
 {
     // Slot label
-    draw_text(
-        display,
-        slot_name,
-        position,
-        &FONT_9X15,
-        COLOR_TEXT_DIM,
-    )?;
+    draw_text(display, slot_name, position, &FONT_9X15, COLOR_TEXT_DIM)?;
 
     // Equipment name with refine level (simplified - only name)
     let mut name_str = String::<48>::new();
@@ -434,8 +435,14 @@ where
         (crate::tamagotchi::models::EquipmentSlot::Armor, "ARMOR"),
         (crate::tamagotchi::models::EquipmentSlot::Shoes, "SHOES"),
         (crate::tamagotchi::models::EquipmentSlot::Garment, "GARMENT"),
-        (crate::tamagotchi::models::EquipmentSlot::Accessory1, "ACCESSORY 1"),
-        (crate::tamagotchi::models::EquipmentSlot::Accessory2, "ACCESSORY 2"),
+        (
+            crate::tamagotchi::models::EquipmentSlot::Accessory1,
+            "ACCESSORY 1",
+        ),
+        (
+            crate::tamagotchi::models::EquipmentSlot::Accessory2,
+            "ACCESSORY 2",
+        ),
     ];
 
     let start_y = 55;
@@ -593,13 +600,7 @@ where
         } else {
             Rgb888::new(255, 100, 100)
         };
-        draw_text(
-            display,
-            msg,
-            Point::new(80, 195),
-            &FONT_9X18_BOLD,
-            color,
-        )?;
+        draw_text(display, msg, Point::new(80, 195), &FONT_9X18_BOLD, color)?;
     } else {
         // Show next level preview
         if equipment.can_refine() {
@@ -615,10 +616,10 @@ where
 
             // Show stat change
             let bonus_change = match slot {
-                EquipmentSlot::Weapon => 2,  // +2 ATK
-                EquipmentSlot::Armor => 1,   // +1 DEF
-                EquipmentSlot::Shoes => 1,   // +1 AGI
-                EquipmentSlot::Garment => 1, // +1 DEF
+                EquipmentSlot::Weapon => 2,     // +2 ATK
+                EquipmentSlot::Armor => 1,      // +1 DEF
+                EquipmentSlot::Shoes => 1,      // +1 AGI
+                EquipmentSlot::Garment => 1,    // +1 DEF
                 EquipmentSlot::Accessory1 => 1, // +1 stat
                 EquipmentSlot::Accessory2 => 1, // +1 stat
             };
@@ -808,14 +809,17 @@ where
     };
 
     // Collect equipment items from inventory
-    let mut equipment_items: heapless::Vec<(u16, &'static str, &'static str), 16> = heapless::Vec::new();
+    let mut equipment_items: heapless::Vec<(u16, &'static str, &'static str), 16> =
+        heapless::Vec::new();
     for item in game_state.hero.inventory.iter() {
         // Equipment IDs: 1000-1999 (Weapons), 2000-2999 (Armor), 3000-3999 (Shoes), 4000-4999 (Garment), 5000-5999 (Accessory)
         if item.id >= 1000 && item.id < 6000 {
             // Get equipment data to check slot
             if let Some(equip_data) = crate::data::get_equipment_data_by_id(item.id as u16) {
                 if equip_data.slot == slot_str {
-                    equipment_items.push((item.id as u16, item.name, equip_data.slot)).ok();
+                    equipment_items
+                        .push((item.id as u16, item.name, equip_data.slot))
+                        .ok();
                 }
             }
         }
@@ -828,7 +832,8 @@ where
 
     let scroll_offset = game_state.equipment_swap_scroll as usize;
 
-    for (i, (equip_id, equip_name, _equip_slot)) in equipment_items.iter()
+    for (i, (equip_id, equip_name, _equip_slot)) in equipment_items
+        .iter()
         .skip(scroll_offset)
         .take(max_visible)
         .enumerate()
@@ -989,11 +994,24 @@ where
         let total_atk = equipment.total_atk();
         let mut stat_str = String::<64>::new();
         if equipment.refine_level > 0 {
-            write!(stat_str, "ATK: {} ({}+{})", total_atk, equipment.atk_bonus, equipment.get_refine_bonus()).ok();
+            write!(
+                stat_str,
+                "ATK: {} ({}+{})",
+                total_atk,
+                equipment.atk_bonus,
+                equipment.get_refine_bonus()
+            )
+            .ok();
         } else {
             write!(stat_str, "ATK: {}", total_atk).ok();
         }
-        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT)?;
+        draw_text(
+            display,
+            &stat_str,
+            Point::new(20, y),
+            &FONT_9X18_BOLD,
+            COLOR_TEXT,
+        )?;
         y += 20;
     }
 
@@ -1001,31 +1019,62 @@ where
         let total_def = equipment.total_def();
         let mut stat_str = String::<64>::new();
         if equipment.refine_level > 0 {
-            write!(stat_str, "DEF: {} ({}+{})", total_def, equipment.def_bonus, equipment.get_refine_bonus()).ok();
+            write!(
+                stat_str,
+                "DEF: {} ({}+{})",
+                total_def,
+                equipment.def_bonus,
+                equipment.get_refine_bonus()
+            )
+            .ok();
         } else {
             write!(stat_str, "DEF: {}", total_def).ok();
         }
-        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT)?;
+        draw_text(
+            display,
+            &stat_str,
+            Point::new(20, y),
+            &FONT_9X18_BOLD,
+            COLOR_TEXT,
+        )?;
         y += 20;
     }
 
     if equipment.hp_bonus > 0 {
         let mut stat_str = String::<32>::new();
         write!(stat_str, "HP: +{}", equipment.hp_bonus).ok();
-        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+        draw_text(
+            display,
+            &stat_str,
+            Point::new(20, y),
+            &FONT_9X15,
+            COLOR_TEXT,
+        )?;
         y += 18;
     }
 
     if equipment.sp_bonus > 0 {
         let mut stat_str = String::<32>::new();
         write!(stat_str, "SP: +{}", equipment.sp_bonus).ok();
-        draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+        draw_text(
+            display,
+            &stat_str,
+            Point::new(20, y),
+            &FONT_9X15,
+            COLOR_TEXT,
+        )?;
         y += 18;
     }
 
     // Stat bonuses
     y += 10;
-    draw_text(display, "Stats:", Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+    draw_text(
+        display,
+        "Stats:",
+        Point::new(20, y),
+        &FONT_9X18_BOLD,
+        COLOR_TEXT_DIM,
+    )?;
     y += 20;
 
     let stats = [
@@ -1041,7 +1090,13 @@ where
         if *bonus != 0 {
             let mut stat_str = String::<32>::new();
             write!(stat_str, "{}: {:+}", stat_name, bonus).ok();
-            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            draw_text(
+                display,
+                &stat_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                COLOR_TEXT,
+            )?;
             y += 18;
         }
     }
@@ -1055,56 +1110,105 @@ where
 
     if has_special {
         y += 5;
-        draw_text(display, "Special:", Point::new(20, y), &FONT_9X18_BOLD, COLOR_TEXT_DIM)?;
+        draw_text(
+            display,
+            "Special:",
+            Point::new(20, y),
+            &FONT_9X18_BOLD,
+            COLOR_TEXT_DIM,
+        )?;
         y += 20;
 
         if equipment.crit_rate_bonus > 0 {
             let mut stat_str = String::<32>::new();
             write!(stat_str, "Crit Rate: +{}%", equipment.crit_rate_bonus).ok();
-            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            draw_text(
+                display,
+                &stat_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                COLOR_TEXT,
+            )?;
             y += 18;
         }
 
         if equipment.aspd_bonus > 0 {
             let mut stat_str = String::<32>::new();
             write!(stat_str, "ASPD: +{}%", equipment.aspd_bonus).ok();
-            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            draw_text(
+                display,
+                &stat_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                COLOR_TEXT,
+            )?;
             y += 18;
         }
 
         if equipment.flee_bonus > 0 {
             let mut stat_str = String::<32>::new();
             write!(stat_str, "Flee: +{}", equipment.flee_bonus).ok();
-            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            draw_text(
+                display,
+                &stat_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                COLOR_TEXT,
+            )?;
             y += 18;
         }
 
         if equipment.hit_bonus > 0 {
             let mut stat_str = String::<32>::new();
             write!(stat_str, "Hit: +{}", equipment.hit_bonus).ok();
-            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            draw_text(
+                display,
+                &stat_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                COLOR_TEXT,
+            )?;
             y += 18;
         }
 
         if equipment.damage_reduction > 0 {
             let mut stat_str = String::<32>::new();
             write!(stat_str, "DMG Reduction: {}%", equipment.damage_reduction).ok();
-            draw_text(display, &stat_str, Point::new(20, y), &FONT_9X15, COLOR_TEXT)?;
+            draw_text(
+                display,
+                &stat_str,
+                Point::new(20, y),
+                &FONT_9X15,
+                COLOR_TEXT,
+            )?;
             y += 18;
         }
     }
 
     // Card slots
     y += 10;
-    let cards_socketed = equipment.socketed_cards.iter().filter(|c| c.is_some()).count();
+    let cards_socketed = equipment
+        .socketed_cards
+        .iter()
+        .filter(|c| c.is_some())
+        .count();
     let mut card_str = String::<32>::new();
-    write!(card_str, "Cards: {}/{}", cards_socketed, equipment.card_slots).ok();
+    write!(
+        card_str,
+        "Cards: {}/{}",
+        cards_socketed, equipment.card_slots
+    )
+    .ok();
     draw_text(
         display,
         &card_str,
         Point::new(20, y),
         &FONT_9X18_BOLD,
-        if cards_socketed > 0 { Rgb888::new(100, 200, 100) } else { COLOR_TEXT_DIM },
+        if cards_socketed > 0 {
+            Rgb888::new(100, 200, 100)
+        } else {
+            COLOR_TEXT_DIM
+        },
     )?;
 
     // Action buttons at bottom
@@ -1161,7 +1265,9 @@ pub fn draw_farm_duration_selection<D>(
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    use crate::combat::{FarmDuration, calculate_efficiency, calculate_expected_kills, calculate_farm_rewards};
+    use crate::combat::{
+        FarmDuration, calculate_efficiency, calculate_expected_kills, calculate_farm_rewards,
+    };
 
     // Semi-transparent overlay
     Rectangle::new(Point::new(0, 0), Size::new(368, 448))
@@ -1207,7 +1313,8 @@ where
     y += 25;
 
     // Calculate efficiency
-    let (rating, _power_ratio, hero_power, enemy_power) = calculate_efficiency(&game_state.hero, enemy);
+    let (rating, _power_ratio, hero_power, enemy_power) =
+        calculate_efficiency(&game_state.hero, enemy);
 
     // Power comparison
     let mut power_str = String::<48>::new();
@@ -1223,7 +1330,13 @@ where
 
     // Efficiency rating
     let mut rating_str = String::<48>::new();
-    write!(rating_str, "Efficiency: {} {}", rating.icon(), rating.display_name()).ok();
+    write!(
+        rating_str,
+        "Efficiency: {} {}",
+        rating.icon(),
+        rating.display_name()
+    )
+    .ok();
     let rating_color = match rating {
         crate::combat::EfficiencyRating::Excellent => Rgb888::new(100, 255, 100),
         crate::combat::EfficiencyRating::Good => Rgb888::new(150, 255, 150),
@@ -1277,7 +1390,8 @@ where
         for (i, duration) in durations.iter().enumerate() {
             let btn_y = y + (i as i32 * 85);
             let expected_kills = calculate_expected_kills(rating, *duration);
-            let (exp_reward, zeny_reward) = calculate_farm_rewards(enemy, expected_kills, game_state.hero.level);
+            let (exp_reward, zeny_reward) =
+                calculate_farm_rewards(enemy, expected_kills, game_state.hero.level);
 
             // Check if player has enough SP
             let sp_cost = duration.sp_cost();
@@ -1303,7 +1417,11 @@ where
                 duration.display_name(),
                 Point::new(panel_x + 25, btn_y + 18),
                 &FONT_9X18_BOLD,
-                if can_afford { COLOR_TEXT } else { COLOR_TEXT_DIM },
+                if can_afford {
+                    COLOR_TEXT
+                } else {
+                    COLOR_TEXT_DIM
+                },
             )?;
 
             // SP cost

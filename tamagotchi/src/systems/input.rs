@@ -37,12 +37,15 @@ pub fn tamagotchi_button_system(
         // Toggle menu
         if game_state.current_page == GamePage::Menu {
             // Close menu and go to selected page
-            // Menu now has 4 items: Overview, Rest, Map, Save
+            // Menu now has 7 items: Overview, Rest, Map, Quests, Settings, Save, Debug
             let new_page = match game_state.menu_selection {
                 0 => GamePage::Overview,
                 1 => GamePage::Rest,
                 2 => GamePage::Map,
-                // 3 is Save - handled in touch system, stays on current page
+                3 => GamePage::Quests,
+                4 => GamePage::Settings,
+                // 5 is Save - handled in touch system, stays on current page
+                6 => GamePage::Debug,
                 _ => GamePage::Overview,
             };
 
@@ -144,26 +147,29 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
 
     match game_state.current_page {
         GamePage::Menu => {
-            // Menu item selection based on button position (2 columns x 3 rows)
-            // Now 6 items - Farm and Battle removed (accessed via Map)
+            // Menu item selection based on button position (2 columns x 4 rows)
+            // Now 7 items - Farm and Battle removed (accessed via Map)
             // Button layout:
             // [Overview(0)]  [Rest(1)]      Row 0: y=110-180
-            // [Map(2)]       [Inventory(3)] Row 1: y=190-260
+            // [Map(2)]       [Quests(3)]    Row 1: y=190-260
             // [Settings(4)]  [Save(5)]      Row 2: y=270-340
+            // [Debug(6)]                    Row 3: y=350-420
             //
             // Col 0: x=24-174, Col 1: x=184-334
 
             // Check if touch is within button area
-            if y >= 110 && y <= 340 {
+            if y >= 110 && y <= 420 {
                 let mut clicked_button: Option<u8> = None;
 
-                // Determine row (0, 1, or 2)
+                // Determine row (0, 1, 2, or 3)
                 let row = if y >= 110 && y <= 180 {
                     0
                 } else if y >= 190 && y <= 260 {
                     1
                 } else if y >= 270 && y <= 340 {
                     2
+                } else if y >= 350 && y <= 420 {
+                    3
                 } else {
                     255 // Invalid
                 };
@@ -178,10 +184,11 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 };
 
                 // Calculate button index (row * 2 + col)
-                if row < 3 && col < 2 {
+                // Row 3 only has button in col 0 (Debug at index 6)
+                if (row < 3 && col < 2) || (row == 3 && col == 0) {
                     let button_index = row * 2 + col;
-                    if button_index < 6 {
-                        // Now 6 buttons exist
+                    if button_index < 7 {
+                        // Now 7 buttons exist
                         clicked_button = Some(button_index);
                     }
                 }
@@ -209,6 +216,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                             2 => GamePage::Map,
                             3 => GamePage::Quests,
                             4 => GamePage::Settings,
+                            6 => GamePage::Debug,
                             _ => GamePage::Overview,
                         };
 
@@ -467,6 +475,9 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
         }
         GamePage::Crafting => {
             handle_crafting_touch(game_state, x, y);
+        }
+        GamePage::Debug => {
+            // Debug page has no interactive elements, just shows animation
         }
     }
 }
@@ -1072,6 +1083,7 @@ fn handle_field_actions(game_state: &mut GameState, x: u16, y: u16, map_id: u32)
             // VIEW BATTLE clicked - go to BattleOverview page
             esp_println::println!("[MAP] VIEW BATTLE clicked - opening battle overview");
             game_state.current_page = GamePage::BattleOverview;
+            game_state.battle_overview_needs_full_redraw = true; // Force full redraw on page entry
             game_state.needs_redraw = true;
             return;
         } else if has_active_farming {

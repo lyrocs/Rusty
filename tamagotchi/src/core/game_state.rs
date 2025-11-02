@@ -165,6 +165,14 @@ pub struct GameState {
     pub gif_animation_clock_ms: u32, // Global clock for synchronized GIF animations (increments every 100ms)
     pub gif_animation_last_update_ms: u32, // Last time GIF animation clock was updated
     pub victory_state_entered_ms: u32, // When victory/defeat state was entered (for death animation delay)
+    // Battle overview zone tracking for change detection
+    pub battle_overview_prev_enemy_hp: u16, // Previous enemy HP
+    pub battle_overview_prev_hero_hp: u16, // Previous hero HP
+    pub battle_overview_prev_kills: u32, // Previous kills count
+    pub battle_overview_prev_zeny: u32, // Previous zeny
+    pub battle_overview_prev_exp: u32, // Previous exp
+    pub battle_overview_prev_items: u16, // Previous items count
+    pub battle_overview_needs_full_redraw: bool, // Force full redraw (first render or page switch)
 }
 
 impl Default for GameState {
@@ -317,6 +325,14 @@ impl Default for GameState {
             gif_animation_clock_ms: 0,
             gif_animation_last_update_ms: 0,
             victory_state_entered_ms: 0,
+            // Battle overview zone tracking
+            battle_overview_prev_enemy_hp: 0,
+            battle_overview_prev_hero_hp: 0,
+            battle_overview_prev_kills: 0,
+            battle_overview_prev_zeny: 0,
+            battle_overview_prev_exp: 0,
+            battle_overview_prev_items: 0,
+            battle_overview_needs_full_redraw: true, // Force full redraw on first load
         }
     }
 }

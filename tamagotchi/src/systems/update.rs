@@ -635,6 +635,45 @@ pub fn tamagotchi_update_system(
         }
     }
 
+    // Update Debug page animations
+    if game_state.current_page == GamePage::Debug && game_state.screen_on {
+        use crate::combat::HeroAnimation;
+        use embedded_graphics::pixelcolor::Rgb888;
+        use tinygif::Gif;
+
+        // Force hero to attacking animation
+        if game_state.hero_animation != HeroAnimation::Attacking {
+            game_state.hero_animation = HeroAnimation::Attacking;
+            game_state.hero_animation_frame = 0;
+            game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
+            game_state.needs_redraw = true;
+        }
+
+        // Update hero animation frame
+        let gif_data = game_state.hero_animation.gif_data(&game_state.hero.job);
+        let gif = Gif::<Rgb888>::from_slice(gif_data).expect("Failed to parse hero GIF");
+        let total_frames = gif.frames().count();
+
+        let frame_duration_ms = 100; // 100ms per frame for attacking animation
+        let elapsed_ms = game_state
+            .gif_animation_clock_ms
+            .wrapping_sub(game_state.hero_animation_started_ms);
+        let target_frame = ((elapsed_ms / frame_duration_ms) as usize) % total_frames;
+
+        // Update frame and trigger redraw if changed
+        if game_state.hero_animation_frame != target_frame {
+            game_state.hero_animation_frame = target_frame;
+            game_state.needs_redraw = true;
+        }
+
+        // Loop the animation: when it reaches the last frame, restart
+        if game_state.hero_animation_frame >= total_frames - 1 {
+            game_state.hero_animation_frame = 0;
+            game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
+            game_state.needs_redraw = true;
+        }
+    }
+
     // Update IDLE farming session (runs in background regardless of page)
     super::idle_farm_update::update_idle_farm_session(&mut game_state, delta_ms);
 }

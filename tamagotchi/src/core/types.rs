@@ -24,4 +24,5 @@ pub enum GamePage {
     IdleFarmResult, // IDLE farming session results screen
     ItemDetail,  // Item detail view from inventory
     BattleOverview, // Live battle view with animations
+    Debug,       // Debug page for testing animations
 }

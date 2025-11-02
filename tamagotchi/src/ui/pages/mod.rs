@@ -20,6 +20,8 @@ pub mod crafting;
 pub mod idle_farm_result;
 pub mod item_detail;
 pub mod battle_overview;
+pub mod battle_overview_zones;
+pub mod debug;
 
 // Re-export all page drawing functions
 pub use overview::draw_overview_page;
@@ -40,3 +42,4 @@ pub use crafting::draw_crafting_page;
 pub use idle_farm_result::draw_idle_farm_result_page;
 pub use item_detail::draw_item_detail_page;
 pub use battle_overview::draw_battle_overview_page;
+pub use debug::draw_debug_page;

@@ -41,10 +41,10 @@ where
         COLOR_TEXT,
     )?;
 
-    // Menu items in 2 columns x 3 rows (6 items)
+    // Menu items in 2 columns x 4 rows (7 items - last row has 1 item)
     // Farm and Battle are now accessed via Map page
     // Button size: 150x70 with 10px spacing
-    let menu_items = ["Overview", "Rest", "Map", "Quests", "Settings", "Save"];
+    let menu_items = ["Overview", "Rest", "Map", "Quests", "Settings", "Save", "Debug"];
 
     for (i, item) in menu_items.iter().enumerate() {
         let col = i % 2;
