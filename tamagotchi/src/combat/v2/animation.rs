@@ -44,14 +44,10 @@ impl AnimationController {
         }
     }
 
-    /// Get animations for a specific combat phase
+    /// Get animations for a specific combat phase (simplified for new system)
     pub fn animations_for_phase(phase: &CombatPhase) -> (HeroAnimation, MonsterAnimation) {
         match phase {
-            CombatPhase::Idle => (HeroAnimation::Idle, MonsterAnimation::Idle),
-            CombatPhase::HeroAttacking => (HeroAnimation::Attacking, MonsterAnimation::Idle),
-            CombatPhase::EnemyReacting => (HeroAnimation::Idle, MonsterAnimation::Attacked),
-            CombatPhase::EnemyAttacking => (HeroAnimation::Idle, MonsterAnimation::Attacking),
-            CombatPhase::HeroReacting => (HeroAnimation::Attacked, MonsterAnimation::Idle),
+            CombatPhase::Active => (HeroAnimation::Idle, MonsterAnimation::Idle),
             CombatPhase::EnemyDying => (HeroAnimation::Idle, MonsterAnimation::Dying),
             CombatPhase::EnemySpawning => (HeroAnimation::Idle, MonsterAnimation::Idle),
         }

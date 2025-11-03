@@ -77,77 +77,68 @@ impl CombatEngine {
         let hero_just_completed = self.hero_frame_tracker.update(current_time);
         let monster_just_completed = self.monster_frame_tracker.update(current_time);
 
-        // Check for animation-driven phase transitions
+        // Check for animation-driven transitions (SIMULTANEOUS - can both complete same frame)
         if hero_just_completed {
-            match self.combat_state.phase {
-                CombatPhase::HeroAttacking => {
+            use super::state::ActorAction;
+            match self.combat_state.hero_action {
+                ActorAction::Attacking => {
                     // Hero attack animation finished, calculate damage
                     esp_println::println!("[ENGINE] Hero attack animation complete, calculating damage");
                     self.process_hero_attack_complete(game_state, current_time);
-                    return; // Skip other processing this frame
+                }
+                ActorAction::Attacked => {
+                    // Hero reaction animation finished, return to idle
+                    esp_println::println!("[ENGINE] Hero reaction complete, returning to idle");
+                    self.combat_state.clear_hero_attacked();
+
+                    let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
+                    self.hero_frame_tracker.reset_to_idle_with_frames(hero_idle_frames, current_time);
                 }
                 _ => {}
             }
         }
 
         if monster_just_completed {
-            match self.combat_state.phase {
-                CombatPhase::EnemyAttacking => {
+            use super::state::ActorAction;
+            match self.combat_state.enemy_action {
+                ActorAction::Attacking => {
                     // Enemy attack animation finished, calculate damage
                     esp_println::println!("[ENGINE] Enemy attack animation complete, calculating damage");
                     self.process_enemy_attack_complete(game_state, current_time);
-                    return; // Skip other processing this frame
                 }
-                CombatPhase::EnemyReacting => {
+                ActorAction::Attacked => {
                     // Enemy reaction animation finished, return to idle
                     esp_println::println!("[ENGINE] Enemy reaction complete, returning to idle");
-                    self.combat_state.transition_to(CombatPhase::Idle, 0, current_time);
-
-                    // Reset to idle with actual frame counts
-                    let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
-                    self.hero_frame_tracker.reset_to_idle_with_frames(hero_idle_frames, current_time);
+                    self.combat_state.clear_enemy_attacked();
 
                     let monster_name = game_state.idle_farm_session.as_ref()
                         .and_then(|s| Enemy::from_id(s.enemy_id).map(|e| e.name))
                         .unwrap_or("Poring");
                     let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
                     self.monster_frame_tracker.reset_to_idle_with_frames(monster_idle_frames, current_time);
-                }
-                CombatPhase::HeroReacting => {
-                    // Hero reaction animation finished, return to idle
-                    esp_println::println!("[ENGINE] Hero reaction complete, returning to idle");
-                    self.combat_state.transition_to(CombatPhase::Idle, 0, current_time);
-
-                    // Reset to idle with actual frame counts
-                    let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
-                    self.hero_frame_tracker.reset_to_idle_with_frames(hero_idle_frames, current_time);
-
-                    let monster_name = game_state.idle_farm_session.as_ref()
-                        .and_then(|s| Enemy::from_id(s.enemy_id).map(|e| e.name))
-                        .unwrap_or("Poring");
-                    let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
-                    self.monster_frame_tracker.reset_to_idle_with_frames(monster_idle_frames, current_time);
-                }
-                CombatPhase::EnemyDying => {
-                    // Death animation complete, spawn new enemy
-                    esp_println::println!("[ENGINE] Death animation complete, spawning new enemy");
-                    self.select_new_enemy(game_state);
-
-                    // Reset animations to idle for spawn phase with actual frame counts
-                    let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
-                    self.hero_frame_tracker.reset_to_idle_with_frames(hero_idle_frames, current_time);
-
-                    let monster_name = game_state.idle_farm_session.as_ref()
-                        .and_then(|s| Enemy::from_id(s.enemy_id).map(|e| e.name))
-                        .unwrap_or("Poring");
-                    let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
-                    self.monster_frame_tracker.reset_to_idle_with_frames(monster_idle_frames, current_time);
-
-                    self.combat_state.transition_to(CombatPhase::EnemySpawning, 2000, current_time);
-                    self.animation_controller.start_spawn_animation();
                 }
                 _ => {}
             }
+        }
+
+        // Check for enemy death animation completion
+        if monster_just_completed && self.combat_state.phase == CombatPhase::EnemyDying {
+            // Death animation complete, spawn new enemy
+            esp_println::println!("[ENGINE] Death animation complete, spawning new enemy");
+            self.select_new_enemy(game_state);
+
+            // Reset animations to idle for spawn phase with actual frame counts
+            let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
+            self.hero_frame_tracker.reset_to_idle_with_frames(hero_idle_frames, current_time);
+
+            let monster_name = game_state.idle_farm_session.as_ref()
+                .and_then(|s| Enemy::from_id(s.enemy_id).map(|e| e.name))
+                .unwrap_or("Poring");
+            let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
+            self.monster_frame_tracker.reset_to_idle_with_frames(monster_idle_frames, current_time);
+
+            self.combat_state.transition_to(CombatPhase::EnemySpawning, 2000, current_time);
+            self.animation_controller.start_spawn_animation();
         }
 
         // Check for time-based phase completion (for non-animation phases)
@@ -163,7 +154,7 @@ impl CombatEngine {
                     session.next_enemy_attack_ms = current_time + self.calculator.get_enemy_attack_cycle_ms() + 1000;
 
                     esp_println::println!("[ENGINE] Enemy reached battle position - combat starting!");
-                    self.combat_state.transition_to(CombatPhase::Idle, 0, current_time);
+                    self.combat_state.transition_to(CombatPhase::Active, 0, current_time);
 
                     // Reset to idle with actual frame counts
                     let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
@@ -181,8 +172,9 @@ impl CombatEngine {
 
         // Process current phase
         match self.combat_state.phase {
-            CombatPhase::Idle => {
-                self.process_idle_phase(game_state, current_time);
+            CombatPhase::Active => {
+                // SIMULTANEOUS COMBAT: Check both hero and enemy independently
+                self.process_active_combat(game_state, current_time);
             }
             CombatPhase::EnemySpawning => {
                 // Update spawn animation
@@ -190,27 +182,40 @@ impl CombatEngine {
                 self.animation_controller.update_spawn_animation(elapsed, 2000);
                 game_state.needs_redraw = true;
             }
-            _ => {
-                // Animation phases are handled by frame tracker completion above
+            CombatPhase::EnemyDying => {
+                // Death animation playing, no actions
             }
         }
     }
 
-    /// Process idle phase - check if anyone should attack
-    fn process_idle_phase(&mut self, game_state: &mut GameState, current_time: u32) {
-        let session = match &mut game_state.idle_farm_session {
-            Some(session) => session,
-            None => return,
+    /// Process active combat - BOTH actors can act simultaneously
+    fn process_active_combat(&mut self, game_state: &mut GameState, current_time: u32) {
+        use super::state::ActorAction;
+
+        // Check conditions without holding borrow
+        let (hero_should_attack, enemy_should_attack) = {
+            let session = match &game_state.idle_farm_session {
+                Some(session) => session,
+                None => return,
+            };
+
+            let hero_ready = current_time >= session.next_hero_attack_ms
+                && self.combat_state.hero_action == ActorAction::Idle
+                && !self.combat_state.phase.blocks_hero_attack();
+
+            let enemy_ready = current_time >= session.next_enemy_attack_ms
+                && self.combat_state.enemy_action == ActorAction::Idle
+                && !self.combat_state.phase.blocks_enemy_attack();
+
+            (hero_ready, enemy_ready)
         };
 
-        // Check if hero should attack
-        if current_time >= session.next_hero_attack_ms
-            && !self.combat_state.phase.blocks_hero_attack() {
+        // Now start attacks without holding session borrow
+        if hero_should_attack {
             self.start_hero_attack(game_state, current_time);
         }
-        // Check if enemy should attack
-        else if current_time >= session.next_enemy_attack_ms
-            && !self.combat_state.phase.blocks_enemy_attack() {
+
+        if enemy_should_attack {
             self.start_enemy_attack(game_state, current_time);
         }
     }
@@ -237,19 +242,8 @@ impl CombatEngine {
         // Start frame tracking for hero attack
         self.hero_frame_tracker.start_animation(AnimationType::HeroAttacking, current_time);
 
-        // Monster stays idle during hero attack - use actual frame count
-        let monster_name = Enemy::from_id(session.enemy_id)
-            .map(|e| e.name)
-            .unwrap_or("Poring");
-        let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
-        self.monster_frame_tracker.start_animation_with_frames(AnimationType::Idle, monster_idle_frames, current_time);
-
-        // Start hero attack phase (no fixed duration - animation driven)
-        self.combat_state.start_hero_attack(
-            current_time,
-            0, // Duration will be driven by animation completion
-            use_skill,
-        );
+        // Start hero attack in state
+        self.combat_state.start_hero_attack(current_time, use_skill);
 
         // Update next attack time
         session.next_hero_attack_ms = current_time + self.calculator.get_hero_attack_cycle_ms();
@@ -270,14 +264,8 @@ impl CombatEngine {
         // Start frame tracking for enemy attack
         self.monster_frame_tracker.start_animation(AnimationType::MonsterAttacking, current_time);
 
-        // Hero stays idle during enemy attack - use actual frame count
-        self.hero_frame_tracker.start_animation_with_frames(AnimationType::Idle, hero_idle_frames, current_time);
-
-        // Start enemy attack phase (no fixed duration - animation driven)
-        self.combat_state.start_enemy_attack(
-            current_time,
-            0, // Duration will be driven by animation completion
-        );
+        // Start enemy attack in state
+        self.combat_state.start_enemy_attack(current_time);
 
         // Update next attack time
         session.next_enemy_attack_ms = current_time + self.calculator.get_enemy_attack_cycle_ms();
@@ -286,127 +274,127 @@ impl CombatEngine {
     /// Process hero attack completion - calculate damage, apply, and transition
     /// Called when HeroAttacking animation completes
     fn process_hero_attack_complete(&mut self, game_state: &mut GameState, current_time: u32) {
-        let session = match &mut game_state.idle_farm_session {
-            Some(session) => session,
-            None => return,
-        };
-
-        // NOW calculate damage (after animation played)
-        let use_skill = self.combat_state.pending_skill;
+        // Calculate damage and hit/miss
+        let use_skill = self.combat_state.is_hero_using_skill();
         let skill_multiplier = if use_skill { 2 } else { 1 };
         let damage = self.calculator.calculate_hero_damage(skill_multiplier);
-
-        // Roll for hit/miss
         let rng_value = (current_time % 100) as u8;
         let is_hit = self.calculator.roll_hero_hit(rng_value);
-
         let final_damage = if is_hit { damage } else { 0 };
 
-        // Update display tracking
-        session.last_hero_damage = final_damage;
-        session.hero_attack_missed = !is_hit;
-        session.last_skill_used = use_skill;
-        session.hero_damage_apply_ms = current_time; // Set timestamp for damage display animation
+        // Update session tracking (scoped borrow)
+        let enemy_killed = {
+            let session = match &mut game_state.idle_farm_session {
+                Some(session) => session,
+                None => return,
+            };
+
+            session.last_hero_damage = final_damage;
+            session.hero_attack_missed = !is_hit;
+            session.last_skill_used = use_skill;
+            session.hero_damage_apply_ms = current_time;
+
+            // Apply damage
+            if is_hit && session.current_enemy_hp > 0 {
+                if session.current_enemy_hp > final_damage {
+                    session.current_enemy_hp -= final_damage;
+                    false
+                } else {
+                    session.current_enemy_hp = 0;
+                    true
+                }
+            } else {
+                false
+            }
+        }; // session borrow ends here
+
+        // Hero completes attack and returns to idle
+        self.combat_state.complete_hero_attack();
+        let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
+        self.hero_frame_tracker.reset_to_idle_with_frames(hero_idle_frames, current_time);
 
         if !is_hit {
             esp_println::println!("[ENGINE] Hero attack MISSED!");
-            // Start enemy reaction animation (3 frames for miss)
+            // Mark enemy as attacked (will only show reaction if not attacking)
+            self.combat_state.mark_enemy_attacked(current_time);
             self.monster_frame_tracker.start_animation(AnimationType::MonsterAttacked, current_time);
-
-            // Hero returns to idle with actual frame count
-            let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
-            self.hero_frame_tracker.start_animation_with_frames(AnimationType::Idle, hero_idle_frames, current_time);
-
-            self.combat_state.transition_to(CombatPhase::EnemyReacting, 0, current_time);
-            self.animation_controller.set_for_phase(&CombatPhase::EnemyReacting, current_time);
             game_state.needs_redraw = true;
+        } else if enemy_killed {
+            esp_println::println!("[ENGINE] Hero attack lands! Enemy killed!");
+            self.handle_enemy_death(game_state);
         } else {
             esp_println::println!("[ENGINE] Hero attack lands! Damage: {}", final_damage);
-
-            // Apply damage to enemy
-            if session.current_enemy_hp > final_damage {
-                session.current_enemy_hp -= final_damage;
-                // Start enemy reaction animation (3 frames for hit)
-                self.monster_frame_tracker.start_animation(AnimationType::MonsterAttacked, current_time);
-
-                // Hero returns to idle with actual frame count
-                let hero_idle_frames = self.get_hero_idle_frame_count(game_state);
-                self.hero_frame_tracker.start_animation_with_frames(AnimationType::Idle, hero_idle_frames, current_time);
-
-                self.combat_state.transition_to(CombatPhase::EnemyReacting, 0, current_time);
-                self.animation_controller.set_for_phase(&CombatPhase::EnemyReacting, current_time);
-                game_state.needs_redraw = true;
-            } else {
-                // Enemy killed!
-                session.current_enemy_hp = 0;
-                self.handle_enemy_death(game_state);
-            }
+            // Mark enemy as attacked (will only show reaction if not attacking)
+            self.combat_state.mark_enemy_attacked(current_time);
+            self.monster_frame_tracker.start_animation(AnimationType::MonsterAttacked, current_time);
+            game_state.needs_redraw = true;
         }
     }
 
     /// Process enemy attack completion - calculate damage, apply, and transition
     /// Called when EnemyAttacking animation completes
     fn process_enemy_attack_complete(&mut self, game_state: &mut GameState, current_time: u32) {
-        let session = match &mut game_state.idle_farm_session {
-            Some(session) => session,
-            None => return,
-        };
-
-        // NOW calculate damage (after animation played)
+        // Calculate damage and hit/miss
         let damage = self.calculator.calculate_enemy_damage();
-
-        // Roll for hit/miss
         let rng_value = ((current_time + 50) % 100) as u8;
         let is_hit = self.calculator.roll_enemy_hit(rng_value);
-
         let final_damage = if is_hit { damage } else { 0 };
 
-        // Track damage for display
-        session.last_enemy_damage = final_damage;
-        session.enemy_attack_missed = !is_hit;
-        session.enemy_damage_apply_ms = current_time; // Set timestamp for damage display animation
+        // Update session tracking and apply damage (scoped borrow)
+        let (hero_killed, enemy_id) = {
+            let session = match &mut game_state.idle_farm_session {
+                Some(session) => session,
+                None => return,
+            };
+
+            session.last_enemy_damage = final_damage;
+            session.enemy_attack_missed = !is_hit;
+            session.enemy_damage_apply_ms = current_time;
+
+            // Apply damage to hero
+            if is_hit && session.current_hp > 0 {
+                if session.current_hp > final_damage {
+                    session.current_hp -= final_damage;
+                    (false, session.enemy_id)
+                } else {
+                    session.current_hp = 0;
+                    (true, session.enemy_id)
+                }
+            } else {
+                (false, session.enemy_id)
+            }
+        }; // session borrow ends here
+
+        // Sync hero HP to game state
+        if !hero_killed && is_hit {
+            if let Some(session) = &game_state.idle_farm_session {
+                game_state.hero.hp = session.current_hp;
+            }
+        }
+
+        // Enemy completes attack and returns to idle
+        self.combat_state.complete_enemy_attack();
+        let monster_name = Enemy::from_id(enemy_id)
+            .map(|e| e.name)
+            .unwrap_or("Poring");
+        let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
+        self.monster_frame_tracker.reset_to_idle_with_frames(monster_idle_frames, current_time);
 
         if !is_hit {
             esp_println::println!("[ENGINE] Enemy attack MISSED!");
-            // Start hero reaction animation (3 frames for miss)
+            // Mark hero as attacked (will only show reaction if not attacking)
+            self.combat_state.mark_hero_attacked(current_time);
             self.hero_frame_tracker.start_animation(AnimationType::HeroAttacked, current_time);
-
-            // Monster returns to idle with actual frame count
-            let monster_name = session.enemy_id;
-            let monster_name = Enemy::from_id(monster_name)
-                .map(|e| e.name)
-                .unwrap_or("Poring");
-            let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
-            self.monster_frame_tracker.start_animation_with_frames(AnimationType::Idle, monster_idle_frames, current_time);
-
-            self.combat_state.transition_to(CombatPhase::HeroReacting, 0, current_time);
-            self.animation_controller.set_for_phase(&CombatPhase::HeroReacting, current_time);
             game_state.needs_redraw = true;
+        } else if hero_killed {
+            esp_println::println!("[ENGINE] Enemy attack lands! Hero died!");
+            self.handle_hero_death(game_state);
         } else {
             esp_println::println!("[ENGINE] Enemy attack lands! Damage: {}", final_damage);
-
-            // Apply damage to hero
-            if session.current_hp > final_damage {
-                session.current_hp -= final_damage;
-                game_state.hero.hp = session.current_hp;
-                // Start hero reaction animation (3 frames for hit)
-                self.hero_frame_tracker.start_animation(AnimationType::HeroAttacked, current_time);
-
-                // Monster returns to idle with actual frame count
-                let monster_name = session.enemy_id;
-                let monster_name = Enemy::from_id(monster_name)
-                    .map(|e| e.name)
-                    .unwrap_or("Poring");
-                let monster_idle_frames = self.get_monster_idle_frame_count(monster_name);
-                self.monster_frame_tracker.start_animation_with_frames(AnimationType::Idle, monster_idle_frames, current_time);
-
-                self.combat_state.transition_to(CombatPhase::HeroReacting, 0, current_time);
-                self.animation_controller.set_for_phase(&CombatPhase::HeroReacting, current_time);
-                game_state.needs_redraw = true;
-            } else {
-                // Hero died!
-                self.handle_hero_death(game_state);
-            }
+            // Mark hero as attacked (will only show reaction if not attacking)
+            self.combat_state.mark_hero_attacked(current_time);
+            self.hero_frame_tracker.start_animation(AnimationType::HeroAttacked, current_time);
+            game_state.needs_redraw = true;
         }
     }
 
