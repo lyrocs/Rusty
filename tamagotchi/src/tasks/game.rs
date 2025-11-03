@@ -155,12 +155,21 @@ pub async fn game_loop_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
         if needs_render {
             let time_since_last_render = last_render_time.elapsed().as_millis() as u64;
 
+            // Log if we're waiting too long for render (helps debug freezes)
+            if time_since_last_render > 500 {
+                warn!("[GAME] Render requested but blocked for {}ms! RENDER_PENDING={}, Frame: {}",
+                    time_since_last_render,
+                    RENDER_PENDING.load(Ordering::Acquire),
+                    frame_count);
+            }
+
             // Only send render command if:
             // 1. Enough time has elapsed (time-based throttle)
             // 2. No render is pending or in progress (prevents queue buildup)
             if time_since_last_render >= RENDER_INTERVAL_MS {
                 // Check if a render is already pending/in-progress
                 // Use compare_exchange to atomically check and set the flag
+                let render_pending_before = RENDER_PENDING.load(Ordering::Acquire);
                 if RENDER_PENDING.compare_exchange(
                     false,  // expected: no render pending
                     true,   // new value: mark render as pending
@@ -168,6 +177,7 @@ pub async fn game_loop_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                     Ordering::Acquire
                 ).is_ok() {
                     // Successfully claimed the render slot, now send the command
+                    esp_println::println!("[GAME] Sending render command (waited {}ms), frame: {}", time_since_last_render, frame_count);
                     match RENDER_CHANNEL.try_send(RenderCommand::Redraw) {
                         Ok(_) => {
                             needs_render = false;
@@ -181,8 +191,20 @@ pub async fn game_loop_task(world: Arc<Mutex<CriticalSectionRawMutex, World>>) {
                             // Keep needs_render=true to retry on next frame
                         }
                     }
+                } else {
+                    // Log when we skip render due to pending flag
+                    if frame_count % 60 == 0 {
+                        esp_println::println!("[GAME] Skipping render - already pending ({}ms since last), frame: {}",
+                            time_since_last_render, frame_count);
+                    }
                 }
                 // else: render already pending, skip this frame (keeps needs_render=true for next check)
+            } else {
+                // Log throttling occasionally
+                if frame_count % 120 == 0 {
+                    esp_println::println!("[GAME] Throttling render ({}ms elapsed, need {}ms), frame: {}",
+                        time_since_last_render, RENDER_INTERVAL_MS, frame_count);
+                }
             }
             // else: too soon since last render, skip this frame (keeps needs_render=true for next check)
         }
