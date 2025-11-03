@@ -1,7 +1,6 @@
 /// Frame-based animation tracking for precise combat timing
 ///
 /// Ensures animations complete all frames before transitioning phases
-
 use crate::combat::animations::{HeroAnimation, MonsterAnimation};
 
 /// Tracks animation frame progression and completion
@@ -22,7 +21,7 @@ impl FrameTracker {
         Self {
             animation_type: AnimationType::Idle,
             current_frame: 0,
-            total_frames: 4, // Idle default
+            total_frames: 4,        // Idle default
             frame_duration_ms: 150, // Idle frame rate
             last_frame_change_ms: current_ms,
             animation_complete: false,
@@ -37,14 +36,12 @@ impl FrameTracker {
 
     /// Start tracking a new animation with custom frame count
     /// Use this for idle animations with variable frame counts
-    pub fn start_animation_with_frames(&mut self, anim_type: AnimationType, frame_count: u8, current_ms: u32) {
-        esp_println::println!(
-            "[FRAME_TRACKER] Starting animation: {:?} with {} frames @ {}ms/frame",
-            anim_type,
-            frame_count,
-            anim_type.frame_duration()
-        );
-
+    pub fn start_animation_with_frames(
+        &mut self,
+        anim_type: AnimationType,
+        frame_count: u8,
+        current_ms: u32,
+    ) {
         self.animation_type = anim_type;
         self.current_frame = 0;
         self.total_frames = frame_count;
@@ -69,25 +66,10 @@ impl FrameTracker {
         if target_frame != self.current_frame {
             self.current_frame = target_frame;
 
-            // Log frame advance
-            esp_println::println!(
-                "[FRAME_TRACKER] {:?} advanced to frame {}/{}",
-                self.animation_type,
-                self.current_frame,
-                self.total_frames
-            );
-
             // Check if animation completed
             if self.current_frame >= self.total_frames {
                 self.current_frame = self.total_frames.saturating_sub(1); // Stay on last frame
                 self.animation_complete = true;
-
-                esp_println::println!(
-                    "[FRAME_TRACKER] {:?} animation COMPLETE (all {} frames shown)",
-                    self.animation_type,
-                    self.total_frames
-                );
-
                 return true; // Just completed
             }
         }
@@ -141,20 +123,20 @@ impl AnimationType {
     /// Get the number of frames for this animation
     pub fn frame_count(&self) -> u8 {
         match self {
-            AnimationType::Idle => 4,              // 4-frame idle loop
-            AnimationType::HeroAttacking => 8,     // 8-frame attack
-            AnimationType::HeroAttacked => 3,      // 3-frame hit reaction
-            AnimationType::MonsterAttacking => 8,  // 8-frame attack
-            AnimationType::MonsterAttacked => 3,   // 3-frame hit reaction
-            AnimationType::MonsterDying => 8,      // 8-frame death
+            AnimationType::Idle => 4,             // 4-frame idle loop
+            AnimationType::HeroAttacking => 8,    // 8-frame attack
+            AnimationType::HeroAttacked => 3,     // 3-frame hit reaction
+            AnimationType::MonsterAttacking => 8, // 8-frame attack
+            AnimationType::MonsterAttacked => 3,  // 3-frame hit reaction
+            AnimationType::MonsterDying => 8,     // 8-frame death
         }
     }
 
     /// Get frame duration in milliseconds
     pub fn frame_duration(&self) -> u32 {
         match self {
-            AnimationType::Idle => 150,  // Slower for idle
-            _ => 100,                    // 100ms for all action animations
+            AnimationType::Idle => 150, // Slower for idle
+            _ => 100,                   // 100ms for all action animations
         }
     }
 

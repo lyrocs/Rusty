@@ -248,13 +248,23 @@ where
             } else if session.last_hero_damage > 0 {
                 let mut damage_text = String::<16>::new();
                 if session.last_skill_used {
-                    write!(damage_text, "-{} SKILL!", session.last_hero_damage).ok();
+                    // Show damage number on enemy
+                    write!(damage_text, "-{}", session.last_hero_damage).ok();
                     draw_text(
                         display,
                         &damage_text,
-                        Point::new(40, animated_y),
+                        Point::new(60, animated_y),
                         &FONT_9X18_BOLD,
                         Rgb888::new(255, 200, 0),
+                    )?;
+
+                    // Show skill name above hero animation
+                    draw_text(
+                        display,
+                        "BASH",
+                        Point::new(200, 150),
+                        &FONT_9X18_BOLD,
+                        Rgb888::new(255, 255, 255),
                     )?;
                 } else {
                     write!(damage_text, "-{}", session.last_hero_damage).ok();
