@@ -34,7 +34,7 @@ where
         Point::new(zone_x, zone_y),
         Size::new(zone_width, zone_height),
     )
-    .into_styled(PrimitiveStyle::with_fill(COLOR_HP))
+    .into_styled(PrimitiveStyle::with_fill(COLOR_BG))
     .draw(display)?;
 
     // Enemy name with level
@@ -43,7 +43,7 @@ where
     draw_text(
         display,
         &enemy_label,
-        Point::new(zone_x, zone_y + 18),
+        Point::new(zone_x, zone_y + 10),
         &FONT_9X18_BOLD,
         COLOR_TEXT,
     )?;

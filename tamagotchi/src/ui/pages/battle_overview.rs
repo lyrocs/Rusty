@@ -207,9 +207,10 @@ where
         game_state.hero_animation,
     )?;
 
-    // === DAMAGE/MISS DISPLAY ===
+    // === DAMAGE/MISS DISPLAY WITH ANIMATIONS ===
     let current_time = game_state.last_update_ms;
     const DAMAGE_DISPLAY_DURATION_MS: u32 = 1000; // Show damage for 1 second
+    const FADE_START_MS: u32 = 800; // Start fading after 800ms
 
     // Show damage/miss on enemy (when hero damage is applied)
     let hero_damage_elapsed = current_time.saturating_sub(session.hero_damage_apply_ms);
@@ -218,34 +219,53 @@ where
         && !session.enemy_dying
         && !session.hero_attack_pending
     {
-        if session.hero_attack_missed {
-            draw_text(
-                display,
-                "MISS",
-                Point::new(70, battle_center_y - 30),
-                &FONT_9X18_BOLD,
-                Rgb888::new(150, 150, 150),
-            )?;
-        } else if session.last_hero_damage > 0 {
-            let mut damage_text = String::<16>::new();
-            if session.last_skill_used {
-                write!(damage_text, "-{} SKILL!", session.last_hero_damage).ok();
+        // Calculate animation progress using integer math (0 to 1000 for precision)
+        // Avoid division by zero
+        let progress_1000 = if DAMAGE_DISPLAY_DURATION_MS > 0 {
+            (hero_damage_elapsed * 1000) / DAMAGE_DISPLAY_DURATION_MS
+        } else {
+            1000
+        };
+
+        // Float upward: starts at -30, moves up by 40 pixels over duration
+        // Use integer math: (progress_1000 * 40) / 1000 = pixels to move
+        let float_offset = (progress_1000 * 40) / 1000;
+        let animated_y = battle_center_y - 30 - float_offset as i32;
+
+        // Simple fade: just hide after fade start time (avoids expensive alpha blending)
+        let should_show = hero_damage_elapsed < FADE_START_MS;
+
+        if should_show {
+            if session.hero_attack_missed {
+                // MISS text
                 draw_text(
                     display,
-                    &damage_text,
-                    Point::new(40, battle_center_y - 30),
+                    "MISS",
+                    Point::new(70, animated_y),
                     &FONT_9X18_BOLD,
-                    Rgb888::new(255, 200, 0),
+                    Rgb888::new(150, 150, 150),
                 )?;
-            } else {
-                write!(damage_text, "-{}", session.last_hero_damage).ok();
-                draw_text(
-                    display,
-                    &damage_text,
-                    Point::new(60, battle_center_y - 30),
-                    &FONT_9X18_BOLD,
-                    Rgb888::RED,
-                )?;
+            } else if session.last_hero_damage > 0 {
+                let mut damage_text = String::<16>::new();
+                if session.last_skill_used {
+                    write!(damage_text, "-{} SKILL!", session.last_hero_damage).ok();
+                    draw_text(
+                        display,
+                        &damage_text,
+                        Point::new(40, animated_y),
+                        &FONT_9X18_BOLD,
+                        Rgb888::new(255, 200, 0),
+                    )?;
+                } else {
+                    write!(damage_text, "-{}", session.last_hero_damage).ok();
+                    draw_text(
+                        display,
+                        &damage_text,
+                        Point::new(60, animated_y),
+                        &FONT_9X18_BOLD,
+                        Rgb888::RED,
+                    )?;
+                }
             }
         }
     }
@@ -257,24 +277,41 @@ where
         && !session.enemy_dying
         && !session.enemy_attack_pending
     {
-        if session.enemy_attack_missed {
-            draw_text(
-                display,
-                "MISS",
-                Point::new(220, battle_center_y - 15),
-                &FONT_9X18_BOLD,
-                Rgb888::new(150, 150, 150),
-            )?;
-        } else if session.last_enemy_damage > 0 {
-            let mut damage_text = String::<16>::new();
-            write!(damage_text, "-{}", session.last_enemy_damage).ok();
-            draw_text(
-                display,
-                &damage_text,
-                Point::new(220, battle_center_y - 15),
-                &FONT_9X18_BOLD,
-                Rgb888::new(255, 100, 100),
-            )?;
+        // Calculate animation progress using integer math (0 to 1000 for precision)
+        let progress_1000 = if DAMAGE_DISPLAY_DURATION_MS > 0 {
+            (enemy_damage_elapsed * 1000) / DAMAGE_DISPLAY_DURATION_MS
+        } else {
+            1000
+        };
+
+        // Float upward: starts at -15, moves up by 40 pixels over duration
+        let float_offset = (progress_1000 * 40) / 1000;
+        let animated_y = battle_center_y - 15 - float_offset as i32;
+
+        // Simple fade: just hide after fade start time
+        let should_show = enemy_damage_elapsed < FADE_START_MS;
+
+        if should_show {
+            if session.enemy_attack_missed {
+                // MISS text
+                draw_text(
+                    display,
+                    "MISS",
+                    Point::new(220, animated_y),
+                    &FONT_9X18_BOLD,
+                    Rgb888::new(150, 150, 150),
+                )?;
+            } else if session.last_enemy_damage > 0 {
+                let mut damage_text = String::<16>::new();
+                write!(damage_text, "-{}", session.last_enemy_damage).ok();
+                draw_text(
+                    display,
+                    &damage_text,
+                    Point::new(220, animated_y),
+                    &FONT_9X18_BOLD,
+                    Rgb888::new(255, 100, 100),
+                )?;
+            }
         }
     }
 

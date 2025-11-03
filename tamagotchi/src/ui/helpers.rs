@@ -274,6 +274,21 @@ where
     Ok(())
 }
 
+/// Helper: Apply alpha fade to a color
+/// alpha_factor: 0.0 (fully transparent/faded) to 1.0 (fully opaque)
+/// Since Rgb888 doesn't support alpha, we simulate it by blending with background color
+pub fn apply_alpha_fade(color: Rgb888, alpha_factor: f32) -> Rgb888 {
+    let alpha = alpha_factor.max(0.0).min(1.0);
+
+    // Blend with dark background (approximating transparency)
+    let bg = COLOR_BG;
+    let r = (color.r() as f32 * alpha + bg.r() as f32 * (1.0 - alpha)) as u8;
+    let g = (color.g() as f32 * alpha + bg.g() as f32 * (1.0 - alpha)) as u8;
+    let b = (color.b() as f32 * alpha + bg.b() as f32 * (1.0 - alpha)) as u8;
+
+    Rgb888::new(r, g, b)
+}
+
 /// Helper: Draw a horizontal progress bar
 pub fn draw_bar<D>(
     display: &mut D,

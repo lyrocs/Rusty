@@ -1,12 +1,13 @@
+use super::animations::{update_hero_animation, update_monster_animation};
+use crate::combat::{Enemy, IdleFarmState};
 /// IDLE farming update system
 ///
 /// Handles background farming updates including HP regen, damage, kills, and rewards.
-
 use crate::core::GameState;
-use crate::combat::{Enemy, IdleFarmState};
+use crate::tamagotchi::models::{GamePage, HeroAnimation, MonsterAnimation};
 
 /// Update IDLE farming session with real-time combat simulation (called every frame)
-pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
+pub fn update_idle_farm_session_old(game_state: &mut GameState, delta_ms: u32) {
     // Check if there's an active farming session
     let session = match &mut game_state.idle_farm_session {
         Some(session) => session,
@@ -49,9 +50,14 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                             session.enemy_level = new_enemy.level;
 
                             // Recalculate enemy attack delay for new enemy
-                            session.enemy_attack_delay_ms = (5000 - (new_enemy.level as u32 * 30)).max(3000).min(5000);
+                            session.enemy_attack_delay_ms =
+                                (5000 - (new_enemy.level as u32 * 30)).max(3000).min(5000);
 
-                            esp_println::println!("[COMBAT] New enemy selected: {} (Level {}) - walking in...", new_enemy.name, new_enemy.level);
+                            esp_println::println!(
+                                "[COMBAT] New enemy selected: {} (Level {}) - walking in...",
+                                new_enemy.name,
+                                new_enemy.level
+                            );
                         } else {
                             // Fallback: use existing enemy_id if new one is invalid
                             session.current_enemy_hp = session.enemy_max_hp;
@@ -82,7 +88,8 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                 let spawn_progress = (spawn_elapsed_ms as f32 / SPAWN_DURATION_MS as f32).min(1.0);
 
                 // Smooth walk-in animation
-                session.enemy_spawn_position_x = -64 + ((TARGET_X - (-64)) as f32 * spawn_progress) as i32;
+                session.enemy_spawn_position_x =
+                    -64 + ((TARGET_X - (-64)) as f32 * spawn_progress) as i32;
 
                 // Trigger redraw for animation
                 game_state.needs_redraw = true;
@@ -92,12 +99,15 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                     session.enemy_spawning = false;
                     session.enemy_spawn_position_x = TARGET_X; // Ensure final position is exact
 
-                    esp_println::println!("[COMBAT] Enemy reached battle position - combat starting!");
+                    esp_println::println!(
+                        "[COMBAT] Enemy reached battle position - combat starting!"
+                    );
 
                     // Add 1-second delay before first attacks after spawn
                     // This creates a visible idle moment before combat resumes
                     session.next_hero_attack_ms = current_time + 1000;
-                    session.next_enemy_attack_ms = current_time + session.enemy_attack_delay_ms + 1000;
+                    session.next_enemy_attack_ms =
+                        current_time + session.enemy_attack_delay_ms + 1000;
                 }
                 return; // Skip combat while spawning
             }
@@ -107,7 +117,8 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
             if current_time >= session.next_hero_attack_ms && !session.hero_attack_pending {
                 if let Some(enemy) = Enemy::from_id(session.enemy_id) {
                     // Calculate hero stats
-                    let hero_atk = game_state.hero.base_str * 2 + game_state.hero.equipped_weapon.atk_bonus;
+                    let hero_atk =
+                        game_state.hero.base_str * 2 + game_state.hero.equipped_weapon.atk_bonus;
 
                     // Check if attack misses (DEX + Level vs Enemy Level)
                     // Hit rate formula: 80% + (Hero DEX / 5) + (Hero Level - Enemy Level)
@@ -118,7 +129,9 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                     let base_hit_rate = 80.0;
                     let dex_bonus = session.hero_dex as f32 / 5.0;
                     let level_diff = session.hero_level as i32 - session.enemy_level as i32;
-                    let hit_rate = (base_hit_rate + dex_bonus + level_diff as f32).max(20.0).min(95.0);
+                    let hit_rate = (base_hit_rate + dex_bonus + level_diff as f32)
+                        .max(20.0)
+                        .min(95.0);
                     let miss_chance = 100.0 - hit_rate;
 
                     let hit_roll = (current_time % 100) as f32;
@@ -156,6 +169,14 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                         session.last_skill_used = false;
                     }
 
+                    // Start attack animation (only if on BattleOverview page and screen is on)
+                    if game_state.current_page == GamePage::BattleOverview && game_state.screen_on {
+                        game_state.hero_animation = HeroAnimation::Attacking;
+                        game_state.hero_animation_frame = 0;
+                        game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
+                        game_state.needs_redraw = true;
+                    }
+
                     // Start attack animation, damage applies after 600ms windup
                     session.hero_attack_pending = true;
                     session.hero_damage_apply_ms = current_time + 600;
@@ -179,6 +200,17 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
 
                         esp_println::println!("[COMBAT] Hero attack lands! Damage: {}", damage);
 
+                        // Trigger enemy hit animation (only if on BattleOverview page and screen is on)
+                        if game_state.current_page == GamePage::BattleOverview
+                            && game_state.screen_on
+                        {
+                            game_state.monster_animation = MonsterAnimation::Attacked;
+                            game_state.monster_animation_frame = 0;
+                            game_state.monster_animation_started_ms =
+                                game_state.gif_animation_clock_ms;
+                            game_state.needs_redraw = true;
+                        }
+
                         // Apply damage to enemy
                         if session.current_enemy_hp > damage {
                             session.current_enemy_hp -= damage;
@@ -197,15 +229,33 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
 
                             // Roll for item drops
                             use crate::data::roll_drops;
-                            let rng_value = ((current_time % 255) + session.monsters_killed as u32) as u8;
+                            let rng_value =
+                                ((current_time % 255) + session.monsters_killed as u32) as u8;
                             let drops = roll_drops(enemy.id, rng_value);
                             for (item_id, item_name, quantity) in drops {
                                 use crate::hero::inventory::InventoryExt;
-                                game_state.hero.inventory.add_item(item_id, item_name, quantity);
+                                game_state
+                                    .hero
+                                    .inventory
+                                    .add_item(item_id, item_name, quantity);
                                 session.items_collected += quantity;
                             }
 
-                            esp_println::println!("[COMBAT] Enemy killed! Total: {}", session.monsters_killed);
+                            esp_println::println!(
+                                "[COMBAT] Enemy killed! Total: {}",
+                                session.monsters_killed
+                            );
+
+                            // Start death animation (only if on BattleOverview page and screen is on)
+                            if game_state.current_page == GamePage::BattleOverview
+                                && game_state.screen_on
+                            {
+                                game_state.monster_animation = MonsterAnimation::Dying;
+                                game_state.monster_animation_frame = 0;
+                                game_state.monster_animation_started_ms =
+                                    game_state.gif_animation_clock_ms;
+                                game_state.needs_redraw = true;
+                            }
 
                             // Start death animation phase
                             session.enemy_dying = true;
@@ -222,14 +272,17 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
 
             // === ENEMY ATTACK INITIATION ===
             // Start attack animation and calculate damage, but don't apply yet
-            if !session.enemy_spawning && !session.enemy_dying
-               && current_time >= session.next_enemy_attack_ms && !session.enemy_attack_pending {
+            if !session.enemy_spawning
+                && !session.enemy_dying
+                && current_time >= session.next_enemy_attack_ms
+                && !session.enemy_attack_pending
+            {
                 if let Some(enemy) = Enemy::from_id(session.enemy_id) {
                     // Calculate hero defense
-                    let hero_def = (game_state.hero.base_vit / 2) +
-                                   game_state.hero.equipped_armor.def_bonus +
-                                   game_state.hero.equipped_garment.def_bonus +
-                                   game_state.hero.equipped_shoes.def_bonus;
+                    let hero_def = (game_state.hero.base_vit / 2)
+                        + game_state.hero.equipped_armor.def_bonus
+                        + game_state.hero.equipped_garment.def_bonus
+                        + game_state.hero.equipped_shoes.def_bonus;
 
                     // Enemy miss chance
                     let enemy_miss_chance = 15u8;
@@ -251,6 +304,14 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                         esp_println::println!("[COMBAT] Enemy attack will MISS!");
                         session.pending_enemy_damage = 0;
                         session.pending_enemy_miss = true;
+                    }
+
+                    // Start enemy attack animation (only if on BattleOverview page and screen is on)
+                    if game_state.current_page == GamePage::BattleOverview && game_state.screen_on {
+                        game_state.monster_animation = MonsterAnimation::Attacking;
+                        game_state.monster_animation_frame = 0;
+                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                        game_state.needs_redraw = true;
                     }
 
                     // Start attack animation, damage applies after 600ms windup
@@ -275,6 +336,17 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                         session.enemy_attack_missed = false;
 
                         esp_println::println!("[COMBAT] Enemy attack lands! Damage: {}", damage);
+
+                        // Trigger hero hit animation (only if on BattleOverview page and screen is on)
+                        if game_state.current_page == GamePage::BattleOverview
+                            && game_state.screen_on
+                        {
+                            game_state.hero_animation = HeroAnimation::Attacked;
+                            game_state.hero_animation_frame = 0;
+                            game_state.hero_animation_started_ms =
+                                game_state.gif_animation_clock_ms;
+                            game_state.needs_redraw = true;
+                        }
 
                         // Apply damage to hero
                         if session.current_hp > damage {
@@ -304,6 +376,17 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
                 }
             }
 
+            // === ANIMATION FRAME UPDATES (only when on BattleOverview page and screen is on) ===
+            // Note: Animation state changes happen at the moment of attack/damage
+            // This just updates the frame progression for whatever animation is currently playing
+            if game_state.current_page == GamePage::BattleOverview && game_state.screen_on {
+                if let Some(enemy) = Enemy::from_id(session.enemy_id) {
+                    // Update animation frames (this handles automatic Idle transitions)
+                    update_hero_animation(game_state, delta_ms);
+                    update_monster_animation(game_state, delta_ms, enemy.name);
+                }
+            }
+
             // Trigger periodic redraw
             if current_time % 1000 < delta_ms {
                 game_state.needs_redraw = true;
@@ -322,11 +405,7 @@ pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
 }
 
 /// Start a new IDLE farming session
-pub fn start_idle_farm_session(
-    game_state: &mut GameState,
-    map_id: u32,
-    enemy_id: u32,
-) {
+pub fn start_idle_farm_session(game_state: &mut GameState, map_id: u32, enemy_id: u32) {
     // Get enemy pool from map
     use crate::world::MapHelper;
     let enemy_pool = MapHelper::enemies(map_id);
@@ -353,7 +432,10 @@ pub fn start_idle_farm_session(
         // Check if farming is even possible (net HP must be >= 0 for reasonable duration)
         if rates.net_hp_per_minute < -10.0 {
             // Hero will die very quickly
-            esp_println::println!("[IDLE FARM] Warning: Hero will die quickly (net HP: {:.1}/min)", rates.net_hp_per_minute);
+            esp_println::println!(
+                "[IDLE FARM] Warning: Hero will die quickly (net HP: {:.1}/min)",
+                rates.net_hp_per_minute
+            );
         }
 
         use crate::combat::IdleFarmSession;
@@ -383,8 +465,8 @@ pub fn start_idle_farm_session(
             rates.regen_per_minute,
             game_state.hero.level,
             game_state.hero.base_agi,
-            total_vit,  // VIT with equipment bonuses
-            total_dex,  // DEX with equipment bonuses
+            total_vit, // VIT with equipment bonuses
+            total_dex, // DEX with equipment bonuses
             enemy.max_hp,
             enemy.level,
         );
@@ -416,4 +498,92 @@ pub fn stop_idle_farm_session(game_state: &mut GameState) {
     }
 
     game_state.needs_redraw = true;
+}
+
+// ============================================================================
+// COMBAT V2 INTEGRATION
+// ============================================================================
+
+/// Update IDLE farming session using combat v2 engine
+///
+/// This is a complete rework of the combat system with:
+/// - Stats-driven timing (attack speed based on AGI/ASPD)
+/// - Clean state machine architecture
+/// - Animation preloading (200ms before transitions)
+/// - Fixed 100ms update loop for consistent combat logic
+/// - Separated concerns (combat, animations, calculations)
+pub fn update_idle_farm_session(game_state: &mut GameState, delta_ms: u32) {
+    use crate::combat::v2::CombatEngine;
+
+    // Check if there's an active farming session
+    let session = match &mut game_state.idle_farm_session {
+        Some(session) => session,
+        None => {
+            // No session, clear engine cache
+            game_state.combat_engine_cache = None;
+            return;
+        }
+    };
+
+    let current_time = game_state.last_update_ms;
+
+    match session.state {
+        IdleFarmState::Active => {
+            session.last_update_ms = current_time;
+
+            // === HP REGENERATION (passive, happens every second) ===
+            let regen_elapsed_ms = current_time.saturating_sub(session.last_hp_regen_ms);
+            if regen_elapsed_ms >= 1000 {
+                let seconds_elapsed = regen_elapsed_ms as f32 / 1000.0;
+                let hp_regen = (session.hp_regen_rate * seconds_elapsed) as u16;
+                session.current_hp = (session.current_hp + hp_regen).min(game_state.hero.max_hp);
+                game_state.hero.hp = session.current_hp;
+                session.last_hp_regen_ms = current_time;
+            }
+
+            // === COMBAT V2 ENGINE ===
+            // Get or create combat engine from cache
+            if game_state.combat_engine_cache.is_none() {
+                esp_println::println!("[COMBAT V2] Initializing new combat engine");
+                game_state.combat_engine_cache = Some(CombatEngine::new(current_time));
+            }
+
+            // Take engine out of cache (temporarily)
+            let mut engine = game_state.combat_engine_cache.take().unwrap();
+
+            // Mark stats as dirty to ensure recalculation
+            engine.calculator.mark_hero_dirty();
+            engine.calculator.mark_enemy_dirty();
+
+            // Update combat (now game_state is not borrowed)
+            engine.update(game_state, delta_ms);
+
+            // Put engine back in cache
+            game_state.combat_engine_cache = Some(engine);
+
+            // Trigger periodic redraw
+            if current_time % 1000 < delta_ms {
+                game_state.needs_redraw = true;
+            }
+        }
+        IdleFarmState::Cooldown => {
+            // Clear engine cache when not active
+            if game_state.combat_engine_cache.is_some() {
+                esp_println::println!("[COMBAT V2] Clearing combat engine cache (cooldown)");
+                game_state.combat_engine_cache = None;
+            }
+
+            // Check if cooldown is over
+            if current_time >= session.cooldown_end_ms {
+                esp_println::println!("[IDLE FARM V2] Cooldown complete - session ended");
+            }
+        }
+        IdleFarmState::Idle => {
+            // Clear engine cache when not active
+            if game_state.combat_engine_cache.is_some() {
+                esp_println::println!("[COMBAT V2] Clearing combat engine cache (idle)");
+                game_state.combat_engine_cache = None;
+            }
+        }
+    }
 }

@@ -16,6 +16,7 @@ pub mod battle_zelda;
 pub mod battle_mvp;
 pub mod farm_system;
 pub mod idle_farm;
+pub mod v2; // Combat system v2 with flexible timing
 
 pub use models::*;
 pub use battle::*;

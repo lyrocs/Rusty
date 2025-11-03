@@ -1,14 +1,11 @@
 /// Update system - handles game logic updates (farming, SP regen, animations, etc.)
-
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::RtcResource;
-use crate::core::GameState;
+use super::animations::{update_hero_animation, update_monster_animation};
 use crate::combat::{BattleState, ZeldaBattleState};
+use crate::core::GameState;
+use crate::ecs::resources::RtcResource;
 use crate::tamagotchi::models::{FarmState, GamePage, RestState};
-use super::animations::{
-    update_hero_animation, update_monster_animation,
-};
 
 pub fn tamagotchi_update_system(
     mut rtc_res: NonSendMut<RtcResource>,
@@ -62,9 +59,7 @@ pub fn tamagotchi_update_system(
             .last_update_ms
             .wrapping_sub(game_state.gif_animation_last_update_ms);
         if gif_clock_elapsed >= 75 {
-            game_state.gif_animation_clock_ms = game_state
-                .gif_animation_clock_ms
-                .wrapping_add(75);
+            game_state.gif_animation_clock_ms = game_state.gif_animation_clock_ms.wrapping_add(75);
             game_state.gif_animation_last_update_ms = game_state.last_update_ms;
 
             // Note: We don't set needs_redraw here - individual animation functions will do that
@@ -100,9 +95,7 @@ pub fn tamagotchi_update_system(
 
                 // Only update animations when screen is on
                 if game_state.screen_on {
-                    use crate::tamagotchi::models::{
-                        HeroAnimation, MonsterAnimation,
-                    };
+                    use crate::tamagotchi::models::{HeroAnimation, MonsterAnimation};
 
                     // Ensure hero is in Idle animation during fighting
                     if game_state.hero_animation != HeroAnimation::Idle
@@ -175,14 +168,17 @@ pub fn tamagotchi_update_system(
                     // Wait 800ms after victory before starting death animation
                     // This gives the attack animation time to complete (8 frames × 100ms = 800ms)
                     const DEATH_ANIMATION_DELAY_MS: u32 = 800;
-                    let time_since_victory = game_state.last_update_ms.saturating_sub(game_state.victory_state_entered_ms);
+                    let time_since_victory = game_state
+                        .last_update_ms
+                        .saturating_sub(game_state.victory_state_entered_ms);
 
                     if time_since_victory >= DEATH_ANIMATION_DELAY_MS {
                         // Delay has passed, transition to dying animation
                         if game_state.monster_animation != MonsterAnimation::Dying {
                             game_state.monster_animation = MonsterAnimation::Dying;
                             game_state.monster_animation_frame = 0;
-                            game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                            game_state.monster_animation_started_ms =
+                                game_state.gif_animation_clock_ms;
                             game_state.needs_redraw = true;
                         }
                     }
@@ -334,14 +330,17 @@ pub fn tamagotchi_update_system(
                     // Wait 800ms after victory before starting death animation
                     // This gives the attack animation time to complete (8 frames × 100ms = 800ms)
                     const DEATH_ANIMATION_DELAY_MS: u32 = 800;
-                    let time_since_victory = game_state.last_update_ms.saturating_sub(game_state.victory_state_entered_ms);
+                    let time_since_victory = game_state
+                        .last_update_ms
+                        .saturating_sub(game_state.victory_state_entered_ms);
 
                     if time_since_victory >= DEATH_ANIMATION_DELAY_MS {
                         // Delay has passed, transition to dying animation
                         if game_state.monster_animation != MonsterAnimation::Dying {
                             game_state.monster_animation = MonsterAnimation::Dying;
                             game_state.monster_animation_frame = 0;
-                            game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                            game_state.monster_animation_started_ms =
+                                game_state.gif_animation_clock_ms;
                             game_state.needs_redraw = true;
                         }
                     }
@@ -367,7 +366,9 @@ pub fn tamagotchi_update_system(
         if game_state.screen_on {
             // Update battle message timer
             if game_state.jrpg_battle_message_timer > 0 {
-                game_state.jrpg_battle_message_timer = game_state.jrpg_battle_message_timer.saturating_sub(delta_ms);
+                game_state.jrpg_battle_message_timer = game_state
+                    .jrpg_battle_message_timer
+                    .saturating_sub(delta_ms);
                 if game_state.jrpg_battle_message_timer == 0 {
                     game_state.jrpg_battle_message = None;
                     game_state.needs_redraw = true;
@@ -376,7 +377,9 @@ pub fn tamagotchi_update_system(
 
             // Update damage animation timer (floats up and fades out over 1 second)
             if game_state.jrpg_damage_animation_timer > 0 {
-                game_state.jrpg_damage_animation_timer = game_state.jrpg_damage_animation_timer.saturating_sub(delta_ms);
+                game_state.jrpg_damage_animation_timer = game_state
+                    .jrpg_damage_animation_timer
+                    .saturating_sub(delta_ms);
                 if game_state.jrpg_damage_animation_timer == 0 {
                     game_state.jrpg_damage_dealt = 0;
                 }
@@ -386,7 +389,9 @@ pub fn tamagotchi_update_system(
 
         // Update action animation timer and progress states (ALWAYS runs - game logic)
         if game_state.jrpg_action_animation_timer > 0 {
-            game_state.jrpg_action_animation_timer = game_state.jrpg_action_animation_timer.saturating_sub(delta_ms);
+            game_state.jrpg_action_animation_timer = game_state
+                .jrpg_action_animation_timer
+                .saturating_sub(delta_ms);
 
             if game_state.jrpg_action_animation_timer == 0 {
                 // Animation finished, progress to next state
@@ -404,7 +409,8 @@ pub fn tamagotchi_update_system(
                                     use crate::tamagotchi::models::MonsterAnimation;
                                     game_state.monster_animation = MonsterAnimation::Dying;
                                     game_state.monster_animation_frame = 0;
-                                    game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+                                    game_state.monster_animation_started_ms =
+                                        game_state.gif_animation_clock_ms;
                                 }
                             } else {
                                 // Enemy still alive, enemy's turn
@@ -577,63 +583,63 @@ pub fn tamagotchi_update_system(
     }
 
     // Update BattleOverview page animations
-    if game_state.current_page == GamePage::BattleOverview && game_state.screen_on {
-        use crate::combat::{Enemy, HeroAnimation, MonsterAnimation};
+    // if game_state.current_page == GamePage::BattleOverview && game_state.screen_on {
+    //     use crate::combat::{Enemy, HeroAnimation, MonsterAnimation};
 
-        // Only animate if there's an active farming session
-        if let Some(session) = &game_state.idle_farm_session {
-            if session.is_active() {
-                if let Some(enemy) = Enemy::from_id(session.enemy_id) {
-                    let current_time = game_state.last_update_ms;
-                    // Animation window: 800ms allows most attack animations to complete
-                    // Attack GIFs typically have 8-12 frames at 75ms/frame = 600-900ms
-                    const ANIMATION_WINDOW_MS: u32 = 800;
+    //     // Only animate if there's an active farming session
+    //     if let Some(session) = &game_state.idle_farm_session {
+    //         if session.is_active() {
+    //             if let Some(enemy) = Enemy::from_id(session.enemy_id) {
+    //                 let current_time = game_state.last_update_ms;
+    //                 // Animation window: 800ms allows most attack animations to complete
+    //                 // Attack GIFs typically have 8-12 frames at 75ms/frame = 600-900ms
+    //                 const ANIMATION_WINDOW_MS: u32 = 800;
 
-                    let hero_just_attacked = current_time.saturating_sub(session.last_hero_attack_ms) < ANIMATION_WINDOW_MS;
-                    let enemy_just_attacked = current_time.saturating_sub(session.last_enemy_attack_ms) < ANIMATION_WINDOW_MS;
+    //                 let hero_just_attacked = current_time.saturating_sub(session.last_hero_attack_ms) < ANIMATION_WINDOW_MS;
+    //                 let enemy_just_attacked = current_time.saturating_sub(session.last_enemy_attack_ms) < ANIMATION_WINDOW_MS;
 
-                    // Set hero animation based on combat timing
-                    let hero_animation = if enemy_just_attacked {
-                        HeroAnimation::Attacked
-                    } else if hero_just_attacked {
-                        HeroAnimation::Attacking
-                    } else {
-                        HeroAnimation::Idle
-                    };
+    //                 // Set hero animation based on combat timing
+    //                 let hero_animation = if enemy_just_attacked {
+    //                     HeroAnimation::Attacked
+    //                 } else if hero_just_attacked {
+    //                     HeroAnimation::Attacking
+    //                 } else {
+    //                     HeroAnimation::Idle
+    //                 };
 
-                    // Set enemy animation based on combat timing
-                    let enemy_animation = if session.enemy_dying {
-                        MonsterAnimation::Dying  // Play death animation
-                    } else if hero_just_attacked {
-                        MonsterAnimation::Attacked  // Enemy was hit by hero
-                    } else if enemy_just_attacked {
-                        MonsterAnimation::Attacking  // Enemy is attacking
-                    } else {
-                        MonsterAnimation::Idle
-                    };
+    //                 // Set enemy animation based on combat timing
+    //                 let enemy_animation = if session.enemy_dying {
+    //                     MonsterAnimation::Dying  // Play death animation
+    //                 } else if hero_just_attacked {
+    //                     MonsterAnimation::Attacked  // Enemy was hit by hero
+    //                 } else if enemy_just_attacked {
+    //                     MonsterAnimation::Attacking  // Enemy is attacking
+    //                 } else {
+    //                     MonsterAnimation::Idle
+    //                 };
 
-                    // Update animation states if they changed
-                    if game_state.hero_animation != hero_animation {
-                        game_state.hero_animation = hero_animation;
-                        game_state.hero_animation_frame = 0;
-                        game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
-                        game_state.needs_redraw = true;
-                    }
+    //                 // Update animation states if they changed
+    //                 if game_state.hero_animation != hero_animation {
+    //                     game_state.hero_animation = hero_animation;
+    //                     game_state.hero_animation_frame = 0;
+    //                     game_state.hero_animation_started_ms = game_state.gif_animation_clock_ms;
+    //                     game_state.needs_redraw = true;
+    //                 }
 
-                    if game_state.monster_animation != enemy_animation {
-                        game_state.monster_animation = enemy_animation;
-                        game_state.monster_animation_frame = 0;
-                        game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
-                        game_state.needs_redraw = true;
-                    }
+    //                 if game_state.monster_animation != enemy_animation {
+    //                     game_state.monster_animation = enemy_animation;
+    //                     game_state.monster_animation_frame = 0;
+    //                     game_state.monster_animation_started_ms = game_state.gif_animation_clock_ms;
+    //                     game_state.needs_redraw = true;
+    //                 }
 
-                    // Update animations
-                    update_hero_animation(&mut game_state, delta_ms);
-                    update_monster_animation(&mut game_state, delta_ms, enemy.name);
-                }
-            }
-        }
-    }
+    //                 // Update animations
+    //                 update_hero_animation(&mut game_state, delta_ms);
+    //                 update_monster_animation(&mut game_state, delta_ms, enemy.name);
+    //             }
+    //         }
+    //     }
+    // }
 
     // Update Debug page animations
     if game_state.current_page == GamePage::Debug && game_state.screen_on {
@@ -677,4 +683,3 @@ pub fn tamagotchi_update_system(
     // Update IDLE farming session (runs in background regardless of page)
     super::idle_farm_update::update_idle_farm_session(&mut game_state, delta_ms);
 }
-

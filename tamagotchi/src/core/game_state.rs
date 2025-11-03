@@ -38,6 +38,9 @@ pub struct GameState {
     pub farm_selection_open: bool, // Whether farm duration selection modal is open
     // IDLE farming system (new continuous background farming)
     pub idle_farm_session: Option<IdleFarmSession>, // Current IDLE farming session
+    // Combat V2 engine cache (not serialized, recreated on load)
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub combat_engine_cache: Option<crate::combat::v2::CombatEngine>,
     pub rest_state: RestState,
     pub rest_progress: u32,                  // Progress in milliseconds
     pub sp_regen_rate: u16,                  // SP per second while resting
@@ -195,6 +198,7 @@ impl Default for GameState {
             farm_selection_open: false,
             // IDLE farming system
             idle_farm_session: None,
+            combat_engine_cache: None,
             rest_state: RestState::Resting,
             rest_progress: 0,
             sp_regen_rate: DEFAULT_SP_REGEN_RATE, // 5 SP per second
