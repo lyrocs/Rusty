@@ -147,29 +147,32 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
 
     match game_state.current_page {
         GamePage::Menu => {
-            // Menu item selection based on button position (2 columns x 4 rows)
-            // Now 7 items - Farm and Battle removed (accessed via Map)
+            // Menu item selection based on button position (2 columns x 5 rows)
+            // Now 10 items total
             // Button layout:
-            // [Overview(0)]  [Rest(1)]      Row 0: y=110-180
-            // [Map(2)]       [Quests(3)]    Row 1: y=190-260
-            // [Settings(4)]  [Save(5)]      Row 2: y=270-340
-            // [Debug(6)]                    Row 3: y=350-420
+            // [Overview(0)]  [Stats(1)]     Row 0: y=40-110
+            // [Rest(2)]      [Equip(3)]     Row 1: y=120-190
+            // [Map(4)]       [Invent(5)]    Row 2: y=200-270
+            // [Quests(6)]    [Settings(7)]  Row 3: y=280-350
+            // [Save(8)]      [Debug(9)]     Row 4: y=360-430
             //
             // Col 0: x=24-174, Col 1: x=184-334
 
             // Check if touch is within button area
-            if y >= 110 && y <= 420 {
+            if y >= 40 && y <= 430 {
                 let mut clicked_button: Option<u8> = None;
 
-                // Determine row (0, 1, 2, or 3)
-                let row = if y >= 110 && y <= 180 {
+                // Determine row (0, 1, 2, 3, or 4)
+                let row = if y >= 40 && y <= 110 {
                     0
-                } else if y >= 190 && y <= 260 {
+                } else if y >= 120 && y <= 190 {
                     1
-                } else if y >= 270 && y <= 340 {
+                } else if y >= 200 && y <= 270 {
                     2
-                } else if y >= 350 && y <= 420 {
+                } else if y >= 280 && y <= 350 {
                     3
+                } else if y >= 360 && y <= 430 {
+                    4
                 } else {
                     255 // Invalid
                 };
@@ -184,11 +187,10 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                 };
 
                 // Calculate button index (row * 2 + col)
-                // Row 3 only has button in col 0 (Debug at index 6)
-                if (row < 3 && col < 2) || (row == 3 && col == 0) {
+                if row < 5 && col < 2 {
                     let button_index = row * 2 + col;
-                    if button_index < 7 {
-                        // Now 7 buttons exist
+                    if button_index < 10 {
+                        // Now 10 buttons exist
                         clicked_button = Some(button_index);
                     }
                 }
@@ -204,7 +206,7 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                     );
 
                     // Handle selection
-                    if item_index == 5 {
+                    if item_index == 8 {
                         // Save Game selected
                         game_state.save_requested = true;
                         game_state.current_page = GamePage::Overview; // Go back to overview after save
@@ -212,11 +214,14 @@ fn handle_touch_input(game_state: &mut GameState, x: u16, y: u16) {
                         // Navigate to selected page
                         let new_page = match item_index {
                             0 => GamePage::Overview,
-                            1 => GamePage::Rest,
-                            2 => GamePage::Map,
-                            3 => GamePage::Quests,
-                            4 => GamePage::Settings,
-                            6 => GamePage::Debug,
+                            1 => GamePage::Stats,
+                            2 => GamePage::Rest,
+                            3 => GamePage::Equipment,
+                            4 => GamePage::Map,
+                            5 => GamePage::Inventory,
+                            6 => GamePage::Quests,
+                            7 => GamePage::Settings,
+                            9 => GamePage::Debug,
                             _ => GamePage::Overview,
                         };
 
