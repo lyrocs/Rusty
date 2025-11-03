@@ -1,23 +1,21 @@
 use core::fmt::Write;
 use embedded_graphics::{
     image::Image,
-    mono_font::{
-        MonoTextStyle,
-        ascii::{FONT_9X15, FONT_9X18_BOLD, FONT_10X20},
-    },
+    mono_font::ascii::{FONT_9X15, FONT_9X18_BOLD, FONT_10X20},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Circle as EgCircle, Line, PrimitiveStyle, Rectangle},
-    text::Text,
+    primitives::{PrimitiveStyle, Rectangle},
 };
 use heapless::String;
 use tinygif::Gif;
 
-use crate::core::GameState;
-use crate::tamagotchi::models::{BattleState, CircleType, Enemy, FarmState, LocationType, MapHelper, RestState};
 use super::super::helpers::*;
+use crate::core::GameState;
 
 use super::super::colors::*;
+
+// Background image
+const BACKGROUND_GIF: &[u8] = include_bytes!("../../../assets/images/ui/background.gif");
 
 /// Draw the Overview page showing hero stats
 pub fn draw_overview_page<D>(
@@ -31,213 +29,245 @@ where
     let hero = &game_state.hero;
 
     // Clear background
-    display.clear(COLOR_BG)?;
+    display.clear(Rgb888::new(0, 0, 0))?;
 
-    // Draw farming header if active (must be drawn first, on top)
-    use crate::ui::farming_header::draw_farming_header;
-    let has_farming_header = draw_farming_header(display, game_state)?;
+    // Draw background image (single frame GIF)
+    let bg_gif = Gif::<Rgb888>::from_slice(BACKGROUND_GIF).expect("Failed to parse background GIF");
+    if let Some(frame) = bg_gif.frames().next() {
+        Image::new(&frame, Point::new(0, 0)).draw(display)?;
+    }
 
-    // Adjust title position if farming header is present
-    let title_y = if has_farming_header { 40 } else { 20 };
+    let base_y = 20;
 
-    // Title
-    draw_text(
-        display,
-        "=== HERO STATUS ===",
-        Point::new(60, title_y),
-        &FONT_10X20,
-        COLOR_TEXT,
-    )?;
-
-    // LEFT COLUMN: Class, Level, Zeny
+    // === HERO NAME & TITLE (centered) ===
     let mut name_str = String::<32>::new();
     write!(name_str, "{}", hero.name).ok();
     draw_text(
         display,
         &name_str,
-        Point::new(20, 60),
-        &FONT_9X18_BOLD,
-        COLOR_TEXT,
+        Point::new(184 - (name_str.len() as i32 * 5), base_y),
+        &FONT_10X20,
+        Rgb888::new(255, 230, 150),
     )?;
 
-    let mut job_str = String::<32>::new();
-    write!(job_str, "Job: {}", hero.job).ok();
+    let mut job_level_str = String::<32>::new();
+    write!(job_level_str, "{} Lv.{}", hero.job, hero.level).ok();
     draw_text(
         display,
-        &job_str,
-        Point::new(20, 85),
-        &FONT_9X18_BOLD,
-        COLOR_TEXT,
-    )?;
-
-    let mut lvl_str = String::<32>::new();
-    write!(lvl_str, "Lv. {}", hero.level).ok();
-    draw_text(
-        display,
-        &lvl_str,
-        Point::new(20, 110),
-        &FONT_9X18_BOLD,
-        COLOR_TEXT,
-    )?;
-
-    let mut zeny_str = String::<32>::new();
-    write!(zeny_str, "{}z", hero.zeny).ok();
-    draw_text(
-        display,
-        &zeny_str,
-        Point::new(20, 135),
-        &FONT_9X18_BOLD,
-        Rgb888::YELLOW,
-    )?;
-
-    // RIGHT COLUMN: HP, SP, EXP (compact with smaller bars)
-    // HP
-    draw_text(
-        display,
-        "HP:",
-        Point::new(200, 60),
+        &job_level_str,
+        Point::new(184 - (job_level_str.len() as i32 * 4), base_y + 20),
         &FONT_9X15,
-        COLOR_TEXT_DIM,
+        Rgb888::new(180, 180, 200),
+    )?;
+
+    // === STATS PANEL (compact card design) ===
+    let panel_y = base_y + 50;
+
+    // Draw stats background panel - using only border, no fill to show background
+    Rectangle::new(Point::new(30, panel_y), Size::new(308, 115))
+        .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(100, 140, 180), 3))
+        .draw(display)?;
+
+    // HP Bar (full width)
+    draw_text(
+        display,
+        "HP",
+        Point::new(40, panel_y + 18),
+        &FONT_9X15,
+        COLOR_HP,
     )?;
     let mut hp_str = String::<32>::new();
     write!(hp_str, "{}/{}", hero.hp, hero.max_hp).ok();
-    draw_text(display, &hp_str, Point::new(235, 60), &FONT_9X15, COLOR_HP)?;
+    draw_text(
+        display,
+        &hp_str,
+        Point::new(320 - (hp_str.len() as i32 * 9), panel_y + 18),
+        &FONT_9X15,
+        Rgb888::WHITE,
+    )?;
     draw_bar(
         display,
-        Point::new(200, 75),
-        150,
+        Point::new(40, panel_y + 30),
+        280,
         hero.hp_percent(),
         COLOR_HP,
     )?;
 
-    // SP
+    // SP Bar (full width)
     draw_text(
         display,
-        "SP:",
-        Point::new(200, 95),
+        "SP",
+        Point::new(40, panel_y + 53),
         &FONT_9X15,
-        COLOR_TEXT_DIM,
+        COLOR_SP,
     )?;
     let mut sp_str = String::<32>::new();
     write!(sp_str, "{}/{}", hero.sp, hero.max_sp).ok();
-    draw_text(display, &sp_str, Point::new(235, 95), &FONT_9X15, COLOR_SP)?;
+    draw_text(
+        display,
+        &sp_str,
+        Point::new(320 - (sp_str.len() as i32 * 9), panel_y + 53),
+        &FONT_9X15,
+        Rgb888::WHITE,
+    )?;
     draw_bar(
         display,
-        Point::new(200, 110),
-        150,
+        Point::new(40, panel_y + 65),
+        280,
         hero.sp_percent(),
         COLOR_SP,
     )?;
 
-    // EXP
+    // EXP Bar (full width)
     draw_text(
         display,
-        "EXP:",
-        Point::new(200, 130),
+        "EXP",
+        Point::new(40, panel_y + 88),
         &FONT_9X15,
-        COLOR_TEXT_DIM,
+        COLOR_EXP,
     )?;
     let mut exp_str = String::<32>::new();
     write!(exp_str, "{}/{}", hero.exp, hero.exp_to_next_level).ok();
     draw_text(
         display,
         &exp_str,
-        Point::new(245, 130),
+        Point::new(320 - (exp_str.len() as i32 * 9), panel_y + 88),
         &FONT_9X15,
-        COLOR_EXP,
+        Rgb888::WHITE,
     )?;
     draw_bar(
         display,
-        Point::new(200, 145),
-        150,
+        Point::new(40, panel_y + 100),
+        280,
         hero.exp_percent(),
         COLOR_EXP,
     )?;
 
-    // CENTER: Hero GIF (sitting animation)
-    draw_hero_gif(display, game_state, Point::new(184, 280))?;
+    // === ACTION BUTTONS (2x2 grid) ===
+    let button_start_y = panel_y + 135;
+    let button_spacing = 50;
+    let button_width = 155;
+    let button_height = 42;
+
+    // Button colors - more vibrant and distinct
+    let rest_color = Rgb888::new(80, 120, 180);
+    let stats_color = Rgb888::new(180, 80, 120);
+    let equip_color = Rgb888::new(120, 180, 80);
+    let invent_color = Rgb888::new(180, 140, 60);
+
+    // Row 1: Rest, Stats
+    // Rest button (top left)
+    Rectangle::new(
+        Point::new(20, button_start_y),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(rest_color))
+    .draw(display)?;
+    Rectangle::new(
+        Point::new(20, button_start_y),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(120, 160, 220), 2))
+    .draw(display)?;
+    draw_text(
+        display,
+        "Rest",
+        Point::new(68, button_start_y + 26),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    // Stats button (top right)
+    Rectangle::new(
+        Point::new(193, button_start_y),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(stats_color))
+    .draw(display)?;
+    Rectangle::new(
+        Point::new(193, button_start_y),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(220, 120, 160), 2))
+    .draw(display)?;
+    draw_text(
+        display,
+        "Stats",
+        Point::new(235, button_start_y + 26),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    // Row 2: Equipment, Inventory
+    // Equipment button (bottom left)
+    Rectangle::new(
+        Point::new(20, button_start_y + button_spacing),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(equip_color))
+    .draw(display)?;
+    Rectangle::new(
+        Point::new(20, button_start_y + button_spacing),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(160, 220, 120), 2))
+    .draw(display)?;
+    draw_text(
+        display,
+        "Equip",
+        Point::new(58, button_start_y + button_spacing + 26),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    // Inventory button (bottom right)
+    Rectangle::new(
+        Point::new(193, button_start_y + button_spacing),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(invent_color))
+    .draw(display)?;
+    Rectangle::new(
+        Point::new(193, button_start_y + button_spacing),
+        Size::new(button_width, button_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(220, 180, 100), 2))
+    .draw(display)?;
+    draw_text(
+        display,
+        "Invent",
+        Point::new(223, button_start_y + button_spacing + 26),
+        &FONT_10X20,
+        Rgb888::WHITE,
+    )?;
+
+    // === HERO CHARACTER SECTION (at bottom) ===
+    let hero_section_y = button_start_y + button_spacing + button_height as i32 + 20;
+
+    // Zeny display (above hero)
+    let mut zeny_str = String::<32>::new();
+    write!(zeny_str, "{} Zeny", hero.zeny).ok();
+    draw_text(
+        display,
+        &zeny_str,
+        Point::new(184 - (zeny_str.len() as i32 * 4), hero_section_y),
+        &FONT_9X15,
+        Rgb888::new(255, 215, 0),
+    )?;
+
+    // Hero GIF (centered at bottom, safe from rounded edges)
+    draw_hero_gif(display, game_state, Point::new(184, hero_section_y + 100))?;
 
     // Save status message (if any)
     if let Some(msg) = save_msg {
         draw_text(
             display,
             msg,
-            Point::new(110, 310),
+            Point::new(184 - (msg.len() as i32 * 5), hero_section_y + 75),
             &FONT_9X18_BOLD,
-            Rgb888::YELLOW,
-        )?;
-    }
-
-    // Buttons at bottom (2 rows x 2 buttons)
-    {
-        // Show buttons
-        // Uniform button color - no multicolor
-        let button_color = Rgb888::new(60, 80, 120);
-        let button_border = Rgb888::new(100, 120, 160);
-
-        // Row 1: Rest, Stats
-        // Rest button (top left)
-        Rectangle::new(Point::new(14, 350), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_fill(button_color))
-            .draw(display)?;
-        Rectangle::new(Point::new(14, 350), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-            .draw(display)?;
-        draw_text(
-            display,
-            "Rest",
-            Point::new(75, 368),
-            &FONT_10X20,
-            Rgb888::WHITE,
-        )?;
-
-        // Stats button (top right)
-        Rectangle::new(Point::new(189, 350), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_fill(button_color))
-            .draw(display)?;
-        Rectangle::new(Point::new(189, 350), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-            .draw(display)?;
-        draw_text(
-            display,
-            "Stats",
-            Point::new(245, 368),
-            &FONT_10X20,
-            Rgb888::WHITE,
-        )?;
-
-        // Row 2: Equipment, Inventory
-        // Equipment button (bottom left)
-        Rectangle::new(Point::new(14, 403), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_fill(button_color))
-            .draw(display)?;
-        Rectangle::new(Point::new(14, 403), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-            .draw(display)?;
-        draw_text(
-            display,
-            "Equip",
-            Point::new(65, 421),
-            &FONT_10X20,
-            Rgb888::WHITE,
-        )?;
-
-        // Inventory button (bottom right)
-        Rectangle::new(Point::new(189, 403), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_fill(button_color))
-            .draw(display)?;
-        Rectangle::new(Point::new(189, 403), Size::new(165, 45))
-            .into_styled(PrimitiveStyle::with_stroke(button_border, 2))
-            .draw(display)?;
-        draw_text(
-            display,
-            "Invent",
-            Point::new(225, 421),
-            &FONT_10X20,
-            Rgb888::WHITE,
+            Rgb888::new(100, 255, 100),
         )?;
     }
 
     Ok(())
 }
-
