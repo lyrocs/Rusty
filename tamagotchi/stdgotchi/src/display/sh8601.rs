@@ -24,6 +24,7 @@ pub mod commands {
     pub const TESCAN: u8 = 0x44;
     pub const TEON: u8 = 0x35;
     pub const PTLAR: u8 = 0x30;
+    pub const WRDISBV: u8 = 0x51;  // Write Display Brightness Value
 }
 
 const QSPI_PIXEL_OPCODE: u8 = 0x32;
@@ -144,7 +145,7 @@ impl Sh8601Driver {
         self.send_command(commands::DISPON)?;
         thread::sleep(Duration::from_millis(120));
 
-        // Partial area row set
+        // Partial area row set (as in original sh8601-rs)
         self.send_command_with_data(commands::PTLAR, &[0x00, 0x80, 0x00, 0x02])?;
         thread::sleep(Duration::from_millis(10));
 
@@ -210,11 +211,33 @@ impl Sh8601Driver {
         Ok(())
     }
 
+    /// Fill entire framebuffer with a solid color (for testing)
+    pub fn fill_test(&mut self, r: u8, g: u8, b: u8) {
+        for chunk in self.framebuffer.chunks_mut(3) {
+            if chunk.len() == 3 {
+                chunk[0] = r;
+                chunk[1] = g;
+                chunk[2] = b;
+            }
+        }
+    }
+
     /// Flush framebuffer to display using QSPI
     pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // DEBUG: Check first few pixels of framebuffer
+        if self.framebuffer.len() >= 12 {
+            log::info!("Framebuffer first pixels: [{}, {}, {}] [{}, {}, {}] [{}, {}, {}] [{}, {}, {}]",
+                self.framebuffer[0], self.framebuffer[1], self.framebuffer[2],
+                self.framebuffer[3], self.framebuffer[4], self.framebuffer[5],
+                self.framebuffer[6], self.framebuffer[7], self.framebuffer[8],
+                self.framebuffer[9], self.framebuffer[10], self.framebuffer[11]);
+        }
+
+        // Set window using helper method (which uses send_command_with_data)
         self.set_window(0, 0, self.width - 1, self.height - 1)?;
 
         // Send pixels in QSPI quad mode
+        // Use RAMWR for first chunk, RAMWRC for continuation
         let mut first = true;
         for chunk in self.framebuffer.chunks(DMA_CHUNK_SIZE) {
             let cmd = if first {

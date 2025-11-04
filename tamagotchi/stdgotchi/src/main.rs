@@ -1,6 +1,6 @@
 mod display;
 
-use display::{ColorMode, Sh8601Driver, LCD_H_RES, LCD_V_RES};
+use display::{ColorMode, Sh8601Driver, LCD_H_RES, LCD_V_RES, Ft3x68Driver, FT3168_DEVICE_ADDRESS};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::Rgb888,
@@ -84,6 +84,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("Display initialized successfully!");
 
+    // Initialize touch controller
+    log::info!("Initializing FT3168 touch controller...");
+    let mut touch = Ft3x68Driver::new(FT3168_DEVICE_ADDRESS);
+    touch.initialize(&mut i2c)?;
+    touch.set_gesture_mode(&mut i2c, true)?;
+    log::info!("Touch controller initialized successfully!");
+
     // Draw test content
     log::info!("Drawing test content...");
 
@@ -117,10 +124,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     display.flush()?;
 
     log::info!("Display updated successfully!");
-    log::info!("stdgotchi running. Keeping display on...");
+    log::info!("Testing automatic rendering without touch...");
 
-    // Keep running
+    // TEST: Automatic color cycling WITHOUT touch to isolate I2C conflict
+    let mut color_index = 1u8; // Start at 1 (red) not 0 (black)
+
     loop {
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(2));
+
+        // Cycle through BRIGHT colors (starting with RED, no black)
+        let (r, g, b) = match color_index % 4 {
+            0 => (255, 0, 0),     // Bright Red
+            1 => (0, 255, 0),     // Bright Green
+            2 => (0, 0, 255),     // Bright Blue
+            _ => (255, 255, 0),   // Bright Yellow
+        };
+        color_index = color_index.wrapping_add(1);
+
+        log::info!("=== AUTO RENDER {} ===", color_index);
+        log::info!("Filling with RGB({}, {}, {})", r, g, b);
+        display.fill_test(r, g, b);
+
+        log::info!("Flushing...");
+        let flush_start = std::time::Instant::now();
+        display.flush()?;
+        let flush_time = flush_start.elapsed();
+        log::info!("Flush completed in {:?}", flush_time);
+        log::info!("=====================");
     }
 }
