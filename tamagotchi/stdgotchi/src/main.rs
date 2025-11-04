@@ -124,32 +124,103 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     display.flush()?;
 
     log::info!("Display updated successfully!");
-    log::info!("Testing automatic rendering without touch...");
+    log::info!("stdgotchi ready! Touch the screen to draw...");
 
-    // TEST: Automatic color cycling WITHOUT touch to isolate I2C conflict
-    let mut color_index = 1u8; // Start at 1 (red) not 0 (black)
+    // Interactive touch drawing loop
+    let mut last_touch_count = 0u8;
 
     loop {
-        thread::sleep(Duration::from_secs(2));
+        // Check for touches
+        match touch.finger_number(&mut i2c) {
+            Ok(count) => {
+                if count > 0 {
+                    // Read touch coordinates
+                    if let Ok(touches) = touch.get_touches(&mut i2c) {
+                        for (i, point) in touches.iter().enumerate() {
+                            if i == 0 {
+                                log::info!("Touch at: x={}, y={}", point.x, point.y);
+                            }
 
-        // Cycle through BRIGHT colors (starting with RED, no black)
-        let (r, g, b) = match color_index % 4 {
-            0 => (255, 0, 0),     // Bright Red
-            1 => (0, 255, 0),     // Bright Green
-            2 => (0, 0, 255),     // Bright Blue
-            _ => (255, 255, 0),   // Bright Yellow
-        };
-        color_index = color_index.wrapping_add(1);
+                            // Draw a circle at touch point
+                            if point.x < LCD_H_RES && point.y < LCD_V_RES {
+                                Circle::new(
+                                    Point::new(point.x as i32 - 10, point.y as i32 - 10),
+                                    20
+                                )
+                                .into_styled(PrimitiveStyle::with_fill(Rgb888::CYAN))
+                                .draw(&mut display)?;
+                            }
+                        }
 
-        log::info!("=== AUTO RENDER {} ===", color_index);
-        log::info!("Filling with RGB({}, {}, {})", r, g, b);
-        display.fill_test(r, g, b);
+                        // Flush after drawing
+                        display.flush()?;
+                    }
 
-        log::info!("Flushing...");
-        let flush_start = std::time::Instant::now();
-        display.flush()?;
-        let flush_time = flush_start.elapsed();
-        log::info!("Flush completed in {:?}", flush_time);
-        log::info!("=====================");
+                    // Check for gestures
+                    if let Ok(gesture) = touch.read_gesture(&mut i2c) {
+                        match gesture {
+                            display::Gesture::SwipeUp => {
+                                log::info!("Gesture: Swipe Up - Clearing screen");
+                                display.clear(Rgb888::BLACK)?;
+
+                                // Redraw title
+                                let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::GREEN);
+                                Text::new("stdgotchi", Point::new(10, 30), text_style).draw(&mut display)?;
+                                Text::new("Swipe to clear", Point::new(10, 50), text_style).draw(&mut display)?;
+                                Text::new("Touch to draw", Point::new(10, 70), text_style).draw(&mut display)?;
+
+                                display.flush()?;
+                            },
+                            display::Gesture::SwipeDown => {
+                                log::info!("Gesture: Swipe Down - Fill Red");
+                                display.clear(Rgb888::new(100, 0, 0))?;
+                                display.flush()?;
+                            },
+                            display::Gesture::SwipeLeft => {
+                                log::info!("Gesture: Swipe Left - Fill Green");
+                                display.clear(Rgb888::new(0, 100, 0))?;
+                                display.flush()?;
+                            },
+                            display::Gesture::SwipeRight => {
+                                log::info!("Gesture: Swipe Right - Fill Blue");
+                                display.clear(Rgb888::new(0, 0, 100))?;
+                                display.flush()?;
+                            },
+                            display::Gesture::DoubleClick => {
+                                log::info!("Gesture: Double Click - Reset");
+                                // Redraw initial screen
+                                display.clear(Rgb888::BLACK)?;
+                                let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::GREEN);
+                                Text::new("stdgotchi", Point::new(10, 30), text_style).draw(&mut display)?;
+                                Text::new("ESP32-S3 AMOLED", Point::new(10, 50), text_style).draw(&mut display)?;
+                                Text::new("Touch & Gestures!", Point::new(10, 70), text_style).draw(&mut display)?;
+
+                                Circle::new(Point::new(50, 150), 30)
+                                    .into_styled(PrimitiveStyle::with_fill(Rgb888::RED))
+                                    .draw(&mut display)?;
+                                Circle::new(Point::new(100, 150), 30)
+                                    .into_styled(PrimitiveStyle::with_fill(Rgb888::BLUE))
+                                    .draw(&mut display)?;
+                                Circle::new(Point::new(150, 150), 30)
+                                    .into_styled(PrimitiveStyle::with_fill(Rgb888::MAGENTA))
+                                    .draw(&mut display)?;
+
+                                display.flush()?;
+                            },
+                            display::Gesture::None => {},
+                        }
+                    }
+                } else if count == 0 && last_touch_count > 0 {
+                    log::info!("Touch released");
+                }
+
+                last_touch_count = count;
+            }
+            Err(e) => {
+                log::warn!("Failed to read touch: {:?}", e);
+            }
+        }
+
+        thread::sleep(Duration::from_millis(50));
     }
 }
