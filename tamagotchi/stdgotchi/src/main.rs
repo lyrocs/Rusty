@@ -6,15 +6,24 @@
 //! - Touch drawing with multi-touch support
 //! - Gesture recognition (swipes and double-tap)
 //! - QSPI AMOLED display with RGB888 color
+//! - Animated GIF playback
 //!
 //! # Hardware
 //! - Board: ESP32-S3 with PSRAM
 //! - Display: 1.8" AMOLED (368x448) via QSPI
 //! - Touch: FT3168 capacitive touch via I2C
+//!
+//! # Gestures
+//! - Swipe Up: Clear screen
+//! - Swipe Down: Play GIF animation
+//! - Swipe Left: Fill green
+//! - Swipe Right: Fill blue
+//! - Double Click: Reset to welcome screen
+//! - Touch: Draw cyan circles
 
 mod display;
 
-use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
+use display::{ColorMode, Ft3x68Driver, GifPlayer, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::Rgb888,
@@ -37,6 +46,9 @@ const TCA9554_ADDRESS: u8 = 0x20;
 const REG_OUTPUT: u8 = 0x01;
 /// TCA9554 configuration register
 const REG_CONFIG: u8 = 0x03;
+
+/// Embedded GIF animation data
+const GIF_DATA: &[u8] = include_bytes!("../assets/80.gif");
 
 /// Initialize the display hardware
 fn init_display(i2c: &mut I2cDriver) -> Result<Sh8601Driver, Box<dyn std::error::Error>> {
@@ -99,6 +111,7 @@ fn draw_welcome_screen(display: &mut Sh8601Driver) -> Result<(), Box<dyn std::er
     Text::new("stdgotchi", Point::new(10, 30), text_style).draw(display)?;
     Text::new("ESP32-S3 AMOLED", Point::new(10, 50), text_style).draw(display)?;
     Text::new("Touch & Gestures!", Point::new(10, 70), text_style).draw(display)?;
+    Text::new("Swipe down for GIF", Point::new(10, 90), text_style).draw(display)?;
 
     Circle::new(Point::new(50, 150), 30)
         .into_styled(PrimitiveStyle::with_fill(Rgb888::RED))
@@ -113,6 +126,29 @@ fn draw_welcome_screen(display: &mut Sh8601Driver) -> Result<(), Box<dyn std::er
         .draw(display)?;
 
     display.flush()?;
+    Ok(())
+}
+
+/// Play the GIF animation
+fn play_gif_animation(display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Loading GIF animation...");
+
+    let mut player = GifPlayer::new(GIF_DATA)?;
+    let (width, height) = player.dimensions();
+    log::info!("GIF dimensions: {}x{}, frames: {}", width, height, player.frame_count());
+
+    // Clear screen before animation
+    display.clear(Rgb888::BLACK)?;
+
+    // Play animation loop (3 complete loops)
+    let total_frames = player.frame_count() * 3;
+    for _ in 0..total_frames {
+        let delay = player.next_frame(display)?;
+        display.flush()?;
+        thread::sleep(delay);
+    }
+
+    log::info!("GIF animation completed");
     Ok(())
 }
 
@@ -150,9 +186,10 @@ fn handle_touch_events(
                 display.flush()?;
             }
             display::Gesture::SwipeDown => {
-                log::info!("Gesture: Swipe Down - Fill Red");
-                display.clear(Rgb888::new(100, 0, 0))?;
-                display.flush()?;
+                log::info!("Gesture: Swipe Down - Playing GIF animation");
+                play_gif_animation(display)?;
+                // Return to welcome screen after animation
+                draw_welcome_screen(display)?;
             }
             display::Gesture::SwipeLeft => {
                 log::info!("Gesture: Swipe Left - Fill Green");
