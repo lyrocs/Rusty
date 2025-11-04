@@ -13,37 +13,60 @@ use embedded_graphics::{
 use heapless::String;
 use tinygif::Gif;
 
-use crate::core::GameState;
-use crate::tamagotchi::models::{BattleState, CircleType, Enemy, FarmState, LocationType, MapHelper, RestState};
 use super::super::colors::*;
+use crate::core::GameState;
+use crate::tamagotchi::models::{
+    BattleState, CircleType, Enemy, FarmState, LocationType, MapHelper, RestState,
+};
 
 use super::super::helpers::*;
 
+// Menu background image
+const MENU_GIF: &[u8] = include_bytes!("../../../assets/images/ui/menu.gif");
+
+/// Helper function to get tier color based on level requirement
+fn get_tier_color(level_req: u16) -> Rgb888 {
+    if level_req >= 41 {
+        Rgb888::new(255, 165, 0) // Legendary - Orange/Gold
+    } else if level_req >= 31 {
+        Rgb888::new(163, 53, 238) // Epic - Purple
+    } else if level_req >= 21 {
+        Rgb888::new(64, 156, 255) // Rare - Blue
+    } else if level_req >= 11 {
+        Rgb888::new(30, 255, 30) // Uncommon - Green
+    } else {
+        Rgb888::new(180, 180, 180) // Common - Gray
+    }
+}
+
 /// Draw the Equipment page
-pub fn draw_equipment_page<D>(
-    display: &mut D,
-    game_state: &GameState,
-) -> Result<(), D::Error>
+pub fn draw_equipment_page<D>(display: &mut D, game_state: &GameState) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,
 {
     let hero = &game_state.hero;
 
     // Clear background
-    display.clear(COLOR_BG)?;
+    display.clear(Rgb888::new(0, 0, 0))?;
 
-    // Draw farming header if active
-    use crate::ui::farming_header::draw_farming_header;
-    let has_farming_header = draw_farming_header(display, game_state)?;
-    let title_y = if has_farming_header { 40 } else { 20 };
+    // Draw background image (single frame GIF)
+    let menu_gif = Gif::<Rgb888>::from_slice(MENU_GIF).expect("Failed to parse menu GIF");
+    if let Some(frame) = menu_gif.frames().next() {
+        Image::new(&frame, Point::new(0, 0)).draw(display)?;
+    }
 
-    // Title
+    let title_y = 20;
+
+    // Title with background
+    Rectangle::new(Point::new(60, title_y), Size::new(248, 30))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 30, 60)))
+        .draw(display)?;
     draw_text(
         display,
         "=== EQUIPMENT ===",
-        Point::new(60, title_y),
+        Point::new(70, title_y + 18),
         &FONT_10X20,
-        COLOR_TEXT,
+        Rgb888::new(255, 230, 150),
     )?;
 
     // Equipment display (6 slots in 2x3 grid)
@@ -51,25 +74,17 @@ where
     let left_x = 20;
     let right_x = 200;
     let start_y = 70;
-    let row_spacing = 95;
+    let row_spacing = 115; // Increased to accommodate larger cards
 
     // Row 1: WEAPON | ARMOR
-    // Draw border for weapon
-    Rectangle::new(Point::new(left_x - 5, start_y - 5), Size::new(170, 85))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
-        .draw(display)?;
-    draw_equipment_slot_clickable(
+    draw_equipment_slot_with_tier(
         display,
         &hero.equipped_weapon,
         Point::new(left_x, start_y),
         "WEAPON",
     )?;
 
-    // Draw border for armor
-    Rectangle::new(Point::new(right_x - 5, start_y - 5), Size::new(170, 85))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
-        .draw(display)?;
-    draw_equipment_slot_clickable(
+    draw_equipment_slot_with_tier(
         display,
         &hero.equipped_armor,
         Point::new(right_x, start_y),
@@ -77,22 +92,14 @@ where
     )?;
 
     // Row 2: SHOES | GARMENT
-    // Draw border for shoes
-    Rectangle::new(Point::new(left_x - 5, start_y + row_spacing - 5), Size::new(170, 85))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
-        .draw(display)?;
-    draw_equipment_slot_clickable(
+    draw_equipment_slot_with_tier(
         display,
         &hero.equipped_shoes,
         Point::new(left_x, start_y + row_spacing),
         "SHOES",
     )?;
 
-    // Draw border for garment
-    Rectangle::new(Point::new(right_x - 5, start_y + row_spacing - 5), Size::new(170, 85))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
-        .draw(display)?;
-    draw_equipment_slot_clickable(
+    draw_equipment_slot_with_tier(
         display,
         &hero.equipped_garment,
         Point::new(right_x, start_y + row_spacing),
@@ -100,102 +107,24 @@ where
     )?;
 
     // Row 3: ACCESSORY 1 | ACCESSORY 2
-    // Draw border for accessory 1
-    Rectangle::new(Point::new(left_x - 5, start_y + (row_spacing * 2) - 5), Size::new(170, 85))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
-        .draw(display)?;
-    draw_equipment_slot_clickable(
+    draw_equipment_slot_with_tier(
         display,
         &hero.equipped_accessory1,
         Point::new(left_x, start_y + (row_spacing * 2)),
         "ACCESS 1",
     )?;
 
-    // Draw border for accessory 2
-    Rectangle::new(Point::new(right_x - 5, start_y + (row_spacing * 2) - 5), Size::new(170, 85))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
-        .draw(display)?;
-    draw_equipment_slot_clickable(
+    draw_equipment_slot_with_tier(
         display,
         &hero.equipped_accessory2,
         Point::new(right_x, start_y + (row_spacing * 2)),
         "ACCESS 2",
     )?;
 
-    // Equipment Presets Section
-    let preset_y = 360;
-    draw_text(
-        display,
-        "PRESETS:",
-        Point::new(20, preset_y),
-        &FONT_9X15,
-        COLOR_TEXT_DIM,
-    )?;
-
-    // Draw 3 preset buttons
-    for i in 0..3 {
-        let btn_x = 20 + (i * 110);
-        let btn_y = preset_y + 10;
-        let is_active = hero.active_preset == Some(i as u8);
-        let has_preset = hero.equipment_presets[i].is_some();
-
-        // Button background
-        let btn_color = if is_active {
-            Rgb888::new(80, 120, 80) // Green if active
-        } else if has_preset {
-            Rgb888::new(60, 80, 100) // Blue if has preset
-        } else {
-            Rgb888::new(40, 40, 40) // Gray if empty
-        };
-
-        Rectangle::new(Point::new(btn_x as i32, btn_y), Size::new(100, 30))
-            .into_styled(PrimitiveStyle::with_fill(btn_color))
-            .draw(display)?;
-
-        Rectangle::new(Point::new(btn_x as i32, btn_y), Size::new(100, 30))
-            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 1))
-            .draw(display)?;
-
-        // Button text
-        let mut btn_text = String::<16>::new();
-        if is_active {
-            write!(btn_text, "P{} *", i + 1).ok();
-        } else {
-            write!(btn_text, "Preset {}", i + 1).ok();
-        }
-
-        draw_text(
-            display,
-            &btn_text,
-            Point::new(btn_x as i32 + 8, btn_y + 18),
-            &FONT_9X15,
-            Rgb888::WHITE,
-        )?;
-    }
-
-    // Back button
-    Rectangle::new(Point::new(100, 410), Size::new(160, 30))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 100, 150)))
-        .draw(display)?;
-    draw_text(
-        display,
-        "Back",
-        Point::new(155, 428),
-        &FONT_10X20,
-        Rgb888::WHITE,
-    )?;
-
     // Draw refine popup if open
     if game_state.refine_popup_open {
         if let Some(slot) = game_state.refine_slot {
             draw_refine_popup(display, game_state, slot)?;
-        }
-    }
-
-    // Draw preset menu if open
-    if game_state.preset_menu_open {
-        if let Some(preset_index) = game_state.preset_selected_index {
-            draw_preset_menu(display, game_state, preset_index)?;
         }
     }
 
@@ -223,8 +152,8 @@ where
     Ok(())
 }
 
-/// Draw equipment slot (clickable - opens equipment info)
-fn draw_equipment_slot_clickable<D>(
+/// Draw equipment slot with tier-based coloring
+fn draw_equipment_slot_with_tier<D>(
     display: &mut D,
     equipment: &crate::hero::equipment::Equipment,
     position: Point,
@@ -233,93 +162,95 @@ fn draw_equipment_slot_clickable<D>(
 where
     D: DrawTarget<Color = Rgb888>,
 {
-    // Draw the equipment slot (just slot name and equipment name)
-    draw_equipment_slot(display, equipment, position, slot_name)?;
+    let tier_color = get_tier_color(equipment.level_req);
+    let card_height = 105; // Increased from 85 to allow one more line
 
-    Ok(())
-}
+    // Background panel
+    Rectangle::new(
+        Point::new(position.x - 5, position.y - 5),
+        Size::new(170, card_height),
+    )
+    .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 25, 35)))
+    .draw(display)?;
 
-/// Draw preset action menu
-fn draw_preset_menu<D>(
-    display: &mut D,
-    game_state: &GameState,
-    preset_index: u8,
-) -> Result<(), D::Error>
-where
-    D: DrawTarget<Color = Rgb888>,
-{
-    // Semi-transparent overlay
-    Rectangle::new(Point::new(0, 0), Size::new(368, 448))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
-        .draw(display)?;
+    // Border with tier color
+    Rectangle::new(
+        Point::new(position.x - 5, position.y - 5),
+        Size::new(170, card_height),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(tier_color, 2))
+    .draw(display)?;
 
-    // Menu background
-    Rectangle::new(Point::new(50, 150), Size::new(268, 200))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(30, 40, 50)))
-        .draw(display)?;
-
-    Rectangle::new(Point::new(50, 150), Size::new(268, 200))
-        .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-        .draw(display)?;
-
-    // Title
-    let mut title_str = String::<32>::new();
-    write!(title_str, "Preset {} Actions", preset_index + 1).ok();
+    // Slot label (moved up to be clear of border)
     draw_text(
         display,
-        &title_str,
-        Point::new(100, 175),
-        &FONT_10X20,
-        COLOR_TEXT,
+        slot_name,
+        Point::new(position.x, position.y + 6),
+        &FONT_9X15,
+        COLOR_TEXT_DIM,
     )?;
 
-    let has_preset = game_state.hero.equipment_presets[preset_index as usize].is_some();
-
-    // Save button
-    Rectangle::new(Point::new(75, 200), Size::new(218, 40))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 80, 100)))
-        .draw(display)?;
-    draw_text(
-        display,
-        "Save Current",
-        Point::new(110, 220),
-        &FONT_9X18_BOLD,
-        Rgb888::WHITE,
-    )?;
-
-    // Load button (grayed out if no preset)
-    let load_color = if has_preset {
-        Rgb888::new(60, 100, 60)
+    // Equipment name with refine level (moved down further)
+    let mut name_str = String::<48>::new();
+    if equipment.refine_level > 0 {
+        write!(name_str, "{} [+{}]", equipment.name, equipment.refine_level).ok();
     } else {
-        Rgb888::new(40, 40, 40)
-    };
-    Rectangle::new(Point::new(75, 250), Size::new(218, 40))
-        .into_styled(PrimitiveStyle::with_fill(load_color))
-        .draw(display)?;
+        write!(name_str, "{}", equipment.name).ok();
+    }
     draw_text(
         display,
-        "Load Preset",
-        Point::new(115, 270),
+        &name_str,
+        Point::new(position.x, position.y + 30),
         &FONT_9X18_BOLD,
-        if has_preset { Rgb888::WHITE } else { Rgb888::new(100, 100, 100) },
+        tier_color,
     )?;
 
-    // Clear button (grayed out if no preset)
-    let clear_color = if has_preset {
-        Rgb888::new(100, 40, 40)
-    } else {
-        Rgb888::new(40, 40, 40)
-    };
-    Rectangle::new(Point::new(75, 300), Size::new(218, 40))
-        .into_styled(PrimitiveStyle::with_fill(clear_color))
-        .draw(display)?;
+    // Stats line 1: ATK/DEF
+    let mut stats_str = String::<32>::new();
+    if equipment.atk_bonus > 0 {
+        write!(stats_str, "ATK: {}", equipment.atk_bonus).ok();
+    } else if equipment.def_bonus > 0 {
+        write!(stats_str, "DEF: {}", equipment.def_bonus).ok();
+    }
+
+    if !stats_str.is_empty() {
+        draw_text(
+            display,
+            &stats_str,
+            Point::new(position.x, position.y + 55),
+            &FONT_9X15,
+            Rgb888::new(150, 150, 150),
+        )?;
+    }
+
+    // Stats line 2: Card slot information
+    let mut slots_str = String::<32>::new();
+    write!(
+        slots_str,
+        "Slots: {}/{}",
+        equipment.card_slots, equipment.max_card_slots
+    )
+    .ok();
     draw_text(
         display,
-        "Clear Preset",
-        Point::new(110, 320),
-        &FONT_9X18_BOLD,
-        if has_preset { Rgb888::WHITE } else { Rgb888::new(100, 100, 100) },
+        &slots_str,
+        Point::new(position.x, position.y + 75),
+        &FONT_9X15,
+        Rgb888::new(150, 150, 150),
     )?;
+
+    // Stats line 3: Refinement level (if refined)
+    if equipment.refine_level > 0 {
+        let mut refine_str = String::<32>::new();
+        write!(refine_str, "+{} Refine", equipment.refine_level).ok();
+        draw_text(
+            display,
+            &refine_str,
+            Point::new(position.x, position.y + 88),
+            &FONT_9X15,
+            Rgb888::new(100, 200, 255),
+        )?;
+    }
 
     Ok(())
 }
@@ -372,7 +303,12 @@ where
 
     // Card slots info
     let mut slots_str = String::<32>::new();
-    write!(slots_str, "Slots: {}/{}", equipment.card_slots, equipment.max_card_slots).ok();
+    write!(
+        slots_str,
+        "Slots: {}/{}",
+        equipment.card_slots, equipment.max_card_slots
+    )
+    .ok();
     draw_text(
         display,
         &slots_str,
@@ -470,7 +406,12 @@ where
             3 => (10, 10000),
             _ => (0, 0),
         };
-        write!(cost_str, "Add Slot (+{} essence, {}z)", essence_cost, zeny_cost).ok();
+        write!(
+            cost_str,
+            "Add Slot (+{} essence, {}z)",
+            essence_cost, zeny_cost
+        )
+        .ok();
         draw_text(
             display,
             &cost_str,
@@ -494,4 +435,3 @@ where
 
     Ok(())
 }
-
