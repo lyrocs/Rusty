@@ -1,7 +1,35 @@
 //! FT3x68 Touch Controller Driver for ESP-IDF
 //!
-//! This is an ESP-IDF compatible port of the ft3x68-rs driver.
-//! Original: https://github.com/theembeddedrustacean/ft3x68-rs
+//! This module provides an ESP-IDF (std) compatible driver for the FT3x68 capacitive touch controller.
+//! It supports multi-touch (up to 2 fingers) and gesture recognition.
+//!
+//! # Hardware Configuration
+//! - Touch Controller: FT3168
+//! - Interface: I2C (address 0x38)
+//! - Reset Control: Via TCA9554 GPIO expander (EXIO2)
+//! - Max Touch Points: 2
+//!
+//! # Features
+//! - Multi-touch coordinate reading
+//! - Gesture recognition (swipe up/down/left/right, double-click)
+//! - Hardware reset via I2C GPIO expander
+//!
+//! # Example
+//! ```no_run
+//! use display::{Ft3x68Driver, FT3168_DEVICE_ADDRESS};
+//!
+//! let mut touch = Ft3x68Driver::new(FT3168_DEVICE_ADDRESS);
+//! touch.initialize(&mut i2c)?;
+//! touch.set_gesture_mode(&mut i2c, true)?;
+//!
+//! if let Ok(touches) = touch.get_touches(&mut i2c) {
+//!     for point in touches {
+//!         println!("Touch at: x={}, y={}", point.x, point.y);
+//!     }
+//! }
+//! ```
+//!
+//! Based on: https://github.com/theembeddedrustacean/ft3x68-rs
 
 use esp_idf_svc::hal::i2c::I2cDriver;
 use std::error::Error;
@@ -11,9 +39,6 @@ use std::time::Duration;
 
 /// FT3168 Device I2C Address
 pub const FT3168_DEVICE_ADDRESS: u8 = 0x38;
-
-/// FT3268 Device I2C Address
-pub const FT3268_DEVICE_ADDRESS: u8 = 0x38;
 
 // Register Addresses
 const FT3X68_RD_DEVICE_GESTUREID: u8 = 0xD3;
@@ -27,23 +52,12 @@ const FT3X68_RD_DEVICE_X2POSL: u8 = 0x0A;
 const FT3X68_RD_DEVICE_Y2POSH: u8 = 0x0B;
 const FT3X68_RD_DEVICE_Y2POSL: u8 = 0x0C;
 const FT3X68_RD_WR_DEVICE_GESTUREID_MODE: u8 = 0xD0;
-const FT3X68_RD_WR_DEVICE_POWER_MODE: u8 = 0xA5;
-const FT3X68_RD_WR_DEVICE_PROXIMITY_SENSING_MODE: u8 = 0xB0;
 const FT3X68_RD_DEVICE_ID: u8 = 0xA0;
 
 /// TCA9554 GPIO expander address for touch reset control
 const TCA9554_ADDRESS: u8 = 0x20;
 const REG_OUTPUT: u8 = 0x01;
 const REG_CONFIG: u8 = 0x03;
-
-/// Power modes for FT3x68
-#[derive(Debug, Clone, Copy)]
-pub enum PowerMode {
-    Active = 0x00,
-    Monitor = 0x01,
-    Standby = 0x02,
-    Hibernate = 0x03,
-}
 
 /// Gesture types
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,14 +94,12 @@ pub struct TouchPoint {
 #[derive(Debug)]
 pub enum TouchError {
     I2cError(String),
-    InvalidData,
 }
 
 impl fmt::Display for TouchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TouchError::I2cError(msg) => write!(f, "I2C Error: {}", msg),
-            TouchError::InvalidData => write!(f, "Invalid data received"),
         }
     }
 }
@@ -164,21 +176,10 @@ impl Ft3x68Driver {
         Ok(())
     }
 
-    /// Set power mode
-    pub fn set_power_mode(&self, i2c: &mut I2cDriver, mode: PowerMode) -> Result<(), TouchError> {
-        self.write_register(i2c, FT3X68_RD_WR_DEVICE_POWER_MODE, mode as u8)
-    }
-
     /// Enable or disable gesture recognition
     pub fn set_gesture_mode(&self, i2c: &mut I2cDriver, enable: bool) -> Result<(), TouchError> {
         let value = if enable { 0x01 } else { 0x00 };
         self.write_register(i2c, FT3X68_RD_WR_DEVICE_GESTUREID_MODE, value)
-    }
-
-    /// Enable or disable proximity sensing
-    pub fn set_proximity_sensing(&self, i2c: &mut I2cDriver, enable: bool) -> Result<(), TouchError> {
-        let value = if enable { 0x01 } else { 0x00 };
-        self.write_register(i2c, FT3X68_RD_WR_DEVICE_PROXIMITY_SENSING_MODE, value)
     }
 
     /// Get number of fingers touching the screen

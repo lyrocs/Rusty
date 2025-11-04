@@ -1,7 +1,37 @@
 //! SH8601 AMOLED Display Driver for ESP-IDF
 //!
-//! This is an ESP-IDF compatible port of the sh8601-rs driver.
-//! Original: https://github.com/theembeddedrustacean/sh8601-rs
+//! This module provides an ESP-IDF (std) compatible driver for the SH8601 AMOLED display controller.
+//! It supports RGB888 color mode and uses QSPI for high-speed pixel data transfer.
+//!
+//! # Hardware Configuration
+//! - Display: Waveshare ESP32-S3-Touch-AMOLED-1.8 (368x448)
+//! - Interface: QSPI (Quad SPI)
+//! - Color Format: RGB888 (24-bit color)
+//! - Framebuffer: Stored in PSRAM
+//!
+//! # Features
+//! - Hardware-accelerated QSPI pixel transfer
+//! - Full embedded-graphics DrawTarget support
+//! - DMA-based chunked transfers for efficient updates
+//!
+//! # Example
+//! ```no_run
+//! use display::{Sh8601Driver, ColorMode};
+//! use embedded_graphics::prelude::*;
+//!
+//! let mut display = Sh8601Driver::new(
+//!     spi_host_device_t_SPI2_HOST,
+//!     12,  // CS pin
+//!     368, // width
+//!     448, // height
+//!     ColorMode::Rgb888
+//! )?;
+//! display.initialize(ColorMode::Rgb888)?;
+//! display.clear(Rgb888::BLACK)?;
+//! display.flush()?;
+//! ```
+//!
+//! Based on: https://github.com/theembeddedrustacean/sh8601-rs
 
 use embedded_graphics::{
     pixelcolor::Rgb888,
@@ -24,7 +54,6 @@ pub mod commands {
     pub const TESCAN: u8 = 0x44;
     pub const TEON: u8 = 0x35;
     pub const PTLAR: u8 = 0x30;
-    pub const WRDISBV: u8 = 0x51;  // Write Display Brightness Value
 }
 
 const QSPI_PIXEL_OPCODE: u8 = 0x32;
@@ -34,6 +63,7 @@ const DMA_CHUNK_SIZE: usize = 16380;
 /// Color modes supported by SH8601
 #[derive(Clone, Copy)]
 pub enum ColorMode {
+    #[allow(dead_code)]
     Rgb565,
     Rgb888,
 }
@@ -211,29 +241,8 @@ impl Sh8601Driver {
         Ok(())
     }
 
-    /// Fill entire framebuffer with a solid color (for testing)
-    pub fn fill_test(&mut self, r: u8, g: u8, b: u8) {
-        for chunk in self.framebuffer.chunks_mut(3) {
-            if chunk.len() == 3 {
-                chunk[0] = r;
-                chunk[1] = g;
-                chunk[2] = b;
-            }
-        }
-    }
-
     /// Flush framebuffer to display using QSPI
     pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // DEBUG: Check first few pixels of framebuffer
-        if self.framebuffer.len() >= 12 {
-            log::info!("Framebuffer first pixels: [{}, {}, {}] [{}, {}, {}] [{}, {}, {}] [{}, {}, {}]",
-                self.framebuffer[0], self.framebuffer[1], self.framebuffer[2],
-                self.framebuffer[3], self.framebuffer[4], self.framebuffer[5],
-                self.framebuffer[6], self.framebuffer[7], self.framebuffer[8],
-                self.framebuffer[9], self.framebuffer[10], self.framebuffer[11]);
-        }
-
-        // Set window using helper method (which uses send_command_with_data)
         self.set_window(0, 0, self.width - 1, self.height - 1)?;
 
         // Send pixels in QSPI quad mode
