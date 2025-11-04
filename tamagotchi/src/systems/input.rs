@@ -844,8 +844,8 @@ fn handle_equipment_info_touch(game_state: &mut GameState, x: u16, y: u16) {
         let equipment = game_state.hero.get_equipment(slot);
         let has_card_slots = equipment.is_some() && equipment.unwrap().card_slots > 0;
 
-        // Switch button: x=20-170, y=350-385
-        if x >= 20 && x <= 170 && y >= 350 && y <= 385 {
+        // Switch button: x=20-185, y=340-385
+        if x >= 20 && x <= 185 && y >= 340 && y <= 385 {
             esp_println::println!("[EQUIPMENT] Switch button clicked in info modal");
             // Open swap menu without closing info modal
             game_state.equipment_swap_slot = Some(slot);
@@ -855,8 +855,8 @@ fn handle_equipment_info_touch(game_state: &mut GameState, x: u16, y: u16) {
             return;
         }
 
-        // Cards button: x=180-330, y=350-385 (only if has card slots)
-        if has_card_slots && x >= 180 && x <= 330 && y >= 350 && y <= 385 {
+        // Cards button: x=195-360, y=340-385 (only if has card slots)
+        if has_card_slots && x >= 195 && x <= 360 && y >= 340 && y <= 385 {
             esp_println::println!("[EQUIPMENT] Cards button clicked in info modal");
             // Close info modal and open card socket menu
             game_state.equipment_info_open = false;
@@ -866,8 +866,8 @@ fn handle_equipment_info_touch(game_state: &mut GameState, x: u16, y: u16) {
             return;
         }
 
-        // Close button: x=110-258, y=395-431
-        if x >= 110 && x <= 258 && y >= 395 && y <= 431 {
+        // Close button: x=110-258, y=395-440
+        if x >= 110 && x <= 258 && y >= 395 && y <= 440 {
             esp_println::println!("[EQUIPMENT] Close button clicked in info modal");
             game_state.equipment_info_open = false;
             game_state.equipment_info_slot = None;
@@ -903,9 +903,9 @@ fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) 
             }
         }
 
-        // Check equipment item clicks (y=60 + i*60, height=55)
-        let start_y = 60;
-        let item_height = 60;
+        // Check equipment item clicks (y=70 + i*70, height=65)
+        let start_y = 70;
+        let item_height = 70;
         let scroll_offset = game_state.equipment_swap_scroll as usize;
 
         for (i, equip_id) in equipment_items
@@ -915,7 +915,7 @@ fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) 
             .enumerate()
         {
             let btn_y = start_y + i as i32 * item_height;
-            if x >= 20 && x <= 348 && y >= btn_y as u16 && y <= (btn_y + 55) as u16 {
+            if x >= 20 && x <= 348 && y >= btn_y as u16 && y <= (btn_y + 65) as u16 {
                 esp_println::println!("[EQUIPMENT] Selected equipment ID {} to swap", equip_id);
                 // Swap equipment
                 if let Err(e) = game_state.hero.swap_equipment(slot, *equip_id) {
@@ -931,8 +931,8 @@ fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) 
             }
         }
 
-        // Cancel button: x=110-258, y=380-416
-        if x >= 110 && x <= 258 && y >= 380 && y <= 416 {
+        // Cancel button: x=110-258, y=390-435
+        if x >= 110 && x <= 258 && y >= 390 && y <= 435 {
             esp_println::println!("[EQUIPMENT] Swap menu cancelled");
             game_state.equipment_swap_menu_open = false;
             game_state.equipment_swap_slot = None;
@@ -941,15 +941,15 @@ fn handle_equipment_swap_menu_touch(game_state: &mut GameState, x: u16, y: u16) 
         }
 
         // Scroll indicators (if applicable)
-        // Scroll up: y < 55
-        if y < 55 && game_state.equipment_swap_scroll > 0 {
+        // Scroll up: y < 65
+        if y < 65 && game_state.equipment_swap_scroll > 0 {
             game_state.equipment_swap_scroll -= 1;
             game_state.needs_redraw = true;
             return;
         }
 
-        // Scroll down: y > 365
-        if y > 365 && equipment_items.len() > (scroll_offset + 5) {
+        // Scroll down: y > 420
+        if y > 420 && equipment_items.len() > (scroll_offset + 5) {
             game_state.equipment_swap_scroll += 1;
             game_state.needs_redraw = true;
             return;

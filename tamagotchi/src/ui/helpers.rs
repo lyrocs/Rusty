@@ -770,30 +770,10 @@ where
 {
     use crate::tamagotchi::models::EquipmentSlot;
 
-    // Fullscreen dark overlay
+    // Fullscreen background with solid color
     Rectangle::new(Point::new(0, 0), Size::new(368, 448))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(10, 10, 20)))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 30, 45)))
         .draw(display)?;
-
-    // Fullscreen panel
-    let panel_x = 10;
-    let panel_y = 10;
-    let panel_width = 348;
-    let panel_height = 428;
-
-    Rectangle::new(
-        Point::new(panel_x, panel_y),
-        Size::new(panel_width, panel_height),
-    )
-    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-    .draw(display)?;
-
-    Rectangle::new(
-        Point::new(panel_x, panel_y),
-        Size::new(panel_width, panel_height),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-    .draw(display)?;
 
     // Title
     let slot_name = match slot {
@@ -806,12 +786,17 @@ where
 
     let mut title_str = String::<48>::new();
     write!(title_str, "SELECT {} TO EQUIP", slot_name).ok();
+
+    Rectangle::new(Point::new(10, 20), Size::new(348, 35))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 30, 60)))
+        .draw(display)?;
+
     draw_text(
         display,
         &title_str,
-        Point::new(30, 30),
+        Point::new(30, 40),
         &FONT_10X20,
-        COLOR_TEXT,
+        Rgb888::new(255, 230, 150),
     )?;
 
     // Get equipment items from inventory that match this slot
@@ -824,30 +809,44 @@ where
     };
 
     // Collect equipment items from inventory
-    let mut equipment_items: heapless::Vec<(u16, &'static str, &'static str), 16> =
+    let mut equipment_items: heapless::Vec<crate::hero::equipment::Equipment, 16> =
         heapless::Vec::new();
     for item in game_state.hero.inventory.iter() {
         // Equipment IDs: 1000-1999 (Weapons), 2000-2999 (Armor), 3000-3999 (Shoes), 4000-4999 (Garment), 5000-5999 (Accessory)
         if item.id >= 1000 && item.id < 6000 {
-            // Get equipment data to check slot
-            if let Some(equip_data) = crate::data::get_equipment_data_by_id(item.id as u16) {
-                if equip_data.slot == slot_str {
-                    equipment_items
-                        .push((item.id as u16, item.name, equip_data.slot))
-                        .ok();
+            // Try to get equipment data - either from JSON or use get_equipment_by_id which handles both
+            if let Some(equip) = crate::data::get_equipment_by_id(item.id as u16) {
+                // Check if the slot matches
+                if equip.slot == slot {
+                    equipment_items.push(equip).ok();
                 }
             }
         }
     }
 
     // Draw equipment list (max 5 visible items with scrolling)
-    let start_y = 60;
-    let item_height = 60;
+    let start_y = 70;
+    let item_height = 70;
     let max_visible = 5;
 
     let scroll_offset = game_state.equipment_swap_scroll as usize;
 
-    for (i, (equip_id, equip_name, _equip_slot)) in equipment_items
+    // Helper function to get tier color
+    let get_tier_color = |level_req: u16| -> Rgb888 {
+        if level_req >= 41 {
+            Rgb888::new(255, 165, 0)
+        } else if level_req >= 31 {
+            Rgb888::new(163, 53, 238)
+        } else if level_req >= 21 {
+            Rgb888::new(64, 156, 255)
+        } else if level_req >= 11 {
+            Rgb888::new(30, 255, 30)
+        } else {
+            Rgb888::new(180, 180, 180)
+        }
+    };
+
+    for (i, equip) in equipment_items
         .iter()
         .skip(scroll_offset)
         .take(max_visible)
@@ -856,35 +855,52 @@ where
         let btn_y = start_y + i as i32 * item_height;
         let btn_x = 20;
         let btn_width = 328u32;
-        let btn_height = 55u32;
+        let btn_height = 65u32;
+
+        let tier_color = get_tier_color(equip.level_req);
 
         // Button background
         Rectangle::new(Point::new(btn_x, btn_y), Size::new(btn_width, btn_height))
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 60, 80)))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 25, 35)))
             .draw(display)?;
 
         Rectangle::new(Point::new(btn_x, btn_y), Size::new(btn_width, btn_height))
-            .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT_DIM, 1))
+            .into_styled(PrimitiveStyle::with_stroke(tier_color, 2))
             .draw(display)?;
 
-        // Equipment name
+        // Equipment name with refine level
+        let mut name_str = String::<48>::new();
+        if equip.refine_level > 0 {
+            write!(name_str, "{} [+{}]", equip.name, equip.refine_level).ok();
+        } else {
+            write!(name_str, "{}", equip.name).ok();
+        }
         draw_text(
             display,
-            equip_name,
+            &name_str,
             Point::new(btn_x + 10, btn_y + 20),
             &FONT_9X18_BOLD,
-            COLOR_TEXT,
+            tier_color,
         )?;
 
-        // Equipment ID (for debugging)
-        let mut id_str = String::<32>::new();
-        write!(id_str, "ID: {}", equip_id).ok();
+        // Equipment stats
+        let mut stats_str = String::<64>::new();
+        if equip.atk_bonus > 0 {
+            write!(stats_str, "ATK:{} | Lv:{} | Slots:{}/{}",
+                   equip.atk_bonus, equip.level_req, equip.card_slots, equip.max_card_slots).ok();
+        } else if equip.def_bonus > 0 {
+            write!(stats_str, "DEF:{} | Lv:{} | Slots:{}/{}",
+                   equip.def_bonus, equip.level_req, equip.card_slots, equip.max_card_slots).ok();
+        } else {
+            write!(stats_str, "Lv:{} | Slots:{}/{}",
+                   equip.level_req, equip.card_slots, equip.max_card_slots).ok();
+        }
         draw_text(
             display,
-            &id_str,
-            Point::new(btn_x + 10, btn_y + 40),
+            &stats_str,
+            Point::new(btn_x + 10, btn_y + 45),
             &FONT_9X15,
-            COLOR_TEXT_DIM,
+            Rgb888::new(150, 150, 150),
         )?;
     }
 
@@ -893,9 +909,9 @@ where
         draw_text(
             display,
             "^ More",
-            Point::new(155, 50),
+            Point::new(155, 60),
             &FONT_9X15,
-            COLOR_TEXT_DIM,
+            Rgb888::new(150, 150, 150),
         )?;
     }
 
@@ -903,9 +919,9 @@ where
         draw_text(
             display,
             "v More",
-            Point::new(155, 365),
+            Point::new(155, 425),
             &FONT_9X15,
-            COLOR_TEXT_DIM,
+            Rgb888::new(150, 150, 150),
         )?;
     }
 
@@ -914,27 +930,23 @@ where
         draw_text(
             display,
             "No equipment in inventory",
-            Point::new(50, 180),
+            Point::new(50, 220),
             &FONT_9X18_BOLD,
             Rgb888::new(150, 150, 150),
         )?;
     }
 
-    // Cancel button at bottom
-    let cancel_btn_y = 380;
-    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 36))
+    // Cancel button at bottom (larger)
+    let cancel_btn_y = 390;
+    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 45))
         .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
-        .draw(display)?;
-
-    Rectangle::new(Point::new(110, cancel_btn_y), Size::new(148, 36))
-        .into_styled(PrimitiveStyle::with_stroke(Rgb888::RED, 2))
         .draw(display)?;
 
     draw_text(
         display,
         "CANCEL",
-        Point::new(140, cancel_btn_y + 22),
-        &FONT_9X18_BOLD,
+        Point::new(135, cancel_btn_y + 28),
+        &FONT_10X20,
         Rgb888::WHITE,
     )?;
 
@@ -962,47 +974,32 @@ where
         EquipmentSlot::Accessory2 => &hero.equipped_accessory2,
     };
 
-    // Fullscreen dark overlay
+    // Fullscreen background with solid color
     Rectangle::new(Point::new(0, 0), Size::new(368, 448))
-        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(10, 10, 20)))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 30, 45)))
         .draw(display)?;
 
-    // Fullscreen panel
-    let panel_x = 10;
-    let panel_y = 10;
-    let panel_width = 348;
-    let panel_height = 428;
-
-    Rectangle::new(
-        Point::new(panel_x, panel_y),
-        Size::new(panel_width, panel_height),
-    )
-    .into_styled(PrimitiveStyle::with_fill(COLOR_PANEL))
-    .draw(display)?;
-
-    Rectangle::new(
-        Point::new(panel_x, panel_y),
-        Size::new(panel_width, panel_height),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(COLOR_TEXT, 2))
-    .draw(display)?;
-
-    // Equipment name with refine level
+    // Equipment name with refine level (with background)
     let mut name_str = String::<48>::new();
     if equipment.refine_level > 0 {
         write!(name_str, "{} [+{}]", equipment.name, equipment.refine_level).ok();
     } else {
         write!(name_str, "{}", equipment.name).ok();
     }
+
+    Rectangle::new(Point::new(10, 20), Size::new(348, 35))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 30, 60)))
+        .draw(display)?;
+
     draw_text(
         display,
         &name_str,
-        Point::new(20, 30),
+        Point::new(20, 40),
         &FONT_10X20,
-        COLOR_TEXT,
+        Rgb888::new(255, 230, 150),
     )?;
 
-    let mut y = 60;
+    let mut y = 70;
 
     // Main stats
     if equipment.atk_bonus > 0 {
@@ -1200,71 +1197,45 @@ where
         }
     }
 
-    // Card slots
-    y += 10;
-    let cards_socketed = equipment
-        .socketed_cards
-        .iter()
-        .filter(|c| c.is_some())
-        .count();
-    let mut card_str = String::<32>::new();
-    write!(
-        card_str,
-        "Cards: {}/{}",
-        cards_socketed, equipment.card_slots
-    )
-    .ok();
-    draw_text(
-        display,
-        &card_str,
-        Point::new(20, y),
-        &FONT_9X18_BOLD,
-        if cards_socketed > 0 {
-            Rgb888::new(100, 200, 100)
-        } else {
-            COLOR_TEXT_DIM
-        },
-    )?;
-
-    // Action buttons at bottom
-    let btn_y = 350;
+    // Action buttons at bottom (larger size)
+    let btn_y = 340;
 
     // Switch button
-    Rectangle::new(Point::new(20, btn_y), Size::new(150, 35))
+    Rectangle::new(Point::new(20, btn_y), Size::new(165, 45))
         .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 120, 60)))
         .draw(display)?;
     draw_text(
         display,
         "Switch",
-        Point::new(60, btn_y + 22),
-        &FONT_9X18_BOLD,
+        Point::new(60, btn_y + 28),
+        &FONT_10X20,
         Rgb888::WHITE,
     )?;
 
     // Cards button (if has card slots)
     if equipment.card_slots > 0 {
-        Rectangle::new(Point::new(180, btn_y), Size::new(150, 35))
+        Rectangle::new(Point::new(195, btn_y), Size::new(165, 45))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 80, 120)))
             .draw(display)?;
         draw_text(
             display,
             "Cards",
-            Point::new(225, btn_y + 22),
-            &FONT_9X18_BOLD,
+            Point::new(240, btn_y + 28),
+            &FONT_10X20,
             Rgb888::WHITE,
         )?;
     }
 
     // Close button
     let close_btn_y = 395;
-    Rectangle::new(Point::new(110, close_btn_y), Size::new(148, 36))
+    Rectangle::new(Point::new(110, close_btn_y), Size::new(148, 45))
         .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
         .draw(display)?;
     draw_text(
         display,
         "Close",
-        Point::new(150, close_btn_y + 22),
-        &FONT_9X18_BOLD,
+        Point::new(150, close_btn_y + 28),
+        &FONT_10X20,
         Rgb888::WHITE,
     )?;
 
