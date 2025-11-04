@@ -16,13 +16,13 @@
 //! let gif_data = include_bytes!("../../assets/80.gif");
 //! let mut player = GifPlayer::new(gif_data)?;
 //!
-//! // Play one frame
-//! player.render_frame(&mut display, 0)?;
+//! // Play one frame centered
+//! player.render_frame(&mut display, 0, None)?;
 //! display.flush()?;
 //!
-//! // Animate
+//! // Animate at fixed position (x=50, y=100)
 //! loop {
-//!     let delay = player.next_frame(&mut display)?;
+//!     let delay = player.next_frame(&mut display, Some((50, 100)))?;
 //!     display.flush()?;
 //!     thread::sleep(delay);
 //! }
@@ -137,12 +137,13 @@ impl GifPlayer {
         (self.gif_width, self.gif_height)
     }
 
-    /// Render a specific frame to the display (centered)
+    /// Render a specific frame to the display
     ///
     /// # Arguments
     /// * `display` - Display driver instance
     /// * `frame_index` - Frame index to render
-    pub fn render_frame(&self, display: &mut Sh8601Driver, frame_index: usize) -> Result<(), Box<dyn Error>> {
+    /// * `position` - Optional (x, y) position for top-left corner. If None, centers the GIF on screen.
+    pub fn render_frame(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>) -> Result<(), Box<dyn Error>> {
         if frame_index >= self.frames.len() {
             return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frames.len()).into());
         }
@@ -150,11 +151,23 @@ impl GifPlayer {
         let frame = &self.frames[frame_index];
         let display_size = display.size();
 
-        // Calculate centered position
-        let offset_x = (display_size.width as i32 - frame.width as i32) / 2 + frame.left as i32;
-        let offset_y = (display_size.height as i32 - frame.height as i32) / 2 + frame.top as i32;
+        // Calculate base position for the overall GIF canvas
+        let (base_x, base_y) = if let Some((x, y)) = position {
+            // Use explicit position as the GIF canvas origin
+            (x, y)
+        } else {
+            // Calculate centered position for the overall GIF canvas
+            let center_x = (display_size.width as i32 - self.gif_width as i32) / 2;
+            let center_y = (display_size.height as i32 - self.gif_height as i32) / 2;
+            (center_x, center_y)
+        };
 
-        // Draw each pixel
+        // Calculate frame position within the GIF canvas
+        // frame.left and frame.top are the frame's offset within the GIF
+        let frame_offset_x = base_x + frame.left as i32;
+        let frame_offset_y = base_y + frame.top as i32;
+
+        // Draw each pixel of the frame
         for y in 0..frame.height {
             for x in 0..frame.width {
                 let pixel_idx = ((y * frame.width + x) * 3) as usize;
@@ -164,8 +177,8 @@ impl GifPlayer {
                     let g = frame.pixels[pixel_idx + 1];
                     let b = frame.pixels[pixel_idx + 2];
 
-                    let px = offset_x + x as i32;
-                    let py = offset_y + y as i32;
+                    let px = frame_offset_x + x as i32;
+                    let py = frame_offset_y + y as i32;
 
                     if px >= 0 && px < display_size.width as i32 &&
                        py >= 0 && py < display_size.height as i32 {
@@ -181,8 +194,12 @@ impl GifPlayer {
 
     /// Advance to the next frame and render it
     ///
+    /// # Arguments
+    /// * `display` - Display driver instance
+    /// * `position` - Optional (x, y) position for top-left corner. If None, centers the GIF on screen.
+    ///
     /// Returns the delay duration for this frame
-    pub fn next_frame(&mut self, display: &mut Sh8601Driver) -> Result<Duration, Box<dyn Error>> {
+    pub fn next_frame(&mut self, display: &mut Sh8601Driver, position: Option<(i32, i32)>) -> Result<Duration, Box<dyn Error>> {
         let frame = &self.frames[self.current_frame];
         let delay = Duration::from_millis(frame.delay_ms as u64);
 
@@ -200,7 +217,7 @@ impl GifPlayer {
             }
         }
 
-        self.render_frame(display, self.current_frame)?;
+        self.render_frame(display, self.current_frame, position)?;
 
         // Advance to next frame
         self.current_frame = (self.current_frame + 1) % self.frames.len();

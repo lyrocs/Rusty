@@ -129,7 +129,7 @@ fn draw_welcome_screen(display: &mut Sh8601Driver) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-/// Play the GIF animation
+/// Play the GIF animation at a fixed position
 fn play_gif_animation(display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Loading GIF animation...");
 
@@ -137,13 +137,20 @@ fn play_gif_animation(display: &mut Sh8601Driver) -> Result<(), Box<dyn std::err
     let (width, height) = player.dimensions();
     log::info!("GIF dimensions: {}x{}, frames: {}", width, height, player.frame_count());
 
+    // Calculate centered position for the GIF
+    let display_size = display.size();
+    let pos_x = (display_size.width as i32 - width as i32) / 2;
+    let pos_y = (display_size.height as i32 - height as i32) / 2;
+
+    log::info!("Rendering GIF at position: ({}, {})", pos_x, pos_y);
+
     // Clear screen before animation
     display.clear(Rgb888::BLACK)?;
 
-    // Play animation loop (3 complete loops)
+    // Play animation loop (3 complete loops) at fixed position
     let total_frames = player.frame_count() * 3;
     for _ in 0..total_frames {
-        let delay = player.next_frame(display)?;
+        let delay = player.next_frame(display, Some((pos_x, pos_y)))?;
         display.flush()?;
         thread::sleep(delay);
     }
