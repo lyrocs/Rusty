@@ -1,6 +1,6 @@
 use embedded_graphics::{
     image::Image,
-    mono_font::ascii::{FONT_9X15, FONT_9X18_BOLD},
+    mono_font::ascii::FONT_9X18_BOLD,
     pixelcolor::Rgb888,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -9,8 +9,6 @@ use tinygif::Gif;
 
 use crate::core::GameState;
 use super::super::helpers::*;
-
-use super::super::colors::*;
 
 // Menu background image
 const MENU_GIF: &[u8] = include_bytes!("../../../assets/images/ui/menu.gif");
