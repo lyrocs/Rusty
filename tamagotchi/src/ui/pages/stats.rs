@@ -19,6 +19,9 @@ use super::super::helpers::*;
 
 use super::super::colors::*;
 
+// Menu background image
+const MENU_GIF: &[u8] = include_bytes!("../../../assets/images/ui/menu.gif");
+
 /// Draw the Stats page for stat allocation
 pub fn draw_stats_page<D>(
     display: &mut D,
@@ -30,46 +33,47 @@ where
     let hero = &game_state.hero;
 
     // Clear background
-    display.clear(COLOR_BG)?;
+    display.clear(Rgb888::new(0, 0, 0))?;
 
-    // Draw farming header if active
-    use crate::ui::farming_header::draw_farming_header;
-    let has_farming_header = draw_farming_header(display, game_state)?;
-    let title_y = if has_farming_header { 40 } else { 20 };
+    // Draw background image (single frame GIF)
+    let menu_gif = Gif::<Rgb888>::from_slice(MENU_GIF).expect("Failed to parse menu GIF");
+    if let Some(frame) = menu_gif.frames().next() {
+        Image::new(&frame, Point::new(0, 0)).draw(display)?;
+    }
 
-    // Title
+    let title_y = 20;
+
+    // Title with background
+    let title_x = 90;
+    Rectangle::new(Point::new(title_x, title_y), Size::new(230, 30))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 30, 60)))
+        .draw(display)?;
     draw_text(
         display,
         "=== STAT POINTS ===",
-        Point::new(50, title_y),
+        Point::new(title_x + 10, title_y + 18),
         &FONT_10X20,
-        COLOR_TEXT,
+        Rgb888::new(255, 230, 150),
     )?;
 
-    // Available stat points
+    // Available stat points with background
     let mut points_str = String::<32>::new();
     write!(points_str, "Available: {}", hero.stat_points).ok();
+    Rectangle::new(Point::new(90, 60), Size::new(180, 30))
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(30, 50, 40)))
+        .draw(display)?;
     draw_text(
         display,
         &points_str,
-        Point::new(90, 50),
+        Point::new(100, 78),
         &FONT_9X18_BOLD,
-        COLOR_EXP,
-    )?;
-
-    // Info text
-    draw_text(
-        display,
-        "Tap to add stat points",
-        Point::new(60, 80),
-        &FONT_9X15,
-        COLOR_TEXT_DIM,
+        Rgb888::new(150, 255, 150),
     )?;
 
     // Stat display and increase buttons (2 columns x 3 rows)
-    let left_x = 20;
-    let right_x = 190;
-    let button_width = 150;
+    let left_x = 15;
+    let right_x = 195;
+    let button_width = 165;
     let button_height = 70;
     let y_positions = [110, 185, 260];
 
