@@ -13,16 +13,24 @@
 //! - Display: 1.8" AMOLED (368x448) via QSPI
 //! - Touch: FT3168 capacitive touch via I2C
 //!
-//! # Gestures
+//! # Controls
+//!
+//! ## Gestures
 //! - Swipe Up: Clear screen
 //! - Swipe Down: Play GIF animation
 //! - Swipe Left: Fill green
 //! - Swipe Right: Fill blue
 //! - Double Click: Reset to welcome screen
 //! - Touch: Draw cyan circles
+//!
+//! ## Buttons
+//! - BOOT (GPIO0): Shows purple screen when pressed
+//! - PWR (EXIO4): Shows yellow screen when pressed
 
 mod display;
+mod buttons;
 
+use buttons::{ButtonEvent, Buttons};
 use display::{ColorMode, Ft3x68Driver, GifPlayer, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
@@ -249,6 +257,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     touch.set_gesture_mode(&mut i2c, true)?;
     log::info!("Touch controller initialized successfully!");
 
+    // Initialize buttons
+    log::info!("Initializing buttons...");
+    let mut buttons = Buttons::new(&mut i2c, peripherals.pins.gpio0)?;
+    log::info!("Buttons initialized successfully!");
+
     // Draw welcome screen
     draw_welcome_screen(&mut display)?;
 
@@ -258,6 +271,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_touch_count = 0u8;
 
     loop {
+        // Poll buttons
+        if let Ok(Some(event)) = buttons.poll(&mut i2c) {
+            match event {
+                ButtonEvent::BootPress => {
+                    log::info!("BOOT button pressed!");
+                    display.clear(Rgb888::new(50, 0, 50))?;
+                    let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+                    Text::new("BOOT pressed", Point::new(10, 30), text_style).draw(&mut display)?;
+                    display.flush()?;
+                }
+                ButtonEvent::BootRelease => {
+                    log::info!("BOOT button released!");
+                    draw_welcome_screen(&mut display)?;
+                }
+                ButtonEvent::PowerPress => {
+                    log::info!("PWR button pressed!");
+                    display.clear(Rgb888::new(50, 50, 0))?;
+                    let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+                    Text::new("PWR pressed", Point::new(10, 30), text_style).draw(&mut display)?;
+                    display.flush()?;
+                }
+                ButtonEvent::PowerRelease => {
+                    log::info!("PWR button released!");
+                    draw_welcome_screen(&mut display)?;
+                }
+            }
+        }
+
+        // Poll touch
         match touch.finger_number(&mut i2c) {
             Ok(count) => {
                 if count > 0 {
@@ -272,6 +314,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(Duration::from_millis(10)); // Poll at 100Hz for responsive buttons
     }
 }
