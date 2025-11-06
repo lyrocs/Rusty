@@ -31,6 +31,9 @@ anyhow = "1.0"
 embedded-graphics = "0.8.1"
 gif = "0.13"
 
+# ECS
+bevy_ecs = { version = "0.15", default-features = false }
+
 # --- Optional Embassy Integration ---
 # esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
 
