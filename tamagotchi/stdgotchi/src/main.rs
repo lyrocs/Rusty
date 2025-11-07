@@ -31,6 +31,7 @@ mod buttons;
 mod display;
 mod ecs;
 mod systems;
+mod ui;
 
 use bevy_ecs::prelude::*;
 use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};

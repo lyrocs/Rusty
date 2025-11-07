@@ -121,4 +121,60 @@ impl StaticImage {
 
         Ok(())
     }
+
+    /// Render a specific region of the image to the display
+    ///
+    /// # Arguments
+    /// * `display` - Display driver instance
+    /// * `position` - (x, y) position for the image's top-left corner
+    /// * `region` - (x, y, width, height) region to render in screen coordinates
+    pub fn render_region(
+        &self,
+        display: &mut Sh8601Driver,
+        position: (i32, i32),
+        region: (i32, i32, u32, u32),
+    ) -> Result<(), Box<dyn Error>> {
+        let display_size = display.size();
+        let (base_x, base_y) = position;
+        let (region_x, region_y, region_width, region_height) = region;
+
+        // Calculate the region in image coordinates
+        let image_x_start = (region_x - base_x).max(0) as u16;
+        let image_y_start = (region_y - base_y).max(0) as u16;
+        let image_x_end = ((region_x + region_width as i32 - base_x).min(self.width as i32)) as u16;
+        let image_y_end = ((region_y + region_height as i32 - base_y).min(self.height as i32)) as u16;
+
+        // Draw pixels only in the specified region
+        for y in image_y_start..image_y_end {
+            for x in image_x_start..image_x_end {
+                let pixel_idx = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
+
+                if pixel_idx + 3 < self.pixels.len() {
+                    let r = self.pixels[pixel_idx];
+                    let g = self.pixels[pixel_idx + 1];
+                    let b = self.pixels[pixel_idx + 2];
+                    let a = self.pixels[pixel_idx + 3];
+
+                    // Skip transparent pixels (alpha < 128)
+                    if a < 128 {
+                        continue;
+                    }
+
+                    let px = base_x + (x as i32);
+                    let py = base_y + (y as i32);
+
+                    // Check if pixel is within the requested region and display bounds
+                    if px >= region_x && px < region_x + region_width as i32 &&
+                       py >= region_y && py < region_y + region_height as i32 &&
+                       px >= 0 && px < display_size.width as i32 &&
+                       py >= 0 && py < display_size.height as i32 {
+                        let point = Point::new(px, py);
+                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(r, g, b))))?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

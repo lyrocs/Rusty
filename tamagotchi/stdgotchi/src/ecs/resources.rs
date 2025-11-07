@@ -4,9 +4,10 @@
 
 use bevy_ecs::prelude::*;
 use esp_idf_svc::hal::gpio::PinDriver;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use crate::display::{Ft3x68Driver, GifPlayer, Sh8601Driver, StaticImage};
+use crate::display::{Ft3x68Driver, Sh8601Driver};
+use crate::ui::page::Page;
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource {
@@ -35,18 +36,9 @@ pub struct ButtonResource {
     pub pwr_debounce: u8,
 }
 
-/// GIF animation state - NonSend because contains GifPlayer with non-Send data
-pub struct GifAnimationState {
-    pub map_image: StaticImage,
-    pub hornet_player: GifPlayer,
-    pub current_frame: u32,
-    pub hornet_frame_index: usize,
-    pub hornet_frame_count: usize,
-    pub total_frames: u32,
-    pub last_frame_time: Instant,
-    pub frame_delay: Duration,
-    pub map_pos: (i32, i32),
-    pub hornet_pos: (i32, i32),
+/// Page resource - NonSend because contains Page trait objects with non-Send data
+pub struct PageResource {
+    pub page: Box<dyn Page>,
 }
 
 /// App state resource

@@ -1,0 +1,10 @@
+//! UI Module
+//!
+//! Page system and reusable drawing utilities.
+
+pub mod page;
+pub mod sprite;
+pub mod pages;
+
+pub use page::{Page, PageManager};
+pub use sprite::{AnimatedSprite, Background};
