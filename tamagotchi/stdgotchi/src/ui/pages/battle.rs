@@ -19,9 +19,8 @@ use std::time::Duration;
 pub struct BattlePage {
     background: Background,
     monsters: Vec<AnimatedSprite>,
-    needs_clear: bool,
     fps: f32,
-    first_draw: bool, // Track if this is the first draw (for optimization)
+    first_draw: bool,
 }
 
 impl BattlePage {
@@ -36,73 +35,9 @@ impl BattlePage {
         Ok(Self {
             background,
             monsters: Vec::new(),
-            needs_clear: true,
             fps: 0.0,
             first_draw: true,
         })
-    }
-
-    /// Add a monster to the battle
-    ///
-    /// # Arguments
-    /// * `monster_data` - GIF data for the monster animation
-    /// * `position` - Position to place the monster
-    /// * `frame_delay` - Time between animation frames
-    /// * `loops` - Number of times to loop (None for infinite)
-    pub fn add_monster(
-        &mut self,
-        monster_data: &[u8],
-        position: (i32, i32),
-        frame_delay: Duration,
-        loops: Option<u32>,
-    ) -> Result<(), Box<dyn Error>> {
-        let sprite = AnimatedSprite::new(monster_data, position, frame_delay, loops)?;
-        log::info!(
-            "Added monster at {:?}: {}x{}, {} frames",
-            position,
-            sprite.dimensions().0,
-            sprite.dimensions().1,
-            sprite.current_frame()
-        );
-        self.monsters.push(sprite);
-        Ok(())
-    }
-
-    /// Add a centered monster (auto-calculates position)
-    ///
-    /// # Arguments
-    /// * `monster_data` - GIF data for the monster animation
-    /// * `frame_delay` - Time between animation frames
-    /// * `loops` - Number of times to loop (None for infinite)
-    pub fn add_centered_monster(
-        &mut self,
-        monster_data: &[u8],
-        frame_delay: Duration,
-        loops: Option<u32>,
-    ) -> Result<(), Box<dyn Error>> {
-        // Create sprite to get dimensions
-        let sprite = AnimatedSprite::new(monster_data, (0, 0), frame_delay, loops)?;
-        let (width, height) = sprite.dimensions();
-
-        // Calculate centered position (assuming 368x448 display)
-        const DISPLAY_WIDTH: i32 = 368;
-        const DISPLAY_HEIGHT: i32 = 448;
-        let x = (DISPLAY_WIDTH - width as i32) / 2;
-        let y = (DISPLAY_HEIGHT - height as i32) / 2;
-
-        // Recreate sprite with correct position
-        let sprite = AnimatedSprite::new(monster_data, (x, y), frame_delay, loops)?;
-
-        log::info!(
-            "Added centered monster at ({}, {}): {}x{}",
-            x,
-            y,
-            width,
-            height
-        );
-
-        self.monsters.push(sprite);
-        Ok(())
     }
 
     /// Add a left-centered monster (positioned in left half of screen)
@@ -183,16 +118,6 @@ impl BattlePage {
         Ok(())
     }
 
-    /// Clear all monsters
-    pub fn clear_monsters(&mut self) {
-        self.monsters.clear();
-    }
-
-    /// Check if all animations are complete
-    pub fn all_animations_complete(&self) -> bool {
-        self.monsters.iter().all(|m| m.is_complete())
-    }
-
     /// Set FPS for display
     pub fn set_fps(&mut self, fps: f32) {
         self.fps = fps;
@@ -269,16 +194,11 @@ impl Page for BattlePage {
 
     fn on_enter(&mut self) {
         log::info!("Entering battle page");
-        self.needs_clear = true;
         self.first_draw = true; // Force full redraw when entering
     }
 
     fn on_exit(&mut self) {
         log::info!("Exiting battle page");
-    }
-
-    fn needs_clear(&self) -> bool {
-        self.needs_clear
     }
 
     fn mark_dirty(&mut self) {

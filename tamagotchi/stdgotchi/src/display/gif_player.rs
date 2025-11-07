@@ -33,7 +33,6 @@ use embedded_graphics::pixelcolor::Rgb888;
 use gif::{ColorOutput, DisposalMethod};
 use std::error::Error;
 use std::io::Cursor;
-use std::time::Duration;
 
 use super::Sh8601Driver;
 
@@ -59,7 +58,6 @@ pub struct GifFrame {
 /// GIF animation player
 pub struct GifPlayer {
     frames: Vec<GifFrame>,
-    current_frame: usize,
     gif_width: u16,
     gif_height: u16,
 }
@@ -179,7 +177,6 @@ impl GifPlayer {
 
         Ok(Self {
             frames,
-            current_frame: 0,
             gif_width,
             gif_height,
         })
@@ -193,55 +190,6 @@ impl GifPlayer {
     /// Get the GIF dimensions
     pub fn dimensions(&self) -> (u16, u16) {
         (self.gif_width, self.gif_height)
-    }
-
-    /// Render a specific frame to the display, ignoring internal frame offsets
-    ///
-    /// # Arguments
-    /// * `display` - Display driver instance
-    /// * `frame_index` - Frame index to render
-    /// * `position` - Position (x, y) for the frame's top-left corner
-    pub fn render_frame_absolute(&self, display: &mut Sh8601Driver, frame_index: usize, position: (i32, i32)) -> Result<(), Box<dyn Error>> {
-        if frame_index >= self.frames.len() {
-            return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frames.len()).into());
-        }
-
-        let frame = &self.frames[frame_index];
-        let display_size = display.size();
-
-        // Use position directly, ignore frame.left and frame.top offsets
-        let frame_offset_x = position.0;
-        let frame_offset_y = position.1;
-
-        // Draw each pixel of the frame
-        for y in 0..frame.height {
-            for x in 0..frame.width {
-                let pixel_idx = ((y * frame.width + x) * 4) as usize;
-
-                if pixel_idx + 3 < frame.pixels.len() {
-                    let r = frame.pixels[pixel_idx];
-                    let g = frame.pixels[pixel_idx + 1];
-                    let b = frame.pixels[pixel_idx + 2];
-                    let a = frame.pixels[pixel_idx + 3];
-
-                    // Skip transparent pixels (alpha < 128)
-                    if a < 128 {
-                        continue;
-                    }
-
-                    let px = frame_offset_x + x as i32;
-                    let py = frame_offset_y + y as i32;
-
-                    if px >= 0 && px < display_size.width as i32 &&
-                       py >= 0 && py < display_size.height as i32 {
-                        let point = Point::new(px, py);
-                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(r, g, b))))?;
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     /// Render a specific frame to the display
@@ -305,48 +253,4 @@ impl GifPlayer {
         Ok(())
     }
 
-    /// Advance to the next frame and render it
-    ///
-    /// # Arguments
-    /// * `display` - Display driver instance
-    /// * `position` - Optional (x, y) position for top-left corner. If None, centers the GIF on screen.
-    ///
-    /// Returns the delay duration for this frame
-    pub fn next_frame(&mut self, display: &mut Sh8601Driver, position: Option<(i32, i32)>) -> Result<Duration, Box<dyn Error>> {
-        let frame = &self.frames[self.current_frame];
-        let delay = Duration::from_millis(frame.delay_ms as u64);
-
-        // Handle disposal method
-        match frame.disposal {
-            DisposalMethod::Background => {
-                // Clear to background color (black)
-                display.clear(Rgb888::BLACK)?;
-            }
-            DisposalMethod::Previous => {
-                // Keep previous frame (don't clear)
-            }
-            _ => {
-                // Any/None - don't dispose
-            }
-        }
-
-        self.render_frame(display, self.current_frame, position)?;
-
-        // Advance to next frame
-        self.current_frame = (self.current_frame + 1) % self.frames.len();
-
-        Ok(delay)
-    }
-
-    /// Reset animation to first frame
-    #[allow(dead_code)]
-    pub fn reset(&mut self) {
-        self.current_frame = 0;
-    }
-
-    /// Get current frame index
-    #[allow(dead_code)]
-    pub fn current_frame_index(&self) -> usize {
-        self.current_frame
-    }
 }

@@ -77,11 +77,6 @@ impl StaticImage {
         })
     }
 
-    /// Get the image dimensions
-    pub fn dimensions(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-
     /// Render the image to the display at a specific position
     ///
     /// # Arguments

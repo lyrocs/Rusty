@@ -18,11 +18,6 @@ impl Background {
         Ok(Self { image, position })
     }
 
-    /// Get dimensions
-    pub fn dimensions(&self) -> (u16, u16) {
-        self.image.dimensions()
-    }
-
     /// Draw the background
     pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
         self.image.render(display, self.position)
@@ -39,11 +34,6 @@ impl Background {
         region: (i32, i32, u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.image.render_region(display, self.position, region)
-    }
-
-    /// Set position
-    pub fn set_position(&mut self, position: (i32, i32)) {
-        self.position = position;
     }
 }
 
@@ -127,36 +117,5 @@ impl AnimatedSprite {
     /// Draw the current frame
     pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
         self.player.render_frame(display, self.current_frame, Some(self.position))
-    }
-
-    /// Reset animation to beginning
-    pub fn reset(&mut self) {
-        self.current_frame = 0;
-        self.current_loop = 0;
-        self.last_frame_time = Instant::now();
-    }
-
-    /// Set position
-    pub fn set_position(&mut self, position: (i32, i32)) {
-        self.position = position;
-    }
-
-    /// Check if animation is complete
-    pub fn is_complete(&self) -> bool {
-        if let Some(max_loops) = self.loops {
-            self.current_loop >= max_loops
-        } else {
-            false // Infinite loop never completes
-        }
-    }
-
-    /// Get current frame index
-    pub fn current_frame(&self) -> usize {
-        self.current_frame
-    }
-
-    /// Get current loop number
-    pub fn current_loop(&self) -> u32 {
-        self.current_loop
     }
 }
