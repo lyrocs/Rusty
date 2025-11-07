@@ -1,0 +1,110 @@
+[
+  {
+    "id": 909,
+    "name": "Jellopy",
+    "type": "material",
+    "tier": 1,
+    "description": "Basic slime material from Porings",
+    "stack_limit": 999,
+    "sell_price": 5
+  },
+  {
+    "id": 938,
+    "name": "Sticky Mucus",
+    "type": "material",
+    "tier": 1,
+    "description": "Uncommon slime material with adhesive properties",
+    "stack_limit": 999,
+    "sell_price": 15
+  },
+  {
+    "id": 911,
+    "name": "Poring Essence",
+    "type": "material",
+    "tier": 1,
+    "description": "Rare essence used for card slot upgrades",
+    "stack_limit": 99,
+    "sell_price": 100
+  },
+  {
+    "id": 914,
+    "name": "Fluff",
+    "type": "material",
+    "tier": 1,
+    "description": "Soft material from Fabres, used for cloth armor",
+    "stack_limit": 999,
+    "sell_price": 5
+  },
+  {
+    "id": 915,
+    "name": "Spider Silk",
+    "type": "material",
+    "tier": 1,
+    "description": "Strong, flexible thread for AGI equipment",
+    "stack_limit": 999,
+    "sell_price": 20
+  },
+  {
+    "id": 916,
+    "name": "Fabre Essence",
+    "type": "material",
+    "tier": 1,
+    "description": "Rare essence used for card slot upgrades",
+    "stack_limit": 99,
+    "sell_price": 100
+  },
+  {
+    "id": 939,
+    "name": "Bee Sting",
+    "type": "material",
+    "tier": 1,
+    "description": "Sharp stinger from Hornets, used for weapons",
+    "stack_limit": 999,
+    "sell_price": 8
+  },
+  {
+    "id": 940,
+    "name": "Royal Jelly",
+    "type": "material",
+    "tier": 1,
+    "description": "Nutritious jelly that enhances vitality",
+    "stack_limit": 999,
+    "sell_price": 25
+  },
+  {
+    "id": 941,
+    "name": "Hornet Essence",
+    "type": "material",
+    "tier": 1,
+    "description": "Rare essence used for card slot upgrades",
+    "stack_limit": 99,
+    "sell_price": 100
+  },
+  {
+    "id": 955,
+    "name": "Worm Peeling",
+    "type": "material",
+    "tier": 2,
+    "description": "Shed skin from Thief Bugs",
+    "stack_limit": 999,
+    "sell_price": 10
+  },
+  {
+    "id": 956,
+    "name": "Chitin Shell",
+    "type": "material",
+    "tier": 2,
+    "description": "Hard shell material for T2 armor",
+    "stack_limit": 999,
+    "sell_price": 30
+  },
+  {
+    "id": 957,
+    "name": "Bug Essence",
+    "type": "material",
+    "tier": 2,
+    "description": "Rare essence used for T2 card slot upgrades",
+    "stack_limit": 99,
+    "sell_price": 200
+  }
+]

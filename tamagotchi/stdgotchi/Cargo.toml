@@ -34,6 +34,9 @@ gif = "0.13"
 # ECS
 bevy_ecs = { version = "0.15", default-features = false }
 
+# Utilities
+heapless = "0.8"
+
 # --- Optional Embassy Integration ---
 # esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
 

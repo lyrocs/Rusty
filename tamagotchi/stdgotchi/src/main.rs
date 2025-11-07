@@ -44,7 +44,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{button_system, render_system, touch_system};
+use systems::{animation_cleanup_system, animation_init_system, button_system, fps_system, render_system, touch_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -179,8 +179,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     world.insert_non_send_resource(i2c);
 
     // Create schedule and add systems
+    // Order: FPS tracking → Input → Animation init → Render → Animation cleanup
     let mut schedule = Schedule::default();
-    schedule.add_systems((button_system::<Gpio0>, touch_system, render_system));
+    schedule.add_systems((
+        fps_system,
+        button_system::<Gpio0>,
+        touch_system,
+        animation_init_system,
+        render_system,
+        animation_cleanup_system,
+    ));
 
     log::info!("stdgotchi ready! ECS initialized. Touch the screen to draw...");
 

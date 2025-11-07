@@ -77,7 +77,18 @@ impl GifPlayer {
         let gif_width = decoder.width();
         let gif_height = decoder.height();
 
-        log::info!("Loading GIF: {}x{}", gif_width, gif_height);
+        // Get the proper buffer size needed by the decoder
+        let buffer_size = decoder.buffer_size();
+
+        // Calculate canvas size with proper usize casting to prevent overflow
+        let canvas_size = (gif_width as usize) * (gif_height as usize) * 4;
+        log::info!(
+            "Loading GIF: {}x{}, decoder buffer: {} bytes, canvas: {} bytes",
+            gif_width, gif_height, buffer_size, canvas_size
+        );
+
+        // Pre-allocate a full-size canvas buffer for frame composition
+        let mut canvas = vec![0u8; canvas_size];
 
         let mut frames = Vec::new();
 
@@ -89,28 +100,75 @@ impl GifPlayer {
             let width = frame.width;
             let height = frame.height;
             let disposal = frame.dispose;
+            let interlaced = frame.interlaced;
 
-            // Convert RGBA to RGB888
-            let mut pixels = Vec::with_capacity((width * height * 3) as usize);
-            for chunk in frame.buffer.chunks(4) {
-                pixels.push(chunk[0]); // R
-                pixels.push(chunk[1]); // G
-                pixels.push(chunk[2]); // B
-                // Ignore alpha channel (chunk[3])
+            if interlaced {
+                log::warn!("Frame {} is interlaced! This may cause display issues.", frames.len() + 1);
             }
 
+            // Handle disposal method before compositing new frame
+            match disposal {
+                DisposalMethod::Background => {
+                    // Clear canvas to transparent
+                    canvas.fill(0);
+                }
+                DisposalMethod::Previous => {
+                    // Keep previous canvas (do nothing, we'll composite on top)
+                }
+                _ => {
+                    // Any/None - keep previous canvas
+                }
+            }
+
+            // Composite this frame onto the canvas at (left, top)
+            let frame_buffer_size = frame.buffer.len();
+            let expected_frame_size = (width as usize) * (height as usize) * 4;
+
+            log::info!(
+                "Frame {}: {}x{} at ({},{}) | interlaced:{} | buffer:{} bytes (expected:{})",
+                frames.len() + 1, width, height, left, top, interlaced, frame_buffer_size, expected_frame_size
+            );
+
+            if frame_buffer_size == 0 {
+                log::error!("Frame {} has empty buffer! Skipping...", frames.len() + 1);
+                continue;
+            }
+
+            if frame_buffer_size != expected_frame_size {
+                log::warn!(
+                    "Frame {} buffer size mismatch: got {} bytes, expected {} bytes",
+                    frames.len() + 1, frame_buffer_size, expected_frame_size
+                );
+            }
+
+            // Copy frame pixels onto canvas at the correct position
+            for y in 0..height {
+                for x in 0..width {
+                    let frame_idx = ((y as usize) * (width as usize) + (x as usize)) * 4;
+                    if frame_idx + 3 < frame.buffer.len() {
+                        let canvas_x = left + x;
+                        let canvas_y = top + y;
+                        if canvas_x < gif_width && canvas_y < gif_height {
+                            let canvas_idx = ((canvas_y as usize) * (gif_width as usize) + (canvas_x as usize)) * 4;
+                            canvas[canvas_idx] = frame.buffer[frame_idx];         // R
+                            canvas[canvas_idx + 1] = frame.buffer[frame_idx + 1]; // G
+                            canvas[canvas_idx + 2] = frame.buffer[frame_idx + 2]; // B
+                            canvas[canvas_idx + 3] = frame.buffer[frame_idx + 3]; // A
+                        }
+                    }
+                }
+            }
+
+            // Store the full canvas for this frame (using gif_width x gif_height)
             frames.push(GifFrame {
-                pixels,
-                width,
-                height,
+                pixels: canvas.clone(),
+                width: gif_width,
+                height: gif_height,
                 delay_ms: if delay_ms > 0 { delay_ms } else { 100 }, // Default 100ms
-                left,
-                top,
+                left: 0,    // Frame is now the full canvas, no offset
+                top: 0,     // Frame is now the full canvas, no offset
                 disposal,
             });
-
-            log::debug!("Loaded frame {}: {}x{} at ({}, {}), delay={}ms",
-                       frames.len(), width, height, left, top, delay_ms);
         }
 
         log::info!("Loaded {} frames", frames.len());
@@ -135,6 +193,55 @@ impl GifPlayer {
     /// Get the GIF dimensions
     pub fn dimensions(&self) -> (u16, u16) {
         (self.gif_width, self.gif_height)
+    }
+
+    /// Render a specific frame to the display, ignoring internal frame offsets
+    ///
+    /// # Arguments
+    /// * `display` - Display driver instance
+    /// * `frame_index` - Frame index to render
+    /// * `position` - Position (x, y) for the frame's top-left corner
+    pub fn render_frame_absolute(&self, display: &mut Sh8601Driver, frame_index: usize, position: (i32, i32)) -> Result<(), Box<dyn Error>> {
+        if frame_index >= self.frames.len() {
+            return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frames.len()).into());
+        }
+
+        let frame = &self.frames[frame_index];
+        let display_size = display.size();
+
+        // Use position directly, ignore frame.left and frame.top offsets
+        let frame_offset_x = position.0;
+        let frame_offset_y = position.1;
+
+        // Draw each pixel of the frame
+        for y in 0..frame.height {
+            for x in 0..frame.width {
+                let pixel_idx = ((y * frame.width + x) * 4) as usize;
+
+                if pixel_idx + 3 < frame.pixels.len() {
+                    let r = frame.pixels[pixel_idx];
+                    let g = frame.pixels[pixel_idx + 1];
+                    let b = frame.pixels[pixel_idx + 2];
+                    let a = frame.pixels[pixel_idx + 3];
+
+                    // Skip transparent pixels (alpha < 128)
+                    if a < 128 {
+                        continue;
+                    }
+
+                    let px = frame_offset_x + x as i32;
+                    let py = frame_offset_y + y as i32;
+
+                    if px >= 0 && px < display_size.width as i32 &&
+                       py >= 0 && py < display_size.height as i32 {
+                        let point = Point::new(px, py);
+                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(r, g, b))))?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Render a specific frame to the display
@@ -170,12 +277,18 @@ impl GifPlayer {
         // Draw each pixel of the frame
         for y in 0..frame.height {
             for x in 0..frame.width {
-                let pixel_idx = ((y * frame.width + x) * 3) as usize;
+                let pixel_idx = ((y * frame.width + x) * 4) as usize;
 
-                if pixel_idx + 2 < frame.pixels.len() {
+                if pixel_idx + 3 < frame.pixels.len() {
                     let r = frame.pixels[pixel_idx];
                     let g = frame.pixels[pixel_idx + 1];
                     let b = frame.pixels[pixel_idx + 2];
+                    let a = frame.pixels[pixel_idx + 3];
+
+                    // Skip transparent pixels (alpha < 128)
+                    if a < 128 {
+                        continue;
+                    }
 
                     let px = frame_offset_x + x as i32;
                     let py = frame_offset_y + y as i32;

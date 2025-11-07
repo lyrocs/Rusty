@@ -1,0 +1,164 @@
+[
+  {
+    "id": 1,
+    "name": "Bash",
+    "sp_cost": 8,
+    "skill_type": "Physical",
+    "power": 150,
+    "job_req": "Swordman",
+    "description": "Powerful strike dealing 150% ATK damage"
+  },
+  {
+    "id": 2,
+    "name": "Provoke",
+    "sp_cost": 5,
+    "skill_type": "Debuff",
+    "power": 0,
+    "job_req": "Swordman",
+    "description": "Reduce enemy DEF by 30% for 3 turns"
+  },
+  {
+    "id": 3,
+    "name": "Magnum Break",
+    "sp_cost": 15,
+    "skill_type": "Physical",
+    "power": 120,
+    "job_req": "Swordman",
+    "description": "Explosive attack dealing 120% ATK damage"
+  },
+  {
+    "id": 10,
+    "name": "Fire Bolt",
+    "sp_cost": 12,
+    "skill_type": "Magic",
+    "power": 200,
+    "job_req": "Mage",
+    "description": "Fire magic dealing INT x2 damage"
+  },
+  {
+    "id": 11,
+    "name": "Cold Bolt",
+    "sp_cost": 12,
+    "skill_type": "Magic",
+    "power": 180,
+    "job_req": "Mage",
+    "description": "Ice magic dealing INT x1.8 damage"
+  },
+  {
+    "id": 12,
+    "name": "Lightning Bolt",
+    "sp_cost": 12,
+    "skill_type": "Magic",
+    "power": 220,
+    "job_req": "Mage",
+    "description": "Thunder magic dealing INT x2.2 damage"
+  },
+  {
+    "id": 20,
+    "name": "Double Strafe",
+    "sp_cost": 10,
+    "skill_type": "Physical",
+    "power": 100,
+    "job_req": "Archer",
+    "description": "Strike twice with 100% ATK each"
+  },
+  {
+    "id": 21,
+    "name": "Arrow Shower",
+    "sp_cost": 15,
+    "skill_type": "Physical",
+    "power": 80,
+    "job_req": "Archer",
+    "description": "Area attack dealing 80% ATK damage"
+  },
+  {
+    "id": 22,
+    "name": "Concentration",
+    "sp_cost": 8,
+    "skill_type": "Buff",
+    "power": 0,
+    "job_req": "Archer",
+    "description": "Increase AGI by 30% for 3 turns"
+  },
+  {
+    "id": 30,
+    "name": "Steal",
+    "sp_cost": 10,
+    "skill_type": "Utility",
+    "power": 0,
+    "job_req": "Thief",
+    "description": "Steal 10-50 Zeny from enemy"
+  },
+  {
+    "id": 31,
+    "name": "Hiding",
+    "sp_cost": 12,
+    "skill_type": "Utility",
+    "power": 80,
+    "job_req": "Thief",
+    "description": "Dodge next attack and counter"
+  },
+  {
+    "id": 32,
+    "name": "Envenom",
+    "sp_cost": 15,
+    "skill_type": "Physical",
+    "power": 120,
+    "job_req": "Thief",
+    "description": "Poison attack dealing 120% ATK + DoT"
+  },
+  {
+    "id": 40,
+    "name": "Heal",
+    "sp_cost": 13,
+    "skill_type": "Healing",
+    "power": 300,
+    "job_req": "Acolyte",
+    "description": "Restore HP based on INT x3"
+  },
+  {
+    "id": 41,
+    "name": "Blessing",
+    "sp_cost": 10,
+    "skill_type": "Buff",
+    "power": 0,
+    "job_req": "Acolyte",
+    "description": "Increase ATK and DEF by 20% for 4 turns"
+  },
+  {
+    "id": 42,
+    "name": "Divine Protect",
+    "sp_cost": 12,
+    "skill_type": "Buff",
+    "power": 0,
+    "job_req": "Acolyte",
+    "description": "Increase DEF by 40% for 2 turns"
+  },
+  {
+    "id": 50,
+    "name": "Mammonite",
+    "sp_cost": 8,
+    "skill_type": "Physical",
+    "power": 180,
+    "job_req": "Merchant",
+    "description": "Spend Zeny for 180% ATK damage"
+  },
+  {
+    "id": 51,
+    "name": "Discount",
+    "sp_cost": 5,
+    "skill_type": "Utility",
+    "power": 0,
+    "job_req": "Merchant",
+    "description": "Steal 20-100 Zeny from enemy"
+  },
+  {
+    "id": 52,
+    "name": "Loud Exclaim",
+    "sp_cost": 8,
+    "skill_type": "Buff",
+    "power": 0,
+    "job_req": "Merchant",
+    "description": "Increase ATK by 25% for 3 turns"
+  }
+]

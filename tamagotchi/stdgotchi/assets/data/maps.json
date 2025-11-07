@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "name": "Prontera",
+    "south": 2,
+    "east": 5,
+    "west": 3,
+    "enemies": [],
+    "npcs": [1001, 1002, 1003, 1004, 1005]
+  },
+  {
+    "id": 2,
+    "name": "Prontera South",
+    "north": 1,
+    "enemies": [1002, 1007]
+  },
+  {
+    "id": 3,
+    "name": "Prontera West",
+    "east": 1,
+    "enemies": [1004, 1051]
+  },
+  {
+    "id": 5,
+    "name": "Prontera East",
+    "west": 1,
+    "enemies": [1007]
+  }
+]
