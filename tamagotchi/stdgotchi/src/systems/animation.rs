@@ -3,16 +3,22 @@
 //! Handles initialization and cleanup of page-based animation.
 
 use bevy_ecs::prelude::*;
+use embedded_graphics::pixelcolor::Rgb888;
 use log::info;
-use std::time::Duration;
 
 use crate::ecs::resources::{AppMode, AppState, PageResource};
 use crate::ui::pages::BattlePage;
+use crate::ui::pages::battle::EnemyType;
 
 /// Embedded GIF animation data
+
+// Map background
 const MAP_GIF_DATA: &[u8] = include_bytes!("../../assets/images/map/1.gif");
-const HORNET_GIF_DATA: &[u8] = include_bytes!("../../assets/images/hornet/38.gif");
-const HERO_GIF_DATA: &[u8] = include_bytes!("../../assets/images/novice/80.gif");
+
+// Hero animations (Novice) - load upfront since hero is always present
+const HERO_IDLE: &[u8] = include_bytes!("../../assets/images/novice/80.gif");
+const HERO_ATTACK: &[u8] = include_bytes!("../../assets/images/novice/32.gif");
+const HERO_ATTACKED: &[u8] = include_bytes!("../../assets/images/novice/16.gif");
 
 /// System to initialize page when entering GifPlaying mode
 pub fn animation_init_system(world: &mut World) {
@@ -27,34 +33,49 @@ pub fn animation_init_system(world: &mut World) {
     if current_mode == AppMode::GifPlaying && !has_page {
         info!("Initializing battle page...");
 
-        // Create battle page with map background
-        let mut battle_page = match BattlePage::new(MAP_GIF_DATA, (-8, 0)) {
+        // Create battle page with map background (384x384 centered on 368x448 display)
+        let mut battle_page = match BattlePage::new_with_background(MAP_GIF_DATA, (-8, 32)) {
             Ok(page) => page,
             Err(e) => {
-                log::error!("Failed to create battle page: {:?}", e);
-                return;
+                log::error!("Failed to load map background: {:?}", e);
+                log::info!("Falling back to solid color background");
+                BattlePage::new(Rgb888::new(20, 60, 20))
             }
         };
 
-        // Add left-centered hornet monster with 20ms frame delay (50 FPS), infinite loops
-        if let Err(e) = battle_page.add_left_centered_monster(
-            HORNET_GIF_DATA,
-            Duration::from_millis(20),
-            None, // Infinite loops
-        ) {
-            log::error!("Failed to add hornet monster: {:?}", e);
-            return;
-        }
+        // Calculate positions
+        const DISPLAY_WIDTH: i32 = 368;
+        const DISPLAY_HEIGHT: i32 = 448;
+        const HALF_WIDTH: i32 = DISPLAY_WIDTH / 2;
 
-        // Add right-centered hero with 20ms frame delay (50 FPS), infinite loops
-        if let Err(e) = battle_page.add_right_centered_monster(
-            HERO_GIF_DATA,
-            Duration::from_millis(20),
-            None, // Infinite loops
+        // Add hero on the right side
+        let hero_x = HALF_WIDTH + HALF_WIDTH / 2;
+        let hero_y = DISPLAY_HEIGHT / 2;
+
+        if let Err(e) = battle_page.add_hero(
+            HERO_IDLE,
+            HERO_ATTACK,
+            HERO_ATTACKED,
+            (hero_x, hero_y),
         ) {
             log::error!("Failed to add hero: {:?}", e);
             return;
         }
+
+        // Add first enemy (Hornet) on the left side
+        let enemy_x = HALF_WIDTH / 2;
+        let enemy_y = DISPLAY_HEIGHT / 2;
+
+        if let Err(e) = battle_page.add_enemy(EnemyType::Hornet, (enemy_x, enemy_y)) {
+            log::error!("Failed to add hornet enemy: {:?}", e);
+            return;
+        }
+
+        // Add more enemy types to the respawn pool (not loaded until needed)
+        battle_page.add_enemy_type_to_pool(EnemyType::Poring);
+        battle_page.add_enemy_type_to_pool(EnemyType::Fabre);
+
+        log::info!("Battle system initialized with hero and enemy types");
 
         // Create page resource
         let page_resource = PageResource {

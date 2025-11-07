@@ -118,4 +118,20 @@ impl AnimatedSprite {
     pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
         self.player.render_frame(display, self.current_frame, Some(self.position))
     }
+
+    /// Reset animation to beginning
+    pub fn reset_animation(&mut self) {
+        self.current_frame = 0;
+        self.current_loop = 0;
+        self.last_frame_time = Instant::now();
+    }
+
+    /// Check if animation has completed all loops
+    pub fn is_animation_complete(&self) -> bool {
+        if let Some(max_loops) = self.loops {
+            self.current_loop >= max_loops
+        } else {
+            false // Infinite loop never completes
+        }
+    }
 }
