@@ -38,15 +38,49 @@ pub struct ButtonResource {
     pub pwr_debounce: u8,
 }
 
+/// Shared I2C resource - provides access to the static I2C driver
+/// NonSend because I2C operations are not thread-safe
+pub struct SharedI2cResource;
+
+impl SharedI2cResource {
+    /// Get mutable access to the shared I2C driver
+    /// SAFETY: Safe to call in single-threaded ECS context
+    pub fn get(&self) -> Option<&'static mut esp_idf_svc::hal::i2c::I2cDriver<'static>> {
+        unsafe { crate::drivers::sd_cs_pin::get_shared_i2c() }
+    }
+}
+
 /// Page resource - NonSend because contains Page trait objects with non-Send data
 pub struct PageResource {
     pub page: Box<dyn Page>,
 }
 
 /// SD card resource for save/load
-pub struct SdCardResource {
-    pub sd_card: crate::sdcard::SdCard,
-    pub save_path: String,
+/// Generic wrapper to allow any SD card implementation
+pub struct SdCardWrapper {
+    sd_ops: Box<dyn crate::sdcard::SdCardOps>,
+}
+
+impl SdCardWrapper {
+    pub fn new(sd_ops: Box<dyn crate::sdcard::SdCardOps>) -> Self {
+        Self { sd_ops }
+    }
+
+    pub fn is_mounted(&self) -> bool {
+        self.sd_ops.is_mounted()
+    }
+
+    pub fn save_to_file(&mut self, filename: &str, data: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.sd_ops.save_to_file(filename, data)
+    }
+
+    pub fn load_from_file(&mut self, filename: &str) -> Result<String, Box<dyn std::error::Error>> {
+        self.sd_ops.load_from_file(filename)
+    }
+
+    pub fn file_exists(&mut self, filename: &str) -> bool {
+        self.sd_ops.file_exists(filename)
+    }
 }
 
 /// Game manager - Manages pages and game state
@@ -121,7 +155,7 @@ impl GameManager {
     }
 
     /// Save game state to SD card
-    pub fn save_to_sd(&mut self, sd_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_to_sd(&mut self, sd_card: &mut SdCardWrapper, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Update total play time
         let session_duration = self.session_start.elapsed().as_secs();
         self.play_time_seconds += session_duration;
@@ -136,20 +170,40 @@ impl GameManager {
             self.play_time_seconds,
         );
 
-        // Save to file
-        save_data.save_to_file(sd_path)?;
-        log::info!("Game saved to {}", sd_path);
+        // Serialize to JSON
+        let json = save_data.to_json()?;
+
+        // Save to SD card
+        sd_card.save_to_file(filename, &json)?;
+        log::info!("Game saved to {}", filename);
         Ok(())
     }
 
     /// Auto-save game state (called after important events)
-    pub fn auto_save(&mut self, sd_mounted: bool, sd_path: &str) {
-        if !sd_mounted {
+    pub fn auto_save(&mut self, sd_card: &mut Option<&mut SdCardWrapper>, filename: &str) {
+        // Sync battle state before saving
+        self.sync_battle_state();
+
+        let Some(sd_card) = sd_card else {
+            return;
+        };
+
+        if !sd_card.is_mounted() {
             return;
         }
 
-        if let Err(e) = self.save_to_sd(sd_path) {
+        if let Err(e) = self.save_to_sd(sd_card, filename) {
             log::error!("Auto-save failed: {:?}", e);
+        }
+    }
+
+    /// Sync hero and kill tracker from battle page back to GameManager
+    /// This ensures battle progress is saved
+    pub fn sync_battle_state(&mut self) {
+        if let Some(ref battle_page) = self.battle_page {
+            self.hero = battle_page.get_hero().clone();
+            self.kill_tracker = battle_page.get_kill_tracker().clone();
+            log::debug!("Synced battle state: Hero Lv{}, {} EXP", self.hero.level, self.hero.exp);
         }
     }
 }

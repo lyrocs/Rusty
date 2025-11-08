@@ -84,6 +84,8 @@ impl SaveData {
     /// Save to file
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn Error>> {
         let json = self.to_json()?;
+
+        // Write directly to file (no directory creation needed for simple filenames)
         fs::write(path, json)?;
         log::info!("Game saved successfully");
         Ok(())

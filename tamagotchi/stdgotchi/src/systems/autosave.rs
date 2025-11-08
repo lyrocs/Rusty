@@ -5,7 +5,7 @@
 use bevy_ecs::prelude::*;
 use std::time::{Duration, Instant};
 
-use crate::ecs::resources::{GameManager, SdCardResource};
+use crate::ecs::resources::{GameManager, SdCardWrapper};
 
 /// Auto-save resource - tracks when to trigger auto-save
 #[derive(Resource)]
@@ -36,13 +36,9 @@ impl AutoSaveState {
 pub fn autosave_system(
     mut autosave_state: ResMut<AutoSaveState>,
     mut game_manager: Option<NonSendMut<GameManager>>,
-    sd_card_res: Option<NonSendMut<SdCardResource>>,
+    mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     let Some(ref mut game_manager) = game_manager else {
-        return;
-    };
-
-    let Some(ref sd_card_res) = sd_card_res else {
         return;
     };
 
@@ -51,8 +47,11 @@ pub fn autosave_system(
 
     // Save if requested or periodic interval reached
     if autosave_state.save_requested || should_periodic_save {
-        let sd_mounted = sd_card_res.sd_card.is_mounted();
-        game_manager.auto_save(sd_mounted, &sd_card_res.save_path);
+        let filename = crate::sdcard::get_save_path();
+
+        // Convert Option<NonSendMut<SdCardWrapper>> to Option<&mut SdCardWrapper>
+        let mut sd_option = sd_card_res.as_deref_mut();
+        game_manager.auto_save(&mut sd_option, filename);
 
         // Reset save state
         autosave_state.save_requested = false;

@@ -28,6 +28,7 @@
 //! - PWR (EXIO4): Shows yellow screen when pressed
 
 mod display;
+mod drivers;
 mod ecs;
 mod game;
 mod sdcard;
@@ -36,12 +37,14 @@ mod ui;
 
 use bevy_ecs::prelude::*;
 use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
-use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, GpioResource, TouchResource};
+use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, GpioResource, SharedI2cResource, TouchResource};
 use game::WorldMap;
 use esp_idf_svc::hal::gpio::{Gpio0, PinDriver};
 use esp_idf_svc::hal::{
+    delay::FreeRtos,
     i2c::{I2cConfig, I2cDriver},
     peripherals::Peripherals,
+    spi::{SpiBusDriver, SpiDriver, config::DriverConfig, Dma},
     units::Hertz,
 };
 use esp_idf_svc::sys::*;
@@ -122,6 +125,47 @@ fn configure_pwr_button(i2c: &mut I2cDriver) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+/// Initialize SD card with SPI3 and GPIO expander CS pin
+fn init_sd_card(
+    spi3: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::spi::SPI3> + 'static,
+    gpio1: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio1> + 'static,
+    gpio2: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio2> + 'static,
+    gpio3: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio3> + 'static,
+) -> Result<ecs::resources::SdCardWrapper, Box<dyn std::error::Error>> {
+    log::info!("Initializing SD card...");
+
+    // Initialize SPI3 for SD card
+    // Pins: GPIO1=MOSI, GPIO2=SCK, GPIO3=MISO
+    let driver_config = DriverConfig::new().dma(Dma::Auto(4096));
+    let spi_driver = SpiDriver::new::<esp_idf_svc::hal::spi::SPI3>(
+        spi3,
+        gpio2,  // SCK
+        gpio1,  // MOSI
+        Some(gpio3), // MISO
+        &driver_config,
+    )?;
+
+    // Wrap SpiDriver in SpiBusDriver to get embedded-hal SpiBus trait
+    // Note: Baudrate is configured at the bus level
+    let spi_bus = SpiBusDriver::new(spi_driver, &esp_idf_svc::hal::spi::config::Config::new().baudrate(Hertz(400_000)))?;
+
+    log::info!("SPI3 initialized at 400kHz");
+
+    // Create CS pin for SD card (EXIO7 on TCA9554)
+    // This doesn't borrow the I2C driver, avoiding lifetime issues
+    let cs_pin = drivers::SdCsPin::new()?;
+
+    log::info!("SD card CS pin (EXIO7) configured");
+
+    // Create SD card resource
+    let sd_card_resource = sdcard::SdCardResource::new(spi_bus, cs_pin)?;
+
+    log::info!("SD card initialized successfully");
+
+    // Wrap in SdCardWrapper for ECS
+    Ok(ecs::resources::SdCardWrapper::new(Box::new(sd_card_resource)))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize system services
     esp_idf_svc::sys::link_patches();
@@ -130,7 +174,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("=== stdgotchi starting with Bevy ECS ===");
     log::info!("ESP32-S3 with 1.8\" AMOLED Display (SH8601)");
 
-    let peripherals = Peripherals::take()?;
+    let mut peripherals = Peripherals::take()?;
 
     // Initialize I2C for GPIO expander and touch controller
     log::info!("Initializing I2C...");
@@ -142,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &i2c_config,
     )?;
 
-    // Initialize display
+    // Initialize display (uses I2C for reset via GPIO expander)
     let display = init_display(&mut i2c)?;
 
     // Initialize touch controller
@@ -160,16 +204,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     configure_pwr_button(&mut i2c)?;
     log::info!("Buttons initialized successfully!");
 
-    // Initialize storage (SD card or internal)
-    log::info!("Initializing storage...");
-    let mut sd_card = sdcard::SdCard::new();
-    let sd_mounted = sd_card.init().is_ok();
-    if sd_mounted {
-        log::info!("Storage initialized successfully");
-    } else {
-        log::warn!("Storage initialization failed, saves will not persist");
+    // NOW leak I2C driver to make it 'static for SD card CS pin sharing
+    // All other I2C initialization is complete, so we can dedicate it to SD card
+    let i2c_static: &'static mut I2cDriver<'static> = Box::leak(Box::new(i2c));
+
+    // Initialize shared I2C for SD card CS pin
+    unsafe {
+        drivers::sd_cs_pin::init_sd_i2c(i2c_static);
     }
-    let save_path = sd_card.get_path(game::SaveData::SAVE_FILE_NAME);
+
+    // Initialize SD card (CS pin will use shared I2C via static reference)
+    log::info!("Initializing storage...");
+    let sd_card_wrapper = match init_sd_card(
+        peripherals.spi3,
+        peripherals.pins.gpio1,
+        peripherals.pins.gpio2,
+        peripherals.pins.gpio3,
+    ) {
+        Ok(wrapper) => {
+            log::info!("SD card mounted successfully");
+            Some(wrapper)
+        }
+        Err(e) => {
+            log::warn!("Failed to initialize SD card: {:?}", e);
+            log::warn!("Game saves will not persist. Insert SD card and restart to enable saves.");
+            None
+        }
+    };
 
     // Load map data
     log::info!("Loading map data...");
@@ -178,22 +239,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("Failed to load map data");
     log::info!("Map loaded successfully");
 
-    // Try to load save file if it exists
-    let game_manager = if sd_mounted && game::SaveData::exists(&save_path) {
-        log::info!("Loading save file...");
-        match game::SaveData::load_from_file(&save_path) {
-            Ok(save_data) => {
-                log::info!("Save file loaded! Hero level: {}, Job: {:?}",
-                          save_data.hero.level, save_data.hero.job);
-                GameManager::from_save_data(save_data, world_map)
+    // Try to load save file if SD card is available
+    let mut sd_wrapper_mut = sd_card_wrapper;
+    let game_manager = if let Some(ref mut sd_wrapper) = sd_wrapper_mut.as_mut() {
+        let filename = sdcard::get_save_path();
+        log::info!("Attempting to load save file: {}", filename);
+
+        match sd_wrapper.load_from_file(filename) {
+            Ok(json_data) => {
+                log::info!("Save file read successfully, parsing JSON...");
+                match game::SaveData::from_json(&json_data) {
+                    Ok(save_data) => {
+                        log::info!("Save file loaded! Hero level: {}, Job: {:?}",
+                                  save_data.hero.level, save_data.hero.job);
+                        GameManager::from_save_data(save_data, world_map)
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse save file: {:?}. Starting new game.", e);
+                        GameManager::new(world_map)
+                    }
+                }
             }
             Err(e) => {
-                log::error!("Failed to load save file: {:?}. Starting new game.", e);
+                log::info!("Could not load save file: {:?}. Starting new game.", e);
                 GameManager::new(world_map)
             }
         }
     } else {
-        log::info!("No save file found. Starting new game.");
+        log::info!("No SD card available. Starting new game.");
         GameManager::new(world_map)
     };
 
@@ -220,13 +293,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         boot_debounce: 0,
         pwr_debounce: 0,
     });
-    world.insert_non_send_resource(i2c);
+    // Insert shared I2C resource - provides access to the static I2C driver
+    // Used by SD card CS pin operations and touch controller in systems
+    world.insert_non_send_resource(SharedI2cResource);
 
-    // Insert SD card resource
-    world.insert_non_send_resource(ecs::resources::SdCardResource {
-        sd_card,
-        save_path,
-    });
+    // Insert SD card resource (if available)
+    if let Some(sd_wrapper) = sd_wrapper_mut {
+        world.insert_non_send_resource(sd_wrapper);
+    }
 
     // Insert game manager
     world.insert_non_send_resource(game_manager);

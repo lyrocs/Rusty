@@ -3,15 +3,14 @@
 //! Handles menu interactions and navigation to different game modes.
 
 use bevy_ecs::prelude::*;
-use esp_idf_svc::hal::i2c::I2cDriver;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, TouchResource};
+use crate::ecs::resources::{AppMode, AppState, GameManager, SharedI2cResource, TouchResource};
 
 /// System to handle menu navigation
 pub fn menu_system(
     mut app_state: ResMut<AppState>,
     mut touch_res: NonSendMut<TouchResource>,
-    mut i2c: NonSendMut<I2cDriver>,
+    i2c_res: NonSendMut<SharedI2cResource>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in Menu mode
@@ -23,11 +22,17 @@ pub fn menu_system(
         return;
     };
 
+    // Get I2C access from shared resource
+    let Some(i2c) = i2c_res.get() else {
+        log::error!("Failed to get I2C access in menu_system");
+        return;
+    };
+
     // Check for touch (taps)
-    if let Ok(count) = touch_res.touch.finger_number(&mut i2c) {
+    if let Ok(count) = touch_res.touch.finger_number(i2c) {
         if count > 0 && !touch_res.last_touch_active {
             // New touch detected
-            if let Ok(touches) = touch_res.touch.get_touches(&mut i2c) {
+            if let Ok(touches) = touch_res.touch.get_touches(i2c) {
                 if let Some(point) = touches.first() {
                     let x = point.x as i32;
                     let y = point.y as i32;

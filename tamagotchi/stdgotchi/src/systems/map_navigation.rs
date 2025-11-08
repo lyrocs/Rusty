@@ -4,9 +4,8 @@
 
 use bevy_ecs::prelude::*;
 use embedded_graphics::pixelcolor::Rgb888;
-use esp_idf_svc::hal::i2c::I2cDriver;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, TouchResource};
+use crate::ecs::resources::{AppMode, AppState, GameManager, SharedI2cResource, TouchResource};
 use crate::game::EnemyType;
 use crate::ui::pages::battle::EnemyType as BattleEnemyType;
 use crate::ui::pages::BattlePage;
@@ -15,7 +14,7 @@ use crate::ui::pages::BattlePage;
 pub fn map_navigation_system(
     mut app_state: ResMut<AppState>,
     mut touch_res: NonSendMut<TouchResource>,
-    mut i2c: NonSendMut<I2cDriver>,
+    i2c_res: NonSendMut<SharedI2cResource>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in Map mode
@@ -27,11 +26,17 @@ pub fn map_navigation_system(
         return;
     };
 
+    // Get I2C access from shared resource
+    let Some(i2c) = i2c_res.get() else {
+        log::error!("Failed to get I2C access in map_navigation_system");
+        return;
+    };
+
     // Check for touch (taps)
-    if let Ok(count) = touch_res.touch.finger_number(&mut i2c) {
+    if let Ok(count) = touch_res.touch.finger_number(i2c) {
         if count > 0 && !touch_res.last_touch_active {
             // New touch detected
-            if let Ok(touches) = touch_res.touch.get_touches(&mut i2c) {
+            if let Ok(touches) = touch_res.touch.get_touches(i2c) {
                 if let Some(point) = touches.first() {
                     let x = point.x as i32;
                     let y = point.y as i32;
@@ -68,14 +73,23 @@ pub fn map_navigation_system(
                                         }
                                     };
 
-                                    // Create battle page with background
+                                    // Create battle page with background, passing hero and kill_tracker
                                     let battle_background = include_bytes!("../../assets/images/ui/battle.gif");
-                                    let mut battle_page = match BattlePage::new_with_background(battle_background, (0, 0)) {
+                                    let mut battle_page = match BattlePage::new_with_background(
+                                        battle_background,
+                                        (0, 0),
+                                        game_manager.hero.clone(),
+                                        game_manager.kill_tracker.clone(),
+                                    ) {
                                         Ok(page) => page,
                                         Err(e) => {
                                             log::error!("Failed to load battle background: {:?}", e);
                                             log::info!("Falling back to solid color background");
-                                            BattlePage::new(Rgb888::new(20, 60, 20))
+                                            BattlePage::new(
+                                                Rgb888::new(20, 60, 20),
+                                                game_manager.hero.clone(),
+                                                game_manager.kill_tracker.clone(),
+                                            )
                                         }
                                     };
 
@@ -139,7 +153,7 @@ pub fn map_navigation_system(
 pub fn hero_overview_system(
     mut app_state: ResMut<AppState>,
     mut touch_res: NonSendMut<TouchResource>,
-    mut i2c: NonSendMut<I2cDriver>,
+    i2c_res: NonSendMut<SharedI2cResource>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in HeroOverview mode
@@ -151,11 +165,17 @@ pub fn hero_overview_system(
         return;
     };
 
+    // Get I2C access from shared resource
+    let Some(i2c) = i2c_res.get() else {
+        log::error!("Failed to get I2C access in hero_overview_system");
+        return;
+    };
+
     // Check for touch (button taps)
-    if let Ok(count) = touch_res.touch.finger_number(&mut i2c) {
+    if let Ok(count) = touch_res.touch.finger_number(i2c) {
         if count > 0 && !touch_res.last_touch_active {
             // New touch detected
-            if let Ok(touches) = touch_res.touch.get_touches(&mut i2c) {
+            if let Ok(touches) = touch_res.touch.get_touches(i2c) {
                 if let Some(point) = touches.first() {
                     let x = point.x as i32;
                     let y = point.y as i32;

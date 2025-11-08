@@ -289,7 +289,9 @@ impl BattlePage {
     ///
     /// # Arguments
     /// * `background_color` - RGB color for background
-    pub fn new(background_color: Rgb888) -> Self {
+    /// * `hero` - Hero state from GameManager
+    /// * `kill_tracker` - Kill tracker from GameManager
+    pub fn new(background_color: Rgb888, hero: Hero, kill_tracker: KillTracker) -> Self {
         Self {
             background: None,
             background_color,
@@ -299,9 +301,9 @@ impl BattlePage {
             first_draw: true,
             enemy_types: Vec::new(),
             current_enemy_index: 0,
-            game_hero: Hero::new(),
+            game_hero: hero,
             game_enemy: None,
-            kill_tracker: KillTracker::new(),
+            kill_tracker,
             damage_numbers: Vec::new(),
         }
     }
@@ -311,10 +313,14 @@ impl BattlePage {
     /// # Arguments
     /// * `map_data` - GIF data for the background map
     /// * `map_position` - Position of the map
+    /// * `hero` - Hero state from GameManager
+    /// * `kill_tracker` - Kill tracker from GameManager
     #[allow(dead_code)]
     pub fn new_with_background(
         map_data: &[u8],
         map_position: (i32, i32),
+        hero: Hero,
+        kill_tracker: KillTracker,
     ) -> Result<Self, Box<dyn Error>> {
         let background = Background::new(map_data, map_position)?;
 
@@ -327,11 +333,21 @@ impl BattlePage {
             first_draw: true,
             enemy_types: Vec::new(),
             current_enemy_index: 0,
-            game_hero: Hero::new(),
+            game_hero: hero,
             game_enemy: None,
-            kill_tracker: KillTracker::new(),
+            kill_tracker,
             damage_numbers: Vec::new(),
         })
+    }
+
+    /// Get the updated hero state (to sync back to GameManager)
+    pub fn get_hero(&self) -> &Hero {
+        &self.game_hero
+    }
+
+    /// Get the updated kill tracker (to sync back to GameManager)
+    pub fn get_kill_tracker(&self) -> &KillTracker {
+        &self.kill_tracker
     }
 
     /// Convert UI EnemyType to game EnemyType
