@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 
 /// Enemy type identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "lowercase")]
 pub enum EnemyType {
     Hornet,
     Poring,
     Fabre,
+    Lunatic,
 }
 
 impl EnemyType {
@@ -19,6 +21,7 @@ impl EnemyType {
             EnemyType::Hornet => "hornet",
             EnemyType::Poring => "poring",
             EnemyType::Fabre => "fabre",
+            EnemyType::Lunatic => "lunatic",
         }
     }
 
@@ -28,6 +31,7 @@ impl EnemyType {
             EnemyType::Hornet => "Hornet",
             EnemyType::Poring => "Poring",
             EnemyType::Fabre => "Fabre",
+            EnemyType::Lunatic => "Lunatic",
         }
     }
 }
@@ -50,9 +54,10 @@ impl Enemy {
     /// Create enemy from type with scaled stats
     pub fn new(enemy_type: EnemyType, hero_level: u32) -> Self {
         let (base_hp, base_atk, base_def, base_exp) = match enemy_type {
-            EnemyType::Hornet => (100, 15, 5, 25),
-            EnemyType::Poring => (150, 10, 8, 15),
-            EnemyType::Fabre => (80, 12, 3, 20),
+            EnemyType::Hornet => (100, 15, 3, 25),
+            EnemyType::Poring => (150, 10, 2, 15),
+            EnemyType::Fabre => (80, 12, 2, 20),
+            EnemyType::Lunatic => (120, 13, 3, 18),
         };
 
         // Scale enemy stats based on hero level

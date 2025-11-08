@@ -40,6 +40,36 @@ impl Job {
             Job::Knight => "Knight",
         }
     }
+
+    /// Get base stats for this job
+    pub fn base_stats(&self) -> Stats {
+        match self {
+            Job::Novice => Stats {
+                str: 5,
+                agi: 5,
+                vit: 5,
+                int: 5,
+                dex: 5,
+                luk: 5,
+            },
+            Job::Swordsman => Stats {
+                str: 10,
+                agi: 7,
+                vit: 10,
+                int: 5,
+                dex: 7,
+                luk: 5,
+            },
+            Job::Knight => Stats {
+                str: 15,
+                agi: 10,
+                vit: 15,
+                int: 7,
+                dex: 10,
+                luk: 7,
+            },
+        }
+    }
 }
 
 /// Hero character
@@ -51,13 +81,14 @@ pub struct Hero {
     pub exp: u64,
     pub exp_to_next_level: u64,
     pub stats: Stats,
-    
+    pub stat_points: u32, // Available stat points to allocate
+
     // Current HP/SP
     pub current_hp: u32,
     pub max_hp: u32,
     pub current_sp: u32,
     pub max_sp: u32,
-    
+
     // Combat stats
     pub atk: u32,
     pub def: u32,
@@ -71,9 +102,11 @@ impl Hero {
     pub fn new() -> Self {
         let stats = Stats::new();
         let level = 1;
-        let max_hp = stats.calculate_max_hp(50, level);
-        let max_sp = stats.calculate_max_sp(20, level);
-        
+        let base_hp = 50; // Novice base HP
+        let base_sp = 20; // Novice base SP
+        let max_hp = stats.calculate_max_hp(base_hp, level);
+        let max_sp = stats.calculate_max_sp(base_sp, level);
+
         Self {
             name: "Hero".to_string(),
             job: Job::Novice,
@@ -81,6 +114,7 @@ impl Hero {
             exp: 0,
             exp_to_next_level: Self::calculate_exp_for_level(2),
             stats,
+            stat_points: 0, // Start with 0 stat points, gain 3 per level
             current_hp: max_hp,
             max_hp,
             current_sp: max_sp,
@@ -114,10 +148,13 @@ impl Hero {
         self.level += 1;
         self.exp -= self.exp_to_next_level;
         self.exp_to_next_level = Self::calculate_exp_for_level(self.level + 1);
-        
+
+        // Grant 3 stat points per level
+        self.stat_points += 3;
+
         // Increase stats based on job
         self.apply_stat_growth();
-        
+
         // Recalculate derived stats
         self.recalculate_stats();
         
@@ -246,6 +283,27 @@ impl Hero {
     /// Get SP percentage
     pub fn sp_percentage(&self) -> f32 {
         (self.current_sp as f32 / self.max_sp as f32) * 100.0
+    }
+
+    /// Recalculate max HP and SP based on current stats
+    pub fn recalculate_max_hp_sp(&mut self) {
+        let base_hp = match self.job {
+            Job::Novice => 50,
+            Job::Swordsman => 100,
+            Job::Knight => 200,
+        };
+        let base_sp = match self.job {
+            Job::Novice => 20,
+            Job::Swordsman => 30,
+            Job::Knight => 50,
+        };
+
+        self.max_hp = self.stats.calculate_max_hp(base_hp, self.level);
+        self.max_sp = self.stats.calculate_max_sp(base_sp, self.level);
+
+        // Ensure current HP/SP don't exceed new max
+        self.current_hp = self.current_hp.min(self.max_hp);
+        self.current_sp = self.current_sp.min(self.max_sp);
     }
 }
 

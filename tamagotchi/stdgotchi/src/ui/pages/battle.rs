@@ -9,11 +9,11 @@ use crate::ui::sprite::{AnimatedSprite, Background};
 use embedded_graphics::{
     mono_font::{
         MonoTextStyle,
-        ascii::{FONT_6X10, FONT_9X15, FONT_10X20},
+        ascii::{FONT_6X10, FONT_10X20},
     },
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle},
+    primitives::{PrimitiveStyle, Rectangle},
     text::Text,
 };
 use std::error::Error;
@@ -185,12 +185,25 @@ impl BattleEntity {
         self.is_dead = true;
         self.death_time = Some(Instant::now());
         self.set_animation(AnimationType::Death);
+
+        if self.death_sprite.is_some() {
+            log::info!("Entity death started with animation");
+        } else {
+            log::info!("Entity death started without animation (2 second delay)");
+        }
     }
 
     /// Check if death animation is complete and waiting period is over
     fn is_death_complete(&self) -> bool {
         if let Some(death_time) = self.death_time {
-            death_time.elapsed() >= Duration::from_secs(2) && self.is_animation_complete()
+            // If there's a death animation, wait for both time and animation to complete
+            // If no death animation (falls back to idle), just wait for the time
+            if self.death_sprite.is_some() {
+                death_time.elapsed() >= Duration::from_secs(2) && self.is_animation_complete()
+            } else {
+                // No death animation - just wait 2 seconds
+                death_time.elapsed() >= Duration::from_secs(2)
+            }
         } else {
             false
         }
@@ -351,7 +364,7 @@ impl BattlePage {
                 include_bytes!("../../../assets/images/poring/6.gif"), // idle
                 include_bytes!("../../../assets/images/poring/22.gif"), // attack
                 include_bytes!("../../../assets/images/poring/30.gif"), // attacked
-                None, // death - 38.gif is 341x336 (too large!), using fade out instead
+                None, // death animation too large (341×336), using time-based delay instead
             ),
             EnemyType::Fabre => (
                 include_bytes!("../../../assets/images/fabre/6.gif"), // idle
@@ -457,14 +470,9 @@ impl BattlePage {
 
         log::info!("Respawning enemy: {:?}", enemy_type);
 
-        // Calculate left-centered position for enemy
-        const DISPLAY_WIDTH: i32 = 368;
-        const DISPLAY_HEIGHT: i32 = 448;
-        const HALF_WIDTH: i32 = DISPLAY_WIDTH / 2;
-
-        // Position enemy on left side
-        let x = HALF_WIDTH / 2;
-        let y = DISPLAY_HEIGHT / 2;
+        // Position enemy on left side (matching initial battle setup)
+        let x = 75;
+        let y = 170;
 
         // Load enemy data on-demand
         let (idle, attack, attacked, death) = Self::get_enemy_data(enemy_type);
@@ -743,19 +751,15 @@ impl BattlePage {
 
 impl Page for BattlePage {
     fn update(&mut self) -> bool {
-        // Check if enemy is dead and should respawn
-        if let Some(enemy) = &self.enemy {
-            if enemy.is_dead && enemy.is_death_complete() {
-                log::info!("Enemy death complete, respawning...");
-                if let Err(e) = self.respawn_enemy() {
-                    log::error!("Failed to respawn enemy: {:?}", e);
-                }
-            }
-        }
-
         // Check for attacks and update animations
-        let hero_attacking = self.hero.as_ref().map_or(false, |h| h.should_attack());
-        let enemy_attacking = self.enemy.as_ref().map_or(false, |e| e.should_attack());
+        // Only allow attacks if target is alive
+        let enemy_is_alive = self.enemy.as_ref().map_or(false, |e| !e.is_dead);
+        let hero_attacking =
+            enemy_is_alive && self.hero.as_ref().map_or(false, |h| h.should_attack());
+        let enemy_attacking = self
+            .enemy
+            .as_ref()
+            .map_or(false, |e| e.should_attack() && !e.is_dead);
 
         // Handle hero attack
         if hero_attacking {
@@ -894,6 +898,17 @@ impl Page for BattlePage {
 
         // Remove completed damage number animations
         self.damage_numbers.retain(|dmg| !dmg.is_complete());
+
+        // Check if enemy death animation is complete and should respawn
+        // This is done at the END of update so the death animation renders properly
+        if let Some(enemy) = &self.enemy {
+            if enemy.is_dead && enemy.is_death_complete() {
+                log::info!("Enemy death animation complete, respawning...");
+                if let Err(e) = self.respawn_enemy() {
+                    log::error!("Failed to respawn enemy: {:?}", e);
+                }
+            }
+        }
 
         // Continue running
         true

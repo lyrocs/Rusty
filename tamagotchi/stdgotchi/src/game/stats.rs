@@ -39,7 +39,12 @@ impl Stats {
 
     /// Calculate physical attack power
     pub fn calculate_atk(&self) -> u32 {
-        (self.str * 2) + (self.dex / 2)
+        // Increased multiplier for better damage output
+        // Base damage + (STR * 5) + DEX bonus
+        let base_atk = 20; // Base attack power
+        let str_bonus = self.str * 5;
+        let dex_bonus = self.dex / 2;
+        base_atk + str_bonus + dex_bonus
     }
 
     /// Calculate physical defense

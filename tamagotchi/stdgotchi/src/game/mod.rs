@@ -1,19 +1,23 @@
 //! RPG Game System Module
-//! 
+//!
 //! Implements core RPG mechanics including stats, battle system,
-//! hero progression, and kill tracking.
+//! hero progression, kill tracking, and map navigation.
 
 pub mod stats;
 pub mod hero;
 pub mod enemy;
 pub mod battle;
 pub mod kill_tracker;
+pub mod map;
+pub mod save;
 
 pub use stats::*;
 pub use hero::*;
 pub use enemy::*;
 pub use battle::*;
 pub use kill_tracker::*;
+pub use map::*;
+pub use save::*;
 
 use bevy_ecs::prelude::*;
 

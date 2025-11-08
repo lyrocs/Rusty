@@ -12,77 +12,73 @@ use embedded_graphics::{
 };
 use log::info;
 
-use crate::ecs::resources::{AppMode, AppState, DisplayResource, PageResource};
+use crate::ecs::resources::{AppMode, AppState, DisplayResource, GameManager, PageResource};
+use crate::ui::page::Page;
 
 /// System to render the display
 pub fn render_system(
     mut display_res: NonSendMut<DisplayResource>,
     mut app_state: ResMut<AppState>,
-    page_res: Option<NonSendMut<PageResource>>,
+    _page_res: Option<NonSendMut<PageResource>>,
+    game_manager: Option<NonSendMut<GameManager>>,
 ) {
     let display = &mut display_res.display;
 
     match app_state.current_mode {
-        AppMode::Welcome => {
-            // Only render full screen if redraw is needed
-            if app_state.needs_redraw {
-                draw_welcome_screen(display, app_state.fps).ok();
-                app_state.needs_redraw = false;
-            } else {
-                // Just update FPS overlay
-                draw_fps_overlay(display, app_state.fps).ok();
+        AppMode::Menu | AppMode::Map | AppMode::Battle => {
+            // Game-based rendering with GameManager
+            if let Some(mut game_manager) = game_manager {
+                if let Some(page) = game_manager.get_current_page(app_state.current_mode) {
+                    // Update page logic
+                    let page_active = page.update();
+
+                    // Check if page needs full redraw
+                    let full_redraw = page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw the page
+                    if let Err(e) = page.draw(display, full_redraw) {
+                        log::error!("Failed to draw page: {:?}", e);
+                    }
+
+                    // Reset needs_redraw flag
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    // Check if page is done
+                    if !page_active {
+                        info!("Page completed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
             }
         }
-        AppMode::Drawing => {
-            // Drawing mode - just update FPS
-            draw_fps_overlay(display, app_state.fps).ok();
-        }
-        AppMode::GifPlaying => {
-            // Page-based rendering
-            if let Some(mut page_res) = page_res {
-                // Update FPS in page if it's a BattlePage
-                if let Some(battle_page) = page_res.page.as_any_mut().downcast_mut::<crate::ui::pages::BattlePage>() {
-                    battle_page.set_fps(app_state.fps);
-                }
-
+        AppMode::HeroOverview => {
+            // Hero overview rendering - needs special handling for hero data
+            if let Some(mut game_manager) = game_manager {
                 // Update page logic
-                let page_active = page_res.page.update();
+                let page_active = game_manager.hero_overview_page.update();
 
                 // Check if page needs full redraw
-                let full_redraw = page_res.page.needs_full_redraw();
+                let full_redraw = game_manager.hero_overview_page.needs_full_redraw() || app_state.needs_redraw;
 
-                // Draw the page with appropriate redraw mode
-                // Page handles its own clearing (full background on first frame, sprite zones on subsequent frames)
-                if let Err(e) = page_res.page.draw(display, full_redraw) {
-                    log::error!("Failed to draw page: {:?}", e);
+                // Draw the page with hero data using helper method
+                if let Err(e) = game_manager.draw_hero_overview(display, full_redraw) {
+                    log::error!("Failed to draw hero overview: {:?}", e);
                 }
 
-                // Reset needs_redraw flag if it was set
+                // Reset needs_redraw flag
                 if app_state.needs_redraw {
                     app_state.needs_redraw = false;
                 }
 
                 // Check if page is done
                 if !page_active {
-                    info!("Page completed");
-                    app_state.current_mode = AppMode::Welcome;
+                    info!("Hero overview completed, returning to map");
+                    app_state.current_mode = AppMode::Map;
                     app_state.needs_redraw = true;
-                    // Note: PageResource will be removed by cleanup system
                 }
-            }
-        }
-        AppMode::ButtonFeedback => {
-            if app_state.needs_redraw {
-                display.clear(Rgb888::new(50, 0, 50)).ok();
-                let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
-                Text::new("Button pressed", Point::new(10, 30), text_style)
-                    .draw(display)
-                    .ok();
-                draw_fps_text(display, app_state.fps).ok();
-                display.flush().ok();
-                app_state.needs_redraw = false;
-            } else {
-                draw_fps_overlay(display, app_state.fps).ok();
             }
         }
     }

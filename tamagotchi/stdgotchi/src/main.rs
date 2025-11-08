@@ -30,12 +30,14 @@
 mod display;
 mod ecs;
 mod game;
+mod sdcard;
 mod systems;
 mod ui;
 
 use bevy_ecs::prelude::*;
 use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
-use ecs::resources::{AppState, ButtonResource, DisplayResource, GpioResource, TouchResource};
+use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, GpioResource, TouchResource};
+use game::WorldMap;
 use esp_idf_svc::hal::gpio::{Gpio0, PinDriver};
 use esp_idf_svc::hal::{
     i2c::{I2cConfig, I2cDriver},
@@ -45,7 +47,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, button_system, fps_system, render_system, touch_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, button_system, fps_system, hero_overview_system, map_navigation_system, menu_system, render_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -158,11 +160,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     configure_pwr_button(&mut i2c)?;
     log::info!("Buttons initialized successfully!");
 
+    // Initialize storage (SD card or internal)
+    log::info!("Initializing storage...");
+    let mut sd_card = sdcard::SdCard::new();
+    let sd_mounted = sd_card.init().is_ok();
+    if sd_mounted {
+        log::info!("Storage initialized successfully");
+    } else {
+        log::warn!("Storage initialization failed, saves will not persist");
+    }
+    let save_path = sd_card.get_path(game::SaveData::SAVE_FILE_NAME);
+
+    // Load map data
+    log::info!("Loading map data...");
+    let maps_json = include_str!("../assets/data/maps.json");
+    let world_map = WorldMap::from_json(maps_json, "prontera".to_string())
+        .expect("Failed to load map data");
+    log::info!("Map loaded successfully");
+
+    // Try to load save file if it exists
+    let game_manager = if sd_mounted && game::SaveData::exists(&save_path) {
+        log::info!("Loading save file...");
+        match game::SaveData::load_from_file(&save_path) {
+            Ok(save_data) => {
+                log::info!("Save file loaded! Hero level: {}, Job: {:?}",
+                          save_data.hero.level, save_data.hero.job);
+                GameManager::from_save_data(save_data, world_map)
+            }
+            Err(e) => {
+                log::error!("Failed to load save file: {:?}. Starting new game.", e);
+                GameManager::new(world_map)
+            }
+        }
+    } else {
+        log::info!("No save file found. Starting new game.");
+        GameManager::new(world_map)
+    };
+
     // Create ECS World
     let mut world = World::new();
 
     // Insert resources
-    world.insert_resource(AppState::default());
+    let app_state = AppState::default(); // Starts in Menu mode
+    world.insert_resource(app_state);
+
+    // Insert autosave state
+    world.insert_resource(AutoSaveState::default());
 
     // Insert non-send resources (hardware peripherals)
     world.insert_non_send_resource(DisplayResource { display });
@@ -179,19 +222,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     world.insert_non_send_resource(i2c);
 
+    // Insert SD card resource
+    world.insert_non_send_resource(ecs::resources::SdCardResource {
+        sd_card,
+        save_path,
+    });
+
+    // Insert game manager
+    world.insert_non_send_resource(game_manager);
+
     // Create schedule and add systems
-    // Order: FPS tracking → Input → Animation init → Render → Animation cleanup
+    // Order: FPS tracking → Input → Menu → Map Navigation → Hero Overview → Animation init → Render → Animation cleanup → Auto-save
     let mut schedule = Schedule::default();
     schedule.add_systems((
         fps_system,
         button_system::<Gpio0>,
-        touch_system,
+        menu_system,
+        map_navigation_system,
+        hero_overview_system,
         animation_init_system,
         render_system,
         animation_cleanup_system,
+        autosave_system,
     ));
 
-    log::info!("stdgotchi ready! ECS initialized. Touch the screen to draw...");
+    log::info!("stdgotchi ready! Starting in Menu mode. Press BOOT button to open menu...");
 
     // Main ECS game loop
     loop {

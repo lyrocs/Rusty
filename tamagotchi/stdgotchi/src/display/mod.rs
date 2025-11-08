@@ -4,7 +4,7 @@ pub mod gif_player;
 pub mod static_image;
 
 pub use sh8601::{Sh8601Driver, ColorMode};
-pub use ft3x68::{Ft3x68Driver, FT3168_DEVICE_ADDRESS, Gesture};
+pub use ft3x68::{Ft3x68Driver, FT3168_DEVICE_ADDRESS};
 pub use gif_player::GifPlayer;
 pub use static_image::StaticImage;
 
