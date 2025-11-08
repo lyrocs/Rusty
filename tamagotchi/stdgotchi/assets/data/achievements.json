@@ -1,0 +1,108 @@
+{
+  "achievements": [
+    {
+      "id": "first_blood",
+      "name": "First Blood",
+      "description": "Defeat your first enemy",
+      "type": "kill_count",
+      "target": "any",
+      "requirement": 1,
+      "reward": {
+        "exp": 100,
+        "stat_points": 1
+      }
+    },
+    {
+      "id": "hornet_slayer_1",
+      "name": "Hornet Hunter",
+      "description": "Defeat 10 Hornets",
+      "type": "kill_count",
+      "target": "hornet",
+      "requirement": 10,
+      "reward": {
+        "exp": 200,
+        "stat_points": 1
+      }
+    },
+    {
+      "id": "hornet_slayer_2",
+      "name": "Hornet Slayer",
+      "description": "Defeat 50 Hornets",
+      "type": "kill_count",
+      "target": "hornet",
+      "requirement": 50,
+      "reward": {
+        "exp": 500,
+        "stat_points": 2
+      }
+    },
+    {
+      "id": "hornet_slayer_3",
+      "name": "Hornet Exterminator",
+      "description": "Defeat 100 Hornets",
+      "type": "kill_count",
+      "target": "hornet",
+      "requirement": 100,
+      "reward": {
+        "exp": 1000,
+        "stat_points": 3
+      }
+    },
+    {
+      "id": "poring_slayer_1",
+      "name": "Poring Poker",
+      "description": "Defeat 10 Porings",
+      "type": "kill_count",
+      "target": "poring",
+      "requirement": 10,
+      "reward": {
+        "exp": 150,
+        "stat_points": 1
+      }
+    },
+    {
+      "id": "level_10",
+      "name": "Growing Strong",
+      "description": "Reach level 10",
+      "type": "level",
+      "requirement": 10,
+      "reward": {
+        "stat_points": 5,
+        "job_points": 3
+      }
+    },
+    {
+      "id": "level_20",
+      "name": "Seasoned Adventurer",
+      "description": "Reach level 20",
+      "type": "level",
+      "requirement": 20,
+      "reward": {
+        "stat_points": 10,
+        "job_points": 5
+      }
+    },
+    {
+      "id": "job_change_1",
+      "name": "Career Choice",
+      "description": "Complete your first job change",
+      "type": "job_change",
+      "requirement": 1,
+      "reward": {
+        "exp": 1000,
+        "stat_points": 5
+      }
+    },
+    {
+      "id": "monster_variety",
+      "name": "Monster Encyclopedia",
+      "description": "Defeat at least 5 different types of monsters",
+      "type": "unique_kills",
+      "requirement": 5,
+      "reward": {
+        "exp": 500,
+        "luk_bonus": 2
+      }
+    }
+  ]
+}

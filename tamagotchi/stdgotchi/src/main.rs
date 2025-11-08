@@ -29,6 +29,7 @@
 
 mod display;
 mod ecs;
+mod game;
 mod systems;
 mod ui;
 
