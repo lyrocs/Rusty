@@ -134,4 +134,14 @@ impl AnimatedSprite {
             false // Infinite loop never completes
         }
     }
+
+    /// Get current frame index
+    pub fn current_frame_index(&self) -> usize {
+        self.current_frame % self.frame_count
+    }
+
+    /// Get total frame count
+    pub fn frame_count(&self) -> usize {
+        self.frame_count
+    }
 }

@@ -48,6 +48,7 @@ pub struct BattleEntity {
     is_dead: bool,
     death_time: Option<Instant>,
     attack_offset: (i32, i32), // Position offset for attack animation
+    attack_damage_dealt: bool, // Track if damage has been dealt for current attack
 }
 
 impl BattleEntity {
@@ -88,6 +89,7 @@ impl BattleEntity {
             is_dead: false,
             death_time: None,
             attack_offset,
+            attack_damage_dealt: false,
         })
     }
 
@@ -149,6 +151,26 @@ impl BattleEntity {
     fn start_attack(&mut self) {
         self.set_animation(AnimationType::Attack);
         self.last_attack_time = Instant::now();
+        self.attack_damage_dealt = false; // Reset damage flag for new attack
+    }
+
+    /// Check if attack animation has reached the hit point (50% progress)
+    fn is_attack_hit_point(&self) -> bool {
+        if self.current_animation == AnimationType::Attack {
+            let sprite = self.current_sprite();
+            let total_frames = sprite.frame_count();
+            let current_frame = sprite.current_frame_index();
+
+            // Damage lands at 50% through the attack animation
+            current_frame >= total_frames / 2 && !self.attack_damage_dealt
+        } else {
+            false
+        }
+    }
+
+    /// Mark that damage has been dealt for current attack
+    fn mark_damage_dealt(&mut self) {
+        self.attack_damage_dealt = true;
     }
 
     /// Trigger being attacked
@@ -362,7 +384,7 @@ impl BattlePage {
             None, // Heroes don't die in this version
             position,
             Duration::from_secs(2), // Hero attacks every 2 seconds
-            (40, -10),              // Move attack animation 20px left for Novice
+            (-40, 10),              // Move attack animation 20px left for Novice
         )?;
 
         self.hero = Some(hero);
@@ -755,59 +777,60 @@ impl Page for BattlePage {
         if let Some(hero) = &mut self.hero {
             hero.update();
 
-            // After attack animation completes, apply damage to enemy
-            if hero.current_animation == AnimationType::Attack && hero.is_animation_complete() {
-                // Return to idle after attack
-                hero.set_animation(AnimationType::Idle);
+            // Deal damage mid-attack animation (when hit lands)
+            if hero.is_attack_hit_point() {
+                if let (Some(enemy), Some(game_enemy)) = (&mut self.enemy, &mut self.game_enemy) {
+                    if !enemy.is_dead {
+                        // Calculate damage using RPG system
+                        let damage_result = game::hero_attack(&self.game_hero, game_enemy);
 
-                // Apply RPG damage to enemy (if not attacking and not dead)
-                if !enemy_attacking {
-                    if let (Some(enemy), Some(game_enemy)) = (&mut self.enemy, &mut self.game_enemy)
-                    {
-                        if !enemy.is_dead {
-                            // Calculate damage using RPG system
-                            let damage_result = game::hero_attack(&self.game_hero, game_enemy);
+                        // Create floating damage number near enemy
+                        let bounds = enemy.bounds();
+                        let damage_pos = (
+                            bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
+                            bounds.1 + 10,                    // Slightly below top
+                        );
+                        let damage_num = DamageNumber::new(
+                            damage_result.damage,
+                            damage_pos,
+                            damage_result.is_critical,
+                            damage_result.is_miss,
+                        );
+                        self.damage_numbers.push(damage_num);
 
-                            // Create floating damage number near enemy
-                            let bounds = enemy.bounds();
-                            let damage_pos = (
-                                bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
-                                bounds.1 + 10,                    // Slightly below top
+                        // Mark damage as dealt
+                        hero.mark_damage_dealt();
+
+                        // Check if enemy died from the attack
+                        if !game_enemy.is_alive() {
+                            // Enemy died - show death animation
+                            enemy.start_death();
+
+                            // Award EXP and record kill
+                            let exp_reward = game_enemy.exp_reward;
+                            let enemy_type = game_enemy.enemy_type;
+                            self.game_hero.gain_exp(exp_reward);
+                            self.kill_tracker.record_kill(enemy_type);
+
+                            log::info!(
+                                "{} defeated! Gained {} EXP (Hero: Lv {} - {}/{})",
+                                enemy_type.name(),
+                                exp_reward,
+                                self.game_hero.level,
+                                self.game_hero.exp,
+                                self.game_hero.exp_to_next_level
                             );
-                            let damage_num = DamageNumber::new(
-                                damage_result.damage,
-                                damage_pos,
-                                damage_result.is_critical,
-                                damage_result.is_miss,
-                            );
-                            self.damage_numbers.push(damage_num);
-
-                            // Check if enemy died from the attack
-                            if !game_enemy.is_alive() {
-                                // Enemy died - show death animation
-                                enemy.start_death();
-
-                                // Award EXP and record kill
-                                let exp_reward = game_enemy.exp_reward;
-                                let enemy_type = game_enemy.enemy_type;
-                                self.game_hero.gain_exp(exp_reward);
-                                self.kill_tracker.record_kill(enemy_type);
-
-                                log::info!(
-                                    "{} defeated! Gained {} EXP (Hero: Lv {} - {}/{})",
-                                    enemy_type.name(),
-                                    exp_reward,
-                                    self.game_hero.level,
-                                    self.game_hero.exp,
-                                    self.game_hero.exp_to_next_level
-                                );
-                            } else {
-                                // Enemy survived - show attacked animation
-                                enemy.start_attacked();
-                            }
+                        } else {
+                            // Enemy survived - show attacked animation
+                            enemy.start_attacked();
                         }
                     }
                 }
+            }
+
+            // Return to idle after attack animation completes
+            if hero.current_animation == AnimationType::Attack && hero.is_animation_complete() {
+                hero.set_animation(AnimationType::Idle);
             }
 
             // Return to idle after being attacked
@@ -819,44 +842,46 @@ impl Page for BattlePage {
         if let Some(enemy) = &mut self.enemy {
             enemy.update();
 
-            // After attack animation completes, apply damage to hero
-            if enemy.current_animation == AnimationType::Attack && enemy.is_animation_complete() {
-                // Return to idle after attack
-                enemy.set_animation(AnimationType::Idle);
+            // Deal damage mid-attack animation (when hit lands)
+            if enemy.is_attack_hit_point() {
+                if let Some(game_enemy) = &self.game_enemy {
+                    // Calculate damage using RPG system
+                    let damage_result = game::enemy_attack(game_enemy, &mut self.game_hero);
 
-                // Apply RPG damage to hero (if not attacking)
-                if !hero_attacking {
-                    if let Some(game_enemy) = &self.game_enemy {
-                        // Calculate damage using RPG system
-                        let damage_result = game::enemy_attack(game_enemy, &mut self.game_hero);
+                    // Create floating damage number near hero
+                    if let Some(hero) = &mut self.hero {
+                        let bounds = hero.bounds();
+                        let damage_pos = (
+                            bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
+                            bounds.1 + 10,                    // Slightly below top
+                        );
+                        let damage_num = DamageNumber::new(
+                            damage_result.damage,
+                            damage_pos,
+                            damage_result.is_critical,
+                            damage_result.is_miss,
+                        );
+                        self.damage_numbers.push(damage_num);
 
-                        // Create floating damage number near hero
-                        if let Some(hero) = &mut self.hero {
-                            let bounds = hero.bounds();
-                            let damage_pos = (
-                                bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
-                                bounds.1 + 10,                    // Slightly below top
-                            );
-                            let damage_num = DamageNumber::new(
-                                damage_result.damage,
-                                damage_pos,
-                                damage_result.is_critical,
-                                damage_result.is_miss,
-                            );
-                            self.damage_numbers.push(damage_num);
+                        // Show attacked animation on hero
+                        hero.start_attacked();
+                    }
 
-                            // Show attacked animation on hero
-                            hero.start_attacked();
-                        }
+                    // Mark damage as dealt
+                    enemy.mark_damage_dealt();
 
-                        // Check if hero died (game over logic can be added later)
-                        if !self.game_hero.is_alive() {
-                            log::warn!("Hero defeated! (Game over logic not implemented)");
-                            // For now, just restore hero HP
-                            self.game_hero.current_hp = self.game_hero.max_hp / 2;
-                        }
+                    // Check if hero died (game over logic can be added later)
+                    if !self.game_hero.is_alive() {
+                        log::warn!("Hero defeated! (Game over logic not implemented)");
+                        // For now, just restore hero HP
+                        self.game_hero.current_hp = self.game_hero.max_hp / 2;
                     }
                 }
+            }
+
+            // Return to idle after attack animation completes
+            if enemy.current_animation == AnimationType::Attack && enemy.is_animation_complete() {
+                enemy.set_animation(AnimationType::Idle);
             }
 
             // Return to idle after being attacked

@@ -16,9 +16,9 @@ use crate::ui::pages::battle::EnemyType;
 const MAP_GIF_DATA: &[u8] = include_bytes!("../../assets/images/ui/battle.gif");
 
 // Hero animations (Novice) - load upfront since hero is always present
-const HERO_IDLE: &[u8] = include_bytes!("../../assets/images/novice/80.gif");
-const HERO_ATTACK: &[u8] = include_bytes!("../../assets/images/novice/32.gif");
-const HERO_ATTACKED: &[u8] = include_bytes!("../../assets/images/novice/16.gif");
+const HERO_IDLE: &[u8] = include_bytes!("../../assets/images/novice/32.gif");
+const HERO_ATTACK: &[u8] = include_bytes!("../../assets/images/novice/80.gif");
+const HERO_ATTACKED: &[u8] = include_bytes!("../../assets/images/novice/48.gif");
 
 /// System to initialize page when entering GifPlaying mode
 pub fn animation_init_system(world: &mut World) {
