@@ -664,18 +664,18 @@ impl BattlePage {
         use core::fmt::Write;
 
         // Draw dark background panel at top
-        let panel_height = 60;
+        let panel_height = 70;
         Rectangle::new(Point::new(0, 0), Size::new(368, panel_height))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 20, 30)))
             .draw(display)?;
 
-        let text_style_name = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 255, 200));
-        let text_style_info = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+        let text_style_name = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 200));
+        let text_style_info = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
 
         // LEFT SIDE - MONSTER INFO
         if let Some(game_enemy) = &self.game_enemy {
             let left_x = 25;
-            let name_y = 12;
+            let name_y = 20;
 
             // Monster name
             let mut name_str = heapless::String::<32>::new();
@@ -685,10 +685,10 @@ impl BattlePage {
             // Monster level
             let mut lvl_str = heapless::String::<16>::new();
             write!(lvl_str, "Lv {}", game_enemy.level).ok();
-            Text::new(&lvl_str, Point::new(left_x, name_y + 12), text_style_info).draw(display)?;
+            Text::new(&lvl_str, Point::new(left_x, name_y + 20), text_style_info).draw(display)?;
 
             // Monster HP bar
-            let hp_bar_y = 30;
+            let hp_bar_y = 45;
             let hp_bar_width = 100;
             self.draw_hp_bar(
                 display,
@@ -706,7 +706,7 @@ impl BattlePage {
 
         // RIGHT SIDE - HERO INFO
         let right_x = 368 - 140; // Right aligned with some margin
-        let name_y = 12;
+        let name_y = 20;
 
         // Hero job/name
         let mut name_str = heapless::String::<32>::new();
@@ -716,10 +716,10 @@ impl BattlePage {
         // Hero level
         let mut lvl_str = heapless::String::<16>::new();
         write!(lvl_str, "Lv {}", self.game_hero.level).ok();
-        Text::new(&lvl_str, Point::new(right_x, name_y + 12), text_style_info).draw(display)?;
+        Text::new(&lvl_str, Point::new(right_x, name_y + 20), text_style_info).draw(display)?;
 
         // Hero HP bar
-        let hp_bar_y = 30;
+        let hp_bar_y = 45;
         let hp_bar_width = 100;
         self.draw_hp_bar(
             display,
@@ -729,17 +729,7 @@ impl BattlePage {
             hp_bar_width,
         )?;
 
-        // Hero SP bar
-        let sp_bar_y = hp_bar_y + 8;
-        self.draw_sp_bar(
-            display,
-            (right_x, sp_bar_y),
-            self.game_hero.current_sp,
-            self.game_hero.max_sp,
-            hp_bar_width,
-        )?;
-
-        // HP/SP text
+        // HP text only (SP removed)
         let mut hp_str = heapless::String::<32>::new();
         write!(
             hp_str,
@@ -747,16 +737,7 @@ impl BattlePage {
             self.game_hero.current_hp, self.game_hero.max_hp
         )
         .ok();
-        Text::new(&hp_str, Point::new(right_x, sp_bar_y + 14), text_style_info).draw(display)?;
-
-        let mut sp_str = heapless::String::<32>::new();
-        write!(
-            sp_str,
-            "SP:{}/{}",
-            self.game_hero.current_sp, self.game_hero.max_sp
-        )
-        .ok();
-        Text::new(&sp_str, Point::new(right_x, sp_bar_y + 24), text_style_info).draw(display)?;
+        Text::new(&hp_str, Point::new(right_x, hp_bar_y + 15), text_style_info).draw(display)?;
 
         Ok(())
     }
@@ -1056,9 +1037,6 @@ impl Page for BattlePage {
 
         // Draw top info panel with monster and hero information
         self.draw_top_info_panel(display)?;
-
-        // Draw FPS overlay (no flush)
-        self.draw_fps_overlay(display)?;
 
         // Flush to display once at the end
         display.flush()?;

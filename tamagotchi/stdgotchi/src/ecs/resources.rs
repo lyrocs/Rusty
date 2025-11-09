@@ -149,7 +149,7 @@ impl GameManager {
     pub fn new(world_map: WorldMap) -> Self {
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
-            map_page: MapPage::new(world_map),
+            map_page: MapPage::new(world_map, None), // Use embedded map backgrounds
             battle_page: None,
             hero_overview_page: HeroOverviewPage::new(),
             hero: Hero::new(),
@@ -165,7 +165,7 @@ impl GameManager {
     pub fn from_save_data(save_data: crate::game::SaveData, world_map: WorldMap) -> Self {
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
-            map_page: MapPage::from_save(world_map, save_data.current_location_id),
+            map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
             battle_page: None,
             hero_overview_page: HeroOverviewPage::new(),
             hero: save_data.hero,

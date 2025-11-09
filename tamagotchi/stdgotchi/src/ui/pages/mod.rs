@@ -9,5 +9,5 @@ pub mod menu;
 
 pub use battle::BattlePage;
 pub use hero_overview::HeroOverviewPage;
-pub use map::MapPage;
+pub use map::{MapPage, TouchAction};
 pub use menu::MenuPage;

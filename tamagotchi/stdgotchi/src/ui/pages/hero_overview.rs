@@ -6,7 +6,7 @@ use crate::display::Sh8601Driver;
 use crate::game::{Hero, Stats};
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle},
+    mono_font::{ascii::FONT_10X20, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -220,43 +220,40 @@ impl HeroOverviewPage {
 
     /// Draw header with job and level
     fn draw_header(&self, display: &mut Sh8601Driver, hero: &Hero) -> Result<(), Box<dyn Error>> {
-        let text_style_title = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 255, 200));
-        let text_style_info = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+        let text_style_title = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 200));
+        let text_style_info = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
 
         // Job name
         use core::fmt::Write;
         let mut job_str = heapless::String::<32>::new();
         write!(job_str, "{}", hero.job.name()).ok();
-        Text::new(&job_str, Point::new(10, 15), text_style_title).draw(display)?;
+        Text::new(&job_str, Point::new(10, 20), text_style_title).draw(display)?;
 
         // Level and EXP
         let mut level_str = heapless::String::<32>::new();
         write!(level_str, "Lv {} ({}/{})", hero.level, hero.exp, hero.exp_to_next_level).ok();
-        Text::new(&level_str, Point::new(10, 28), text_style_info).draw(display)?;
+        Text::new(&level_str, Point::new(10, 45), text_style_info).draw(display)?;
 
         Ok(())
     }
 
-    /// Draw stat allocation section
+    /// Draw stat allocation section (left side, compact)
     fn draw_stats(&mut self, display: &mut Sh8601Driver, hero: &Hero) -> Result<(), Box<dyn Error>> {
-        let start_y = 45;
-        let line_height = 22;
+        let start_y = 65;
+        let line_height = 30;
 
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
-        let button_text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 200, 0));
+        let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        let button_text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 200, 0));
 
         self.touch_buttons.clear();
 
-        // Title
-        Text::new("Base Stats", Point::new(10, start_y), text_style).draw(display)?;
-
-        // Available points
+        // Title and available points on same line
         use core::fmt::Write;
-        let mut points_str = heapless::String::<32>::new();
-        write!(points_str, "Points: {}", hero.stat_points).ok();
-        Text::new(&points_str, Point::new(250, start_y), text_style).draw(display)?;
+        let mut header_str = heapless::String::<32>::new();
+        write!(header_str, "Stats ({})", hero.stat_points).ok();
+        Text::new(&header_str, Point::new(10, start_y), text_style).draw(display)?;
 
-        // Stat rows
+        // Stat rows (compact, left side only)
         let stats = [
             ("STR", hero.stats.str, ButtonAction::IncreaseStr, ButtonAction::DecreaseStr),
             ("AGI", hero.stats.agi, ButtonAction::IncreaseAgi, ButtonAction::DecreaseAgi),
@@ -267,32 +264,34 @@ impl HeroOverviewPage {
         ];
 
         for (i, (name, value, inc_action, dec_action)) in stats.iter().enumerate() {
-            let y = start_y + 15 + (i as i32 * line_height);
+            let y = start_y + 25 + (i as i32 * line_height);
 
-            // Stat name and value
+            // Stat name and value (compact)
             let mut stat_str = heapless::String::<16>::new();
-            write!(stat_str, "{}: {:>3}", name, value).ok();
-            Text::new(&stat_str, Point::new(15, y), text_style).draw(display)?;
+            write!(stat_str, "{}:{:>2}", name, value).ok();
+            Text::new(&stat_str, Point::new(10, y), text_style).draw(display)?;
 
-            // [-] button
-            let minus_x = 150;
-            let minus_bounds = (minus_x, y - 8, 20, 12);
-            Rectangle::new(Point::new(minus_x, y - 8), Size::new(20, 12))
+            // [-] button (larger, moved left)
+            let minus_x = 90;
+            let button_width = 40;
+            let button_height = 28;
+            let minus_bounds = (minus_x, y - 20, button_width, button_height);
+            Rectangle::new(Point::new(minus_x, y - 20), Size::new(button_width, button_height))
                 .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 40, 40)))
                 .draw(display)?;
-            Text::new("-", Point::new(minus_x + 7, y), button_text_style).draw(display)?;
+            Text::new("-", Point::new(minus_x + 14, y), button_text_style).draw(display)?;
             self.touch_buttons.push(TouchButton {
                 bounds: minus_bounds,
                 action: *dec_action,
             });
 
-            // [+] button
-            let plus_x = 180;
-            let plus_bounds = (plus_x, y - 8, 20, 12);
-            Rectangle::new(Point::new(plus_x, y - 8), Size::new(20, 12))
+            // [+] button (larger)
+            let plus_x = 135;
+            let plus_bounds = (plus_x, y - 20, button_width, button_height);
+            Rectangle::new(Point::new(plus_x, y - 20), Size::new(button_width, button_height))
                 .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 100, 40)))
                 .draw(display)?;
-            Text::new("+", Point::new(plus_x + 6, y), button_text_style).draw(display)?;
+            Text::new("+", Point::new(plus_x + 13, y), button_text_style).draw(display)?;
             self.touch_buttons.push(TouchButton {
                 bounds: plus_bounds,
                 action: *inc_action,
@@ -302,51 +301,54 @@ impl HeroOverviewPage {
         Ok(())
     }
 
-    /// Draw combat stats section
+    /// Draw combat stats section (right side)
     fn draw_combat_stats(&self, display: &mut Sh8601Driver, hero: &Hero) -> Result<(), Box<dyn Error>> {
-        let start_y = 200;
+        let start_x = 195; // Right side
+        let start_y = 65;  // Same level as stats
 
-        let text_style_title = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 200, 255));
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+        let text_style_title = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 255));
+        let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
 
-        Text::new("Combat Stats", Point::new(10, start_y), text_style_title).draw(display)?;
+        Text::new("Combat", Point::new(start_x, start_y), text_style_title).draw(display)?;
 
         use core::fmt::Write;
 
-        // ATK and DEF
+        // ATK
         let mut atk_str = heapless::String::<32>::new();
-        write!(atk_str, "ATK: {}", hero.stats.calculate_atk()).ok();
-        Text::new(&atk_str, Point::new(15, start_y + 15), text_style).draw(display)?;
+        write!(atk_str, "ATK:{}", hero.stats.calculate_atk()).ok();
+        Text::new(&atk_str, Point::new(start_x, start_y + 25), text_style).draw(display)?;
 
+        // DEF
         let mut def_str = heapless::String::<32>::new();
-        write!(def_str, "DEF: {}", hero.stats.calculate_def()).ok();
-        Text::new(&def_str, Point::new(150, start_y + 15), text_style).draw(display)?;
+        write!(def_str, "DEF:{}", hero.stats.calculate_def()).ok();
+        Text::new(&def_str, Point::new(start_x, start_y + 50), text_style).draw(display)?;
 
-        // HIT and FLEE
+        // HIT
         let mut hit_str = heapless::String::<32>::new();
-        write!(hit_str, "HIT: {}", hero.stats.calculate_hit(hero.level)).ok();
-        Text::new(&hit_str, Point::new(15, start_y + 30), text_style).draw(display)?;
+        write!(hit_str, "HIT:{}", hero.stats.calculate_hit(hero.level)).ok();
+        Text::new(&hit_str, Point::new(start_x, start_y + 75), text_style).draw(display)?;
 
+        // FLEE
         let mut flee_str = heapless::String::<32>::new();
-        write!(flee_str, "FLEE: {}", hero.stats.calculate_flee(hero.level)).ok();
-        Text::new(&flee_str, Point::new(150, start_y + 30), text_style).draw(display)?;
+        write!(flee_str, "FLE:{}", hero.stats.calculate_flee(hero.level)).ok();
+        Text::new(&flee_str, Point::new(start_x, start_y + 100), text_style).draw(display)?;
 
         // CRIT
         let mut crit_str = heapless::String::<32>::new();
         let crit_rate = hero.stats.calculate_crit_rate();
-        write!(crit_str, "CRIT: {:.1}%", crit_rate * 100.0).ok();
-        Text::new(&crit_str, Point::new(15, start_y + 45), text_style).draw(display)?;
+        write!(crit_str, "CRT:{:.1}%", crit_rate * 100.0).ok();
+        Text::new(&crit_str, Point::new(start_x, start_y + 125), text_style).draw(display)?;
 
         Ok(())
     }
 
     /// Draw HP/SP bars
     fn draw_hp_sp_bars(&self, display: &mut Sh8601Driver, hero: &Hero) -> Result<(), Box<dyn Error>> {
-        let start_y = 270;
-        let bar_width = 200;
-        let bar_height = 8;
+        let start_y = 260;
+        let bar_width = 340;
+        let bar_height = 10;
 
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+        let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
 
         use core::fmt::Write;
 
@@ -391,30 +393,23 @@ impl HeroOverviewPage {
 
     /// Draw reset button
     fn draw_reset_button(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
-        let button_x = 100;
+        let button_x = 90;
         let button_y = 380;
-        let button_width = 160;
-        let button_height = 30;
+        let button_width = 180;
+        let button_height = 50;
 
         Rectangle::new(Point::new(button_x, button_y), Size::new(button_width, button_height))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(80, 40, 40)))
             .draw(display)?;
 
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
-        Text::new("Reset Stats", Point::new(button_x + 40, button_y + 18), text_style).draw(display)?;
+        let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        Text::new("Reset Stats", Point::new(button_x + 20, button_y + 32), text_style).draw(display)?;
 
         self.touch_buttons.push(TouchButton {
             bounds: (button_x, button_y, button_width, button_height),
             action: ButtonAction::ResetStats,
         });
 
-        Ok(())
-    }
-
-    /// Draw help text
-    fn draw_help_text(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
-        Text::new("Tap +/- to allocate stats", Point::new(10, 430), text_style).draw(display)?;
         Ok(())
     }
 }
@@ -472,7 +467,6 @@ impl HeroOverviewPage {
         self.draw_combat_stats(display, hero)?;
         self.draw_hp_sp_bars(display, hero)?;
         self.draw_reset_button(display)?;
-        self.draw_help_text(display)?;
 
         display.flush()?;
 
