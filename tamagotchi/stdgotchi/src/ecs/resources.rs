@@ -123,6 +123,14 @@ impl crate::sdcard::SdCardOps for SdCardWrapper {
     }
 }
 
+/// Battle loading data - stores information needed to create battle page
+#[derive(Clone)]
+pub struct BattleLoadingData {
+    pub field_id: String,
+    pub monster_types: Vec<crate::game::EnemyType>,
+    pub initial_enemy: crate::game::EnemyType,
+}
+
 /// Game manager - Manages pages and game state
 pub struct GameManager {
     pub menu_page: crate::ui::pages::MenuPage,
@@ -132,6 +140,7 @@ pub struct GameManager {
     pub hero: Hero,
     pub kill_tracker: KillTracker,
     pub selected_field_id: Option<String>, // Field selected for battle
+    pub battle_loading_data: Option<BattleLoadingData>, // Data for deferred battle creation
     pub play_time_seconds: u64,             // Total play time
     pub session_start: Instant,             // Session start time for tracking play time
 }
@@ -146,6 +155,7 @@ impl GameManager {
             hero: Hero::new(),
             kill_tracker: KillTracker::new(),
             selected_field_id: None,
+            battle_loading_data: None,
             play_time_seconds: 0,
             session_start: Instant::now(),
         }
@@ -161,6 +171,7 @@ impl GameManager {
             hero: save_data.hero,
             kill_tracker: save_data.kill_tracker,
             selected_field_id: None,
+            battle_loading_data: None,
             play_time_seconds: save_data.play_time_seconds,
             session_start: Instant::now(),
         }
@@ -171,6 +182,7 @@ impl GameManager {
         match mode {
             AppMode::Menu => Some(&mut self.menu_page as &mut dyn Page),
             AppMode::Map => Some(&mut self.map_page as &mut dyn Page),
+            AppMode::BattleLoading => None, // Loading screen has no page
             AppMode::Battle => {
                 if let Some(ref mut battle_page) = self.battle_page {
                     Some(battle_page as &mut dyn Page)
@@ -272,6 +284,8 @@ pub enum AppMode {
     Menu,
     /// Map navigation
     Map,
+    /// Loading screen before battle
+    BattleLoading,
     /// Battle mode
     Battle,
     /// Hero overview and stats

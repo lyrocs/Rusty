@@ -52,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_system, fps_system, hero_overview_system, map_navigation_system, menu_system, render_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, fps_system, hero_overview_system, map_navigation_system, menu_system, render_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -319,13 +319,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     world.insert_non_send_resource(game_manager);
 
     // Create schedule and add systems
-    // Order: FPS tracking → Input handlers (Menu/Map/Battle/Hero) → Animation init → Render → Animation cleanup → Auto-save
+    // Order: FPS tracking → Input handlers (Menu/Map/Battle/Hero) → Battle Loading → Animation init → Render → Animation cleanup → Auto-save
     // Note: Input now comes from the input thread via channel, consumed by mode-specific systems
     let mut schedule = Schedule::default();
     schedule.add_systems((
         fps_system,
         menu_system,
         map_navigation_system,
+        battle_loading_system, // Creates battle page after loading screen shown
         battle_system,
         hero_overview_system,
         animation_init_system,

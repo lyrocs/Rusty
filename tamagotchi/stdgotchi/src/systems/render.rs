@@ -25,6 +25,15 @@ pub fn render_system(
     let display = &mut display_res.display;
 
     match app_state.current_mode {
+        AppMode::BattleLoading => {
+            // Draw loading screen
+            if app_state.needs_redraw {
+                if let Err(e) = draw_loading_screen(display) {
+                    log::error!("Failed to draw loading screen: {:?}", e);
+                }
+                app_state.needs_redraw = false;
+            }
+        }
         AppMode::Menu | AppMode::Map | AppMode::Battle => {
             // Game-based rendering with GameManager
             if let Some(mut game_manager) = game_manager {
@@ -139,6 +148,19 @@ fn draw_welcome_screen(
         .draw(display)?;
 
     draw_fps_text(display, fps)?;
+    display.flush()?;
+    Ok(())
+}
+
+/// Draw loading screen
+fn draw_loading_screen(
+    display: &mut crate::display::Sh8601Driver,
+) -> Result<(), Box<dyn std::error::Error>> {
+    display.clear(Rgb888::BLACK)?;
+
+    let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::CYAN);
+    Text::new("Loading Battle...", Point::new(120, 220), text_style).draw(display)?;
+
     display.flush()?;
     Ok(())
 }
