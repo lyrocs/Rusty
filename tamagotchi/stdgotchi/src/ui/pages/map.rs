@@ -248,9 +248,9 @@ impl MapPage {
     ) -> Result<(), Box<dyn Error>> {
         self.touch_areas.clear();
 
-        let bottom_start_y = 340; // Start of bottom navigation area
-        let button_height = 50;
-        let button_spacing = 8;
+        let bottom_start_y = 310; // Start of bottom navigation area (moved up)
+        let button_height = 42;   // Reduced from 50 to fit 3 buttons
+        let button_spacing = 5;   // Reduced from 8
 
         let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
 
@@ -270,7 +270,7 @@ impl MapPage {
                 .draw(display)?;
 
             // Draw button text (centered vertically)
-            Text::new(&button_text, Point::new(20, y + 30), text_style).draw(display)?;
+            Text::new(&button_text, Point::new(20, y + 27), text_style).draw(display)?;
 
             // Store touch area
             self.touch_areas.push(TouchArea {
@@ -292,7 +292,7 @@ impl MapPage {
                 .draw(display)?;
 
             // Draw FIGHT text (centered)
-            Text::new("FIGHT!", Point::new(140, y + 30), text_style).draw(display)?;
+            Text::new("FIGHT!", Point::new(140, y + 27), text_style).draw(display)?;
 
             // Store touch area
             self.touch_areas.push(TouchArea {

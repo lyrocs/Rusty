@@ -701,7 +701,7 @@ impl BattlePage {
             // HP text
             let mut hp_str = heapless::String::<32>::new();
             write!(hp_str, "{}/{}", game_enemy.current_hp, game_enemy.max_hp).ok();
-            Text::new(&hp_str, Point::new(left_x, hp_bar_y + 15), text_style_info).draw(display)?;
+            Text::new(&hp_str, Point::new(left_x, hp_bar_y + 20), text_style_info).draw(display)?;
         }
 
         // RIGHT SIDE - HERO INFO
@@ -737,7 +737,7 @@ impl BattlePage {
             self.game_hero.current_hp, self.game_hero.max_hp
         )
         .ok();
-        Text::new(&hp_str, Point::new(right_x, hp_bar_y + 15), text_style_info).draw(display)?;
+        Text::new(&hp_str, Point::new(right_x, hp_bar_y + 20), text_style_info).draw(display)?;
 
         Ok(())
     }

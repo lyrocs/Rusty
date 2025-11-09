@@ -51,9 +51,9 @@ impl Enemy {
         base_exp: u64,
         hero_level: u32,
     ) -> Self {
-        // Scale enemy stats based on hero level
-        let level = (hero_level + 2).min(50); // Enemy level slightly higher than hero
-        let level_modifier = 1.0 + ((level as f32 - base_level as f32) * 0.1);
+        // Scale enemy stats based on hero level, but keep base level for display
+        let scaling_level = (hero_level + 2).min(50); // For stat scaling
+        let level_modifier = 1.0 + ((scaling_level as f32 - base_level as f32) * 0.1);
 
         let max_hp = (base_hp as f32 * level_modifier).max(1.0) as u32;
         let atk = (base_attack as f32 * level_modifier).max(1.0) as u32;
@@ -63,13 +63,13 @@ impl Enemy {
         Self {
             id,
             name,
-            level,
+            level: base_level, // Display base level from data, not scaled level
             current_hp: max_hp,
             max_hp,
             atk,
             def,
-            hit: 90 + level * 2,
-            flee: 10 + level,
+            hit: 90 + base_level * 2, // Use base level for derived stats
+            flee: 10 + base_level,
             exp_reward,
         }
     }
