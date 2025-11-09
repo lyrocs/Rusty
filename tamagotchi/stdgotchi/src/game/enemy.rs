@@ -1,45 +1,14 @@
 //! Enemy system
 //!
-//! Manages enemy stats, HP, and combat properties
+//! Manages enemy instances in battle
 
 use serde::{Deserialize, Serialize};
 
-/// Enemy type identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum EnemyType {
-    Hornet,
-    Poring,
-    Fabre,
-    Lunatic,
-}
-
-impl EnemyType {
-    /// Get enemy ID string
-    pub fn id(&self) -> &'static str {
-        match self {
-            EnemyType::Hornet => "hornet",
-            EnemyType::Poring => "poring",
-            EnemyType::Fabre => "fabre",
-            EnemyType::Lunatic => "lunatic",
-        }
-    }
-
-    /// Get enemy display name
-    pub fn name(&self) -> &'static str {
-        match self {
-            EnemyType::Hornet => "Hornet",
-            EnemyType::Poring => "Poring",
-            EnemyType::Fabre => "Fabre",
-            EnemyType::Lunatic => "Lunatic",
-        }
-    }
-}
-
-/// Enemy instance
+/// Enemy instance in battle
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Enemy {
-    pub enemy_type: EnemyType,
+    pub id: u32,
+    pub name: String,
     pub level: u32,
     pub current_hp: u32,
     pub max_hp: u32,
@@ -51,26 +20,49 @@ pub struct Enemy {
 }
 
 impl Enemy {
-    /// Create enemy from type with scaled stats
-    pub fn new(enemy_type: EnemyType, hero_level: u32) -> Self {
-        let (base_hp, base_atk, base_def, base_exp) = match enemy_type {
-            EnemyType::Hornet => (100, 15, 3, 25),
-            EnemyType::Poring => (150, 10, 2, 15),
-            EnemyType::Fabre => (80, 12, 2, 20),
-            EnemyType::Lunatic => (120, 13, 3, 18),
-        };
-
-        // Scale enemy stats based on hero level
-        let level = (hero_level + 2).min(50);  // Enemy level slightly higher than hero
-        let level_modifier = 1.0 + (level as f32 * 0.1);
-        
-        let max_hp = (base_hp as f32 * level_modifier) as u32;
-        let atk = (base_atk as f32 * level_modifier) as u32;
-        let def = (base_def as f32 * level_modifier) as u32;
-        let exp_reward = (base_exp as f32 * level_modifier) as u64;
+    /// Create enemy from loaded data
+    pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, base_exp: u64) -> Self {
+        let max_hp = hp;
+        let atk = attack;
+        let def = defense;
 
         Self {
-            enemy_type,
+            id,
+            name,
+            level,
+            current_hp: max_hp,
+            max_hp,
+            atk,
+            def,
+            hit: 90 + level * 2,
+            flee: 10 + level,
+            exp_reward: base_exp,
+        }
+    }
+
+    /// Create enemy with level scaling based on hero level
+    pub fn from_data_scaled(
+        id: u32,
+        name: String,
+        base_level: u32,
+        base_hp: u32,
+        base_attack: u32,
+        base_defense: u32,
+        base_exp: u64,
+        hero_level: u32,
+    ) -> Self {
+        // Scale enemy stats based on hero level
+        let level = (hero_level + 2).min(50); // Enemy level slightly higher than hero
+        let level_modifier = 1.0 + ((level as f32 - base_level as f32) * 0.1);
+
+        let max_hp = (base_hp as f32 * level_modifier).max(1.0) as u32;
+        let atk = (base_attack as f32 * level_modifier).max(1.0) as u32;
+        let def = (base_defense as f32 * level_modifier).max(0.0) as u32;
+        let exp_reward = (base_exp as f32 * level_modifier).max(1.0) as u64;
+
+        Self {
+            id,
+            name,
             level,
             current_hp: max_hp,
             max_hp,
@@ -103,6 +95,11 @@ impl Enemy {
 
     /// Get attack interval in milliseconds (enemies attack slower)
     pub fn get_attack_interval(&self) -> u64 {
-        3000  // 3 seconds fixed for now
+        3000 // 3 seconds fixed for now
+    }
+
+    /// Get enemy name for display
+    pub fn display_name(&self) -> &str {
+        &self.name
     }
 }

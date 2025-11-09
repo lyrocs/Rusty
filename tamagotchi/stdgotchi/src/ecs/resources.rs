@@ -126,9 +126,9 @@ impl crate::sdcard::SdCardOps for SdCardWrapper {
 /// Battle loading data - stores information needed to create battle page
 #[derive(Clone)]
 pub struct BattleLoadingData {
-    pub field_id: String,
-    pub monster_types: Vec<crate::game::EnemyType>,
-    pub initial_enemy: crate::game::EnemyType,
+    pub map_id: u32,
+    pub enemy_ids: Vec<u32>,
+    pub initial_enemy_id: u32,
 }
 
 /// Game manager - Manages pages and game state
@@ -139,7 +139,7 @@ pub struct GameManager {
     pub hero_overview_page: HeroOverviewPage,
     pub hero: Hero,
     pub kill_tracker: KillTracker,
-    pub selected_field_id: Option<String>, // Field selected for battle
+    pub selected_map_id: Option<u32>, // Map selected for battle
     pub battle_loading_data: Option<BattleLoadingData>, // Data for deferred battle creation
     pub play_time_seconds: u64,             // Total play time
     pub session_start: Instant,             // Session start time for tracking play time
@@ -154,7 +154,7 @@ impl GameManager {
             hero_overview_page: HeroOverviewPage::new(),
             hero: Hero::new(),
             kill_tracker: KillTracker::new(),
-            selected_field_id: None,
+            selected_map_id: None,
             battle_loading_data: None,
             play_time_seconds: 0,
             session_start: Instant::now(),
@@ -165,12 +165,12 @@ impl GameManager {
     pub fn from_save_data(save_data: crate::game::SaveData, world_map: WorldMap) -> Self {
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
-            map_page: MapPage::from_save(world_map, save_data.current_location_id.clone()),
+            map_page: MapPage::from_save(world_map, save_data.current_location_id),
             battle_page: None,
             hero_overview_page: HeroOverviewPage::new(),
             hero: save_data.hero,
             kill_tracker: save_data.kill_tracker,
-            selected_field_id: None,
+            selected_map_id: None,
             battle_loading_data: None,
             play_time_seconds: save_data.play_time_seconds,
             session_start: Instant::now(),
@@ -214,7 +214,7 @@ impl GameManager {
         self.session_start = Instant::now();
 
         // Create save data
-        let current_location_id = self.map_page.world_map().current_location_id().to_string();
+        let current_location_id = self.map_page.world_map().current_location_id();
         let save_data = crate::game::SaveData::new(
             self.hero.clone(),
             self.kill_tracker.clone(),

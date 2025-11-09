@@ -119,12 +119,18 @@ pub fn enemy_attack(enemy: &Enemy, hero: &mut Hero) -> DamageResult {
     
     if !result.is_miss {
         hero.take_damage(result.damage);
-        log::info!("{} attacks for {} damage{}", 
-                   enemy.enemy_type.name(),
-                   result.damage,
-                   if result.is_critical { " (CRITICAL!)" } else { "" });
+        log::info!(
+            "{} attacks for {} damage{}",
+            enemy.name,
+            result.damage,
+            if result.is_critical {
+                " (CRITICAL!)"
+            } else {
+                ""
+            }
+        );
     } else {
-        log::info!("{}'s attack missed!", enemy.enemy_type.name());
+        log::info!("{}'s attack missed!", enemy.name);
     }
     
     result

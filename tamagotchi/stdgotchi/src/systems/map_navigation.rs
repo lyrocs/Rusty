@@ -30,49 +30,52 @@ pub fn map_navigation_system(
                 let y = y as i32;
                 log::info!("Touch at ({}, {})", x, y);
 
-                    // Handle touch on map page
-                    if let Some(selected_location_id) = game_manager.map_page.handle_touch(x, y) {
-                        // Check if selected location is a field (battle zone)
-                        // Clone location data to avoid borrow conflicts
-                        let location = game_manager.map_page.world_map().get_location(&selected_location_id).cloned();
+                // Handle touch on map page
+                if let Some(selected_location_id) = game_manager.map_page.handle_touch(x, y) {
+                    // Get location data and clone it to avoid borrow issues
+                    let location_data = game_manager
+                        .map_page
+                        .world_map()
+                        .get_location(selected_location_id)
+                        .cloned();
 
-                        if let Some(location) = location {
-                            if location.is_field() {
-                                // Field selected - prepare for battle
-                                log::info!("Entering battle at: {}", location.name);
-                                game_manager.selected_field_id = Some(selected_location_id.clone());
+                    if let Some(location) = location_data {
+                        // Check if location has enemies (battle zone)
+                        if !location.enemies.is_empty() {
+                            // Field with enemies - prepare for battle
+                            log::info!("Entering battle at: {}", location.name);
+                            game_manager.selected_map_id = Some(selected_location_id);
 
-                                // Get monsters from this field
-                                if let Some(monsters) = location.monsters() {
-                                    if !monsters.is_empty() {
-                                        // Pick a random monster from the field
-                                        let monster_index = rand::random::<usize>() % monsters.len();
-                                        let initial_enemy = monsters[monster_index];
+                            // Pick a random enemy from the map
+                            let enemy_index = rand::random::<usize>() % location.enemies.len();
+                            let initial_enemy_id = location.enemies[enemy_index];
 
-                                        // Store battle loading data for deferred creation
-                                        game_manager.battle_loading_data = Some(crate::ecs::resources::BattleLoadingData {
-                                            field_id: selected_location_id.clone(),
-                                            monster_types: monsters.to_vec(),
-                                            initial_enemy,
-                                        });
+                            // Store battle loading data for deferred creation
+                            game_manager.battle_loading_data =
+                                Some(crate::ecs::resources::BattleLoadingData {
+                                    map_id: selected_location_id,
+                                    enemy_ids: location.enemies.clone(),
+                                    initial_enemy_id,
+                                });
 
-                                        // Switch to loading screen first
-                                        // The battle_loading_system will create the actual battle page
-                                        app_state.current_mode = AppMode::BattleLoading;
-                                        app_state.needs_redraw = true;
-                                        log::info!("Switched to loading screen, battle will be created on next frame");
-                                    }
-                                }
+                            // Switch to loading screen first
+                            // The battle_loading_system will create the actual battle page
+                            app_state.current_mode = AppMode::BattleLoading;
+                            app_state.needs_redraw = true;
+                            log::info!(
+                                "Switched to loading screen, battle will be created on next frame"
+                            );
+                        } else {
+                            // Safe zone - travel there
+                            log::info!("Traveling to safe zone: {}", location.name);
+                            if let Err(e) = game_manager.map_page.travel_to(selected_location_id) {
+                                log::error!("Failed to travel: {}", e);
                             } else {
-                                // City selected - travel there
-                                if let Err(e) = game_manager.map_page.travel_to(&selected_location_id) {
-                                    log::error!("Failed to travel: {}", e);
-                                } else {
-                                    app_state.needs_redraw = true;
-                                }
+                                app_state.needs_redraw = true;
                             }
                         }
                     }
+                }
             }
             InputEvent::BootPressed => {
                 // Boot button opens menu

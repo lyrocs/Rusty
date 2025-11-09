@@ -1,49 +1,29 @@
-{
-  "locations": [
-    {
-      "id": "prontera",
-      "name": "Prontera City",
-      "type": "city",
-      "services": ["heal", "save", "shop"],
-      "connections": ["prontera_field", "payon", "geffen"]
-    },
-    {
-      "id": "prontera_field",
-      "name": "Prontera Field",
-      "type": "field",
-      "monsters": ["poring", "lunatic"],
-      "monster_level_range": [1, 5],
-      "connections": ["prontera"]
-    },
-    {
-      "id": "payon",
-      "name": "Payon Village",
-      "type": "city",
-      "services": ["heal", "save", "storage"],
-      "connections": ["prontera", "payon_forest"]
-    },
-    {
-      "id": "payon_forest",
-      "name": "Payon Forest",
-      "type": "field",
-      "monsters": ["fabre", "poring"],
-      "monster_level_range": [3, 8],
-      "connections": ["payon"]
-    },
-    {
-      "id": "geffen",
-      "name": "Geffen City",
-      "type": "city",
-      "services": ["heal", "save", "shop", "storage"],
-      "connections": ["prontera", "geffen_tower"]
-    },
-    {
-      "id": "geffen_tower",
-      "name": "Geffen Tower",
-      "type": "field",
-      "monsters": ["hornet", "fabre"],
-      "monster_level_range": [5, 10],
-      "connections": ["geffen"]
-    }
-  ]
-}
+[
+  {
+    "id": 1,
+    "name": "Prontera",
+    "south": 2,
+    "east": 5,
+    "west": 3,
+    "enemies": [],
+    "npcs": [1001, 1002, 1003, 1004, 1005]
+  },
+  {
+    "id": 2,
+    "name": "Prontera South",
+    "north": 1,
+    "enemies": [1002, 1007]
+  },
+  {
+    "id": 3,
+    "name": "Prontera West",
+    "east": 1,
+    "enemies": [1004, 1051]
+  },
+  {
+    "id": 5,
+    "name": "Prontera East",
+    "west": 1,
+    "enemies": [1007]
+  }
+]

@@ -5,10 +5,7 @@
 use bevy_ecs::prelude::*;
 use embedded_graphics::pixelcolor::Rgb888;
 
-use crate::assets::AssetLoader;
 use crate::ecs::resources::{AppMode, AppState, GameManager, SdCardWrapper};
-use crate::game::EnemyType;
-use crate::ui::pages::battle::EnemyType as BattleEnemyType;
 use crate::ui::pages::BattlePage;
 
 /// System to create battle page after loading screen is shown
@@ -34,23 +31,15 @@ pub fn battle_loading_system(
         return;
     };
 
-    log::info!("Creating battle page for field: {}", loading_data.field_id);
-
-    // Convert initial enemy type
-    let battle_enemy_type = match loading_data.initial_enemy {
-        EnemyType::Hornet => BattleEnemyType::Hornet,
-        EnemyType::Poring => BattleEnemyType::Poring,
-        EnemyType::Fabre => BattleEnemyType::Fabre,
-        EnemyType::Lunatic => {
-            log::warn!("Lunatic not implemented in battle, using Poring");
-            BattleEnemyType::Poring
-        }
-    };
+    log::info!("Creating battle page for map: {}", loading_data.map_id);
 
     // Use embedded sprites for instant loading (no SD card delay)
-    // Common enemies (Poring, Fabre, Hornet) are embedded in the binary
+    // Common enemies are embedded in the binary
     log::info!("📦 Using embedded sprites for instant battle loading");
     let asset_loader = None;
+
+    // Get game data from world map
+    let game_data = game_manager.map_page.world_map().game_data().clone();
 
     // Create battle page with background
     let battle_background = include_bytes!("../../assets/images/ui/battle.gif");
@@ -59,16 +48,19 @@ pub fn battle_loading_system(
         (0, 0),
         game_manager.hero.clone(),
         game_manager.kill_tracker.clone(),
+        game_data,
         asset_loader.clone(),
     ) {
         Ok(page) => page,
         Err(e) => {
             log::error!("Failed to load battle background: {:?}", e);
             log::info!("Falling back to solid color background");
+            let game_data = game_manager.map_page.world_map().game_data().clone();
             BattlePage::new(
                 Rgb888::new(20, 60, 20),
                 game_manager.hero.clone(),
                 game_manager.kill_tracker.clone(),
+                game_data,
                 asset_loader,
             )
         }
@@ -82,23 +74,14 @@ pub fn battle_loading_system(
         .add_hero(hero_idle, hero_attack, hero_attacked, (175, 170))
         .ok();
 
-    // Add enemy
-    battle_page
-        .add_enemy(battle_enemy_type, (75, 170))
-        .ok();
+    // Add enemy by ID
+    if let Err(e) = battle_page.add_enemy(loading_data.initial_enemy_id, (75, 170)) {
+        log::error!("Failed to add enemy {}: {:?}", loading_data.initial_enemy_id, e);
+    }
 
-    // Add all monsters from this field to the respawn pool
-    for monster_type in &loading_data.monster_types {
-        let battle_monster_type = match monster_type {
-            EnemyType::Hornet => BattleEnemyType::Hornet,
-            EnemyType::Poring => BattleEnemyType::Poring,
-            EnemyType::Fabre => BattleEnemyType::Fabre,
-            EnemyType::Lunatic => {
-                log::warn!("Lunatic not implemented in battle pool");
-                BattleEnemyType::Poring
-            }
-        };
-        battle_page.add_enemy_type_to_pool(battle_monster_type);
+    // Add all monsters from this map to the respawn pool
+    for enemy_id in &loading_data.enemy_ids {
+        battle_page.add_enemy_id_to_pool(*enemy_id);
     }
 
     game_manager.battle_page = Some(battle_page);

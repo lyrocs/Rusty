@@ -56,10 +56,10 @@ pub enum SpriteSize {
 pub enum AssetId {
     /// Hero sprite: (class_name, size, action)
     HeroSprite(&'static str, SpriteSize, u8),
-    /// Enemy sprite: (enemy_name, action)
-    EnemySprite(&'static str, SpriteAction),
-    /// Map background
-    MapBackground(u8),
+    /// Enemy sprite: (enemy_id, action)
+    EnemySprite(u32, SpriteAction),
+    /// Map background by map ID
+    MapBackground(u32),
     /// UI element
     UIElement(&'static str),
     /// Item
@@ -73,14 +73,23 @@ impl AssetId {
             AssetId::HeroSprite(class, _size, action) => {
                 format!("/SPRITES/HERO/{}{}.GIF", class.to_uppercase(), action)
             }
-            AssetId::EnemySprite(enemy, action) => {
-                format!("/SPRITES/ENEMY/{}{}.GIF",
-                    enemy.to_uppercase(),
+            AssetId::EnemySprite(enemy_id, action) => {
+                // Map enemy IDs to names for file paths
+                let enemy_name = match enemy_id {
+                    1002 => "PORING",
+                    1004 => "HORNET",
+                    1007 => "FABRE",
+                    1051 => "THIEF_BUG",
+                    _ => "UNKNOWN",
+                };
+                format!(
+                    "/SPRITES/ENEMY/{}{}.GIF",
+                    enemy_name,
                     action.filename_number()
                 )
             }
-            AssetId::MapBackground(num) => {
-                format!("/SPRITES/MAP/MAP{}.GIF", num)
+            AssetId::MapBackground(map_id) => {
+                format!("/SPRITES/MAP/{}.GIF", map_id)
             }
             AssetId::UIElement(name) => {
                 format!("/SPRITES/UI/{}.GIF", name.to_uppercase())
@@ -106,41 +115,70 @@ impl AssetId {
             AssetId::HeroSprite("novice", _size, 80) => {
                 Some(include_bytes!("../assets/images/novice/80.gif"))
             }
-            AssetId::EnemySprite("poring", SpriteAction::Idle) => {
+            // Poring (1002)
+            AssetId::EnemySprite(1002, SpriteAction::Idle) => {
                 Some(include_bytes!("../assets/images/poring/6.gif"))
             }
-            AssetId::EnemySprite("poring", SpriteAction::Attack) => {
+            AssetId::EnemySprite(1002, SpriteAction::Attack) => {
                 Some(include_bytes!("../assets/images/poring/22.gif"))
             }
-            AssetId::EnemySprite("poring", SpriteAction::Attacked) => {
+            AssetId::EnemySprite(1002, SpriteAction::Attacked) => {
                 Some(include_bytes!("../assets/images/poring/30.gif"))
             }
-            AssetId::EnemySprite("poring", SpriteAction::Death) => {
+            AssetId::EnemySprite(1002, SpriteAction::Death) => {
                 Some(include_bytes!("../assets/images/poring/38.gif"))
             }
-            AssetId::EnemySprite("fabre", SpriteAction::Idle) => {
-                Some(include_bytes!("../assets/images/fabre/6.gif"))
-            }
-            AssetId::EnemySprite("fabre", SpriteAction::Attack) => {
-                Some(include_bytes!("../assets/images/fabre/22.gif"))
-            }
-            AssetId::EnemySprite("fabre", SpriteAction::Attacked) => {
-                Some(include_bytes!("../assets/images/fabre/30.gif"))
-            }
-            AssetId::EnemySprite("fabre", SpriteAction::Death) => {
-                Some(include_bytes!("../assets/images/fabre/38.gif"))
-            }
-            AssetId::EnemySprite("hornet", SpriteAction::Idle) => {
+            // Hornet (1004)
+            AssetId::EnemySprite(1004, SpriteAction::Idle) => {
                 Some(include_bytes!("../assets/images/hornet/6.gif"))
             }
-            AssetId::EnemySprite("hornet", SpriteAction::Attack) => {
+            AssetId::EnemySprite(1004, SpriteAction::Attack) => {
                 Some(include_bytes!("../assets/images/hornet/22.gif"))
             }
-            AssetId::EnemySprite("hornet", SpriteAction::Attacked) => {
+            AssetId::EnemySprite(1004, SpriteAction::Attacked) => {
                 Some(include_bytes!("../assets/images/hornet/30.gif"))
             }
-            AssetId::EnemySprite("hornet", SpriteAction::Death) => {
+            AssetId::EnemySprite(1004, SpriteAction::Death) => {
                 Some(include_bytes!("../assets/images/hornet/38.gif"))
+            }
+            // Fabre (1007)
+            AssetId::EnemySprite(1007, SpriteAction::Idle) => {
+                Some(include_bytes!("../assets/images/fabre/6.gif"))
+            }
+            AssetId::EnemySprite(1007, SpriteAction::Attack) => {
+                Some(include_bytes!("../assets/images/fabre/22.gif"))
+            }
+            AssetId::EnemySprite(1007, SpriteAction::Attacked) => {
+                Some(include_bytes!("../assets/images/fabre/30.gif"))
+            }
+            AssetId::EnemySprite(1007, SpriteAction::Death) => {
+                Some(include_bytes!("../assets/images/fabre/38.gif"))
+            }
+            // Thief Bug (1051)
+            AssetId::EnemySprite(1051, SpriteAction::Idle) => {
+                Some(include_bytes!("../assets/images/thief_bug/6.gif"))
+            }
+            AssetId::EnemySprite(1051, SpriteAction::Attack) => {
+                Some(include_bytes!("../assets/images/thief_bug/22.gif"))
+            }
+            AssetId::EnemySprite(1051, SpriteAction::Attacked) => {
+                Some(include_bytes!("../assets/images/thief_bug/30.gif"))
+            }
+            AssetId::EnemySprite(1051, SpriteAction::Death) => {
+                Some(include_bytes!("../assets/images/thief_bug/38.gif"))
+            }
+            // Map backgrounds
+            AssetId::MapBackground(1) => {
+                Some(include_bytes!("../assets/images/map/1.gif"))
+            }
+            AssetId::MapBackground(2) => {
+                Some(include_bytes!("../assets/images/map/2.gif"))
+            }
+            AssetId::MapBackground(3) => {
+                Some(include_bytes!("../assets/images/map/3.gif"))
+            }
+            AssetId::MapBackground(5) => {
+                Some(include_bytes!("../assets/images/map/5.gif"))
             }
             AssetId::UIElement("battle") => {
                 Some(include_bytes!("../assets/images/ui/battle.gif"))
@@ -254,47 +292,27 @@ where
 pub mod battle {
     use super::*;
 
-    /// Enemy types matching the battle system
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum EnemyType {
-        Hornet,
-        Poring,
-        Fabre,
-    }
-
-    impl EnemyType {
-        /// Convert to string for asset loading
-        fn as_str(&self) -> &'static str {
-            match self {
-                EnemyType::Hornet => "hornet",
-                EnemyType::Poring => "poring",
-                EnemyType::Fabre => "fabre",
-            }
-        }
-    }
-
     /// Load enemy sprites from AssetLoader or embedded fallback
     ///
     /// Returns (idle, attack, attacked, death) as Vec<u8>
     ///
     /// # Example
     /// ```no_run
-    /// use crate::assets::battle::{load_enemy_sprites, EnemyType};
+    /// use crate::assets::battle::load_enemy_sprites;
     ///
     /// let mut loader = AssetLoader::new(Some(sd_card), true);
-    /// let (idle, attack, attacked, death) = load_enemy_sprites(&mut loader, EnemyType::Poring)?;
+    /// let (idle, attack, attacked, death) = load_enemy_sprites(&mut loader, 1002)?; // Poring
     /// ```
     pub fn load_enemy_sprites<SD: SdCardOps + Clone>(
         loader: &mut AssetLoader<SD>,
-        enemy_type: EnemyType,
+        enemy_id: u32,
     ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>), Box<dyn Error>> {
-        let enemy_name = enemy_type.as_str();
-
-        let idle = loader.load_bytes(&AssetId::EnemySprite(enemy_name, SpriteAction::Idle))?;
-        let attack = loader.load_bytes(&AssetId::EnemySprite(enemy_name, SpriteAction::Attack))?;
-        let attacked = loader.load_bytes(&AssetId::EnemySprite(enemy_name, SpriteAction::Attacked))?;
+        let idle = loader.load_bytes(&AssetId::EnemySprite(enemy_id, SpriteAction::Idle))?;
+        let attack = loader.load_bytes(&AssetId::EnemySprite(enemy_id, SpriteAction::Attack))?;
+        let attacked =
+            loader.load_bytes(&AssetId::EnemySprite(enemy_id, SpriteAction::Attacked))?;
         let death = loader
-            .load_bytes(&AssetId::EnemySprite(enemy_name, SpriteAction::Death))
+            .load_bytes(&AssetId::EnemySprite(enemy_id, SpriteAction::Death))
             .ok();
 
         Ok((idle, attack, attacked, death))
@@ -302,29 +320,40 @@ pub mod battle {
 
     /// Load embedded enemy sprites (backward compatibility)
     ///
-    /// This is the same as the old get_enemy_data() but returns owned Vec<u8>
+    /// This is the same as the old get_enemy_data() but uses enemy IDs
     pub fn load_enemy_sprites_embedded(
-        enemy_type: EnemyType,
-    ) -> (Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>) {
-        match enemy_type {
-            EnemyType::Hornet => (
-                include_bytes!("../assets/images/hornet/6.gif").to_vec(),
-                include_bytes!("../assets/images/hornet/22.gif").to_vec(),
-                include_bytes!("../assets/images/hornet/30.gif").to_vec(),
-                Some(include_bytes!("../assets/images/hornet/38.gif").to_vec()),
-            ),
-            EnemyType::Poring => (
+        enemy_id: u32,
+    ) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>)> {
+        match enemy_id {
+            1002 => Some((
+                // Poring
                 include_bytes!("../assets/images/poring/6.gif").to_vec(),
                 include_bytes!("../assets/images/poring/22.gif").to_vec(),
                 include_bytes!("../assets/images/poring/30.gif").to_vec(),
                 Some(include_bytes!("../assets/images/poring/38.gif").to_vec()),
-            ),
-            EnemyType::Fabre => (
+            )),
+            1004 => Some((
+                // Hornet
+                include_bytes!("../assets/images/hornet/6.gif").to_vec(),
+                include_bytes!("../assets/images/hornet/22.gif").to_vec(),
+                include_bytes!("../assets/images/hornet/30.gif").to_vec(),
+                Some(include_bytes!("../assets/images/hornet/38.gif").to_vec()),
+            )),
+            1007 => Some((
+                // Fabre
                 include_bytes!("../assets/images/fabre/6.gif").to_vec(),
                 include_bytes!("../assets/images/fabre/22.gif").to_vec(),
                 include_bytes!("../assets/images/fabre/30.gif").to_vec(),
                 Some(include_bytes!("../assets/images/fabre/38.gif").to_vec()),
-            ),
+            )),
+            1051 => Some((
+                // Thief Bug
+                include_bytes!("../assets/images/thief_bug/6.gif").to_vec(),
+                include_bytes!("../assets/images/thief_bug/22.gif").to_vec(),
+                include_bytes!("../assets/images/thief_bug/30.gif").to_vec(),
+                Some(include_bytes!("../assets/images/thief_bug/38.gif").to_vec()),
+            )),
+            _ => None,
         }
     }
 }

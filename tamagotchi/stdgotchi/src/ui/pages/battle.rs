@@ -2,11 +2,11 @@
 //!
 //! Displays a map background with animated characters in battle.
 
-use crate::assets::battle::{load_enemy_sprites, load_enemy_sprites_embedded, EnemyType as AssetEnemyType};
+use crate::assets::battle::{load_enemy_sprites, load_enemy_sprites_embedded};
 use crate::assets::AssetLoader;
 use crate::display::Sh8601Driver;
 use crate::ecs::resources::SdCardWrapper;
-use crate::game::{self, Enemy as GameEnemy, EnemyType as GameEnemyType, Hero, KillTracker};
+use crate::game::{self, Enemy as GameEnemy, GameData, Hero, KillTracker};
 use crate::ui::page::Page;
 use crate::ui::sprite::{AnimatedSprite, Background};
 use embedded_graphics::{
@@ -213,13 +213,11 @@ impl BattleEntity {
     }
 }
 
-/// Enemy type identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnemyType {
-    Hornet,
-    Poring,
-    Fabre,
-}
+// Enemy types now use numeric IDs from GameData:
+// 1002 - Poring
+// 1004 - Hornet
+// 1007 - Fabre
+// 1051 - Thief Bug
 
 /// Floating damage number animation
 #[derive(Debug, Clone)]
@@ -275,13 +273,14 @@ pub struct BattlePage {
     enemy: Option<BattleEntity>,
     fps: f32,
     first_draw: bool,
-    enemy_types: Vec<EnemyType>,
+    enemy_ids: Vec<u32>,         // Enemy IDs to spawn
     current_enemy_index: usize,
 
     // RPG game state
     game_hero: Hero,
     game_enemy: Option<GameEnemy>,
     kill_tracker: KillTracker,
+    game_data: GameData,          // Game data for enemy loading
 
     // Damage number animations
     damage_numbers: Vec<DamageNumber>,
@@ -297,11 +296,13 @@ impl BattlePage {
     /// * `background_color` - RGB color for background
     /// * `hero` - Hero state from GameManager
     /// * `kill_tracker` - Kill tracker from GameManager
+    /// * `game_data` - Game data for enemy loading
     /// * `asset_loader` - Optional AssetLoader for SD card support
     pub fn new(
         background_color: Rgb888,
         hero: Hero,
         kill_tracker: KillTracker,
+        game_data: GameData,
         asset_loader: Option<AssetLoader<SdCardWrapper>>,
     ) -> Self {
         Self {
@@ -311,11 +312,12 @@ impl BattlePage {
             enemy: None,
             fps: 0.0,
             first_draw: true,
-            enemy_types: Vec::new(),
+            enemy_ids: Vec::new(),
             current_enemy_index: 0,
             game_hero: hero,
             game_enemy: None,
             kill_tracker,
+            game_data,
             damage_numbers: Vec::new(),
             asset_loader,
         }
@@ -328,6 +330,7 @@ impl BattlePage {
     /// * `map_position` - Position of the map
     /// * `hero` - Hero state from GameManager
     /// * `kill_tracker` - Kill tracker from GameManager
+    /// * `game_data` - Game data for enemy loading
     /// * `asset_loader` - Optional AssetLoader for SD card support
     #[allow(dead_code)]
     pub fn new_with_background(
@@ -335,6 +338,7 @@ impl BattlePage {
         map_position: (i32, i32),
         hero: Hero,
         kill_tracker: KillTracker,
+        game_data: GameData,
         asset_loader: Option<AssetLoader<SdCardWrapper>>,
     ) -> Result<Self, Box<dyn Error>> {
         let background = Background::new(map_data, map_position)?;
@@ -346,11 +350,12 @@ impl BattlePage {
             enemy: None,
             fps: 0.0,
             first_draw: true,
-            enemy_types: Vec::new(),
+            enemy_ids: Vec::new(),
             current_enemy_index: 0,
             game_hero: hero,
             game_enemy: None,
             kill_tracker,
+            game_data,
             damage_numbers: Vec::new(),
             asset_loader,
         })
@@ -366,82 +371,33 @@ impl BattlePage {
         &self.kill_tracker
     }
 
-    /// Convert UI EnemyType to game EnemyType
-    fn to_game_enemy_type(enemy_type: EnemyType) -> GameEnemyType {
-        match enemy_type {
-            EnemyType::Hornet => GameEnemyType::Hornet,
-            EnemyType::Poring => GameEnemyType::Poring,
-            EnemyType::Fabre => GameEnemyType::Fabre,
-        }
-    }
-
-    /// Convert UI EnemyType to asset EnemyType
-    fn to_asset_enemy_type(enemy_type: EnemyType) -> AssetEnemyType {
-        match enemy_type {
-            EnemyType::Hornet => AssetEnemyType::Hornet,
-            EnemyType::Poring => AssetEnemyType::Poring,
-            EnemyType::Fabre => AssetEnemyType::Fabre,
-        }
-    }
-
     /// Get enemy sprites with SD card support
     /// Tries to load from SD card first, falls back to embedded assets
     fn get_enemy_sprites_with_sd(
         &mut self,
-        enemy_type: EnemyType,
+        enemy_id: u32,
     ) -> (Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>) {
-        let asset_type = Self::to_asset_enemy_type(enemy_type);
-
         // Try SD card first if available
         if let Some(ref mut loader) = self.asset_loader {
-            match load_enemy_sprites(loader, asset_type) {
+            match load_enemy_sprites(loader, enemy_id) {
                 Ok(sprites) => {
-                    log::info!("✅ Loaded {:?} sprites from SD card", enemy_type);
+                    log::info!("✅ Loaded enemy {} sprites from SD card", enemy_id);
                     return sprites;
                 }
                 Err(e) => {
-                    log::warn!("⚠️  SD card load failed for {:?}: {}", enemy_type, e);
+                    log::warn!("⚠️  SD card load failed for enemy {}: {}", enemy_id, e);
                     log::info!("📦 Falling back to embedded sprites");
                 }
             }
         }
 
         // Fallback to embedded
-        log::info!("📦 Loading {:?} sprites from embedded assets", enemy_type);
-        load_enemy_sprites_embedded(asset_type)
-    }
-
-    /// Get enemy GIF data by type
-    /// Returns (idle, attack, attacked, death)
-    fn get_enemy_data(
-        enemy_type: EnemyType,
-    ) -> (
-        &'static [u8],
-        &'static [u8],
-        &'static [u8],
-        Option<&'static [u8]>,
-    ) {
-        match enemy_type {
-            EnemyType::Hornet => (
-                include_bytes!("../../../assets/images/hornet/6.gif"), // idle
-                include_bytes!("../../../assets/images/hornet/22.gif"), // attack
-                include_bytes!("../../../assets/images/hornet/30.gif"), // attacked
-                Some(include_bytes!("../../../assets/images/hornet/38.gif")), // death
-            ),
-            EnemyType::Poring => (
-                include_bytes!("../../../assets/images/poring/6.gif"), // idle
-                include_bytes!("../../../assets/images/poring/22.gif"), // attack
-                include_bytes!("../../../assets/images/poring/30.gif"), // attacked
-                Some(include_bytes!("../../../assets/images/poring/38.gif")), // attacked
-                                                                       // None, // death animation too large (341×336), using time-based delay instead
-            ),
-            EnemyType::Fabre => (
-                include_bytes!("../../../assets/images/fabre/6.gif"), // idle
-                include_bytes!("../../../assets/images/fabre/22.gif"), // attack
-                include_bytes!("../../../assets/images/fabre/30.gif"), // attacked
-                Some(include_bytes!("../../../assets/images/fabre/38.gif")), // death
-            ),
-        }
+        log::info!("📦 Loading enemy {} sprites from embedded assets", enemy_id);
+        load_enemy_sprites_embedded(enemy_id).unwrap_or_else(|| {
+            log::error!("No embedded sprites for enemy {}", enemy_id);
+            // Return poring sprites as fallback
+            load_enemy_sprites_embedded(1002).unwrap()
+        })
     }
 
     /// Add hero to the battle
@@ -473,19 +429,19 @@ impl BattlePage {
         Ok(())
     }
 
-    /// Add enemy to the battle by type
+    /// Add enemy to the battle by ID
     ///
     /// # Arguments
-    /// * `enemy_type` - Type of enemy to add
+    /// * `enemy_id` - ID of enemy to add
     /// * `position` - Position on screen
     pub fn add_enemy(
         &mut self,
-        enemy_type: EnemyType,
+        enemy_id: u32,
         position: (i32, i32),
     ) -> Result<(), Box<dyn Error>> {
         // Load sprites with SD card support
         let (idle_data, attack_data, attacked_data, death_data) =
-            self.get_enemy_sprites_with_sd(enemy_type);
+            self.get_enemy_sprites_with_sd(enemy_id);
 
         let enemy = BattleEntity::new(
             EntityRole::Enemy,
@@ -498,35 +454,47 @@ impl BattlePage {
             (0, 0),                 // No offset for enemies
         )?;
 
-        // Create game enemy with RPG stats
-        let game_enemy_type = Self::to_game_enemy_type(enemy_type);
-        let game_enemy = GameEnemy::new(game_enemy_type, self.game_hero.level);
-        log::info!(
-            "Spawned {} (Lv {}, HP: {}, ATK: {})",
-            game_enemy.enemy_type.name(),
-            game_enemy.level,
-            game_enemy.max_hp,
-            game_enemy.atk
-        );
+        // Get enemy data from GameData and create game enemy
+        if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
+            let game_enemy = GameEnemy::from_data_scaled(
+                enemy_data.id,
+                enemy_data.name.clone(),
+                enemy_data.level,
+                enemy_data.hp,
+                enemy_data.attack,
+                enemy_data.defense,
+                enemy_data.base_exp,
+                self.game_hero.level,
+            );
+            log::info!(
+                "Spawned {} (Lv {}, HP: {}, ATK: {})",
+                game_enemy.name,
+                game_enemy.level,
+                game_enemy.max_hp,
+                game_enemy.atk
+            );
 
-        // Store enemy type for respawning
-        if self.enemy_types.is_empty() {
-            self.enemy_types.push(enemy_type);
+            // Store enemy ID for respawning
+            if self.enemy_ids.is_empty() {
+                self.enemy_ids.push(enemy_id);
+            }
+
+            self.enemy = Some(enemy);
+            self.game_enemy = Some(game_enemy);
+            Ok(())
+        } else {
+            Err(format!("Enemy {} not found in game data", enemy_id).into())
         }
-
-        self.enemy = Some(enemy);
-        self.game_enemy = Some(game_enemy);
-        Ok(())
     }
 
-    /// Add enemy type to respawn pool (for cycling through different enemies)
-    pub fn add_enemy_type_to_pool(&mut self, enemy_type: EnemyType) {
-        self.enemy_types.push(enemy_type);
+    /// Add enemy ID to respawn pool (for cycling through different enemies)
+    pub fn add_enemy_id_to_pool(&mut self, enemy_id: u32) {
+        self.enemy_ids.push(enemy_id);
     }
 
     /// Respawn enemy with next one in pool
     fn respawn_enemy(&mut self) -> Result<(), Box<dyn Error>> {
-        if self.enemy_types.is_empty() {
+        if self.enemy_ids.is_empty() {
             return Ok(());
         }
 
@@ -534,11 +502,11 @@ impl BattlePage {
         self.enemy = None;
         self.game_enemy = None;
 
-        // Cycle to next enemy type
-        self.current_enemy_index = (self.current_enemy_index + 1) % self.enemy_types.len();
-        let enemy_type = self.enemy_types[self.current_enemy_index];
+        // Cycle to next enemy ID
+        self.current_enemy_index = (self.current_enemy_index + 1) % self.enemy_ids.len();
+        let enemy_id = self.enemy_ids[self.current_enemy_index];
 
-        log::info!("Respawning enemy: {:?}", enemy_type);
+        log::info!("Respawning enemy ID: {}", enemy_id);
 
         // Position enemy on left side (matching initial battle setup)
         let x = 75;
@@ -546,7 +514,7 @@ impl BattlePage {
 
         // Load sprites with SD card support
         let (idle_data, attack_data, attacked_data, death_data) =
-            self.get_enemy_sprites_with_sd(enemy_type);
+            self.get_enemy_sprites_with_sd(enemy_id);
 
         let enemy = BattleEntity::new(
             EntityRole::Enemy,
@@ -559,12 +527,24 @@ impl BattlePage {
             (0, 0), // No offset for enemies
         )?;
 
-        // Create game enemy with RPG stats
-        let game_enemy_type = Self::to_game_enemy_type(enemy_type);
-        let game_enemy = GameEnemy::new(game_enemy_type, self.game_hero.level);
+        // Get enemy data and create game enemy
+        let Some(enemy_data) = self.game_data.get_enemy(enemy_id) else {
+            return Err(format!("Enemy {} not found in game data", enemy_id).into());
+        };
+
+        let game_enemy = GameEnemy::from_data_scaled(
+            enemy_data.id,
+            enemy_data.name.clone(),
+            enemy_data.level,
+            enemy_data.hp,
+            enemy_data.attack,
+            enemy_data.defense,
+            enemy_data.base_exp,
+            self.game_hero.level,
+        );
         log::info!(
             "Respawned {} (Lv {}, HP: {}, ATK: {})",
-            game_enemy.enemy_type.name(),
+            game_enemy.name,
             game_enemy.level,
             game_enemy.max_hp,
             game_enemy.atk
@@ -699,7 +679,7 @@ impl BattlePage {
 
             // Monster name
             let mut name_str = heapless::String::<32>::new();
-            write!(name_str, "{}", game_enemy.enemy_type.name()).ok();
+            write!(name_str, "{}", game_enemy.name).ok();
             Text::new(&name_str, Point::new(left_x, name_y), text_style_name).draw(display)?;
 
             // Monster level
@@ -883,13 +863,14 @@ impl Page for BattlePage {
 
                             // Award EXP and record kill
                             let exp_reward = game_enemy.exp_reward;
-                            let enemy_type = game_enemy.enemy_type;
+                            let enemy_id = game_enemy.id;
+                            let enemy_name = game_enemy.name.clone();
                             self.game_hero.gain_exp(exp_reward);
-                            self.kill_tracker.record_kill(enemy_type);
+                            self.kill_tracker.record_kill(enemy_id, &enemy_name);
 
                             log::info!(
                                 "{} defeated! Gained {} EXP (Hero: Lv {} - {}/{})",
-                                enemy_type.name(),
+                                enemy_name,
                                 exp_reward,
                                 self.game_hero.level,
                                 self.game_hero.exp,

@@ -10,6 +10,7 @@ pub mod battle;
 pub mod kill_tracker;
 pub mod map;
 pub mod save;
+pub mod data_loader;
 
 pub use stats::*;
 pub use hero::*;
@@ -18,6 +19,7 @@ pub use battle::*;
 pub use kill_tracker::*;
 pub use map::*;
 pub use save::*;
+pub use data_loader::*;
 
 use bevy_ecs::prelude::*;
 
@@ -47,12 +49,13 @@ impl GameState {
     }
 
     /// Spawn a new enemy
-    pub fn spawn_enemy(&mut self, enemy_type: EnemyType) {
-        let enemy = Enemy::new(enemy_type, self.hero.level);
-        log::info!("Spawned {} (Level {}, HP: {})", 
-                   enemy.enemy_type.name(), 
-                   enemy.level, 
-                   enemy.max_hp);
+    pub fn spawn_enemy(&mut self, enemy: Enemy) {
+        log::info!(
+            "Spawned {} (Level {}, HP: {})",
+            enemy.name,
+            enemy.level,
+            enemy.max_hp
+        );
         self.current_enemy = Some(enemy);
     }
 
@@ -61,11 +64,11 @@ impl GameState {
         if let Some(enemy) = &self.current_enemy {
             // Award EXP to hero
             let exp_reward = enemy.exp_reward;
-            log::info!("{} defeated! Gained {} EXP", enemy.enemy_type.name(), exp_reward);
-            
+            log::info!("{} defeated! Gained {} EXP", enemy.name, exp_reward);
+
             // Record kill
-            self.kill_tracker.record_kill(enemy.enemy_type);
-            
+            self.kill_tracker.record_kill(enemy.id, &enemy.name);
+
             // Give EXP to hero
             self.hero.gain_exp(exp_reward);
         }

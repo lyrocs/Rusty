@@ -1,15 +1,14 @@
 //! Kill tracking system
 //!
-//! Tracks number of kills per enemy type
+//! Tracks number of kills per enemy ID
 
-use super::enemy::EnemyType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Tracks kills for each enemy type
+/// Tracks kills for each enemy ID
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KillTracker {
-    kills: HashMap<EnemyType, u32>,
+    kills: HashMap<u32, u32>, // enemy_id -> kill_count
     total_kills: u32,
 }
 
@@ -27,17 +26,21 @@ impl KillTracker {
         Self::default()
     }
 
-    /// Record a kill for an enemy type
-    pub fn record_kill(&mut self, enemy_type: EnemyType) {
-        *self.kills.entry(enemy_type).or_insert(0) += 1;
+    /// Record a kill for an enemy by ID and name
+    pub fn record_kill(&mut self, enemy_id: u32, enemy_name: &str) {
+        *self.kills.entry(enemy_id).or_insert(0) += 1;
         self.total_kills += 1;
-        
-        log::info!("{} killed! Total kills: {}", enemy_type.name(), self.get_kills(enemy_type));
+
+        log::info!(
+            "{} killed! Total kills: {}",
+            enemy_name,
+            self.get_kills(enemy_id)
+        );
     }
 
-    /// Get kill count for specific enemy type
-    pub fn get_kills(&self, enemy_type: EnemyType) -> u32 {
-        *self.kills.get(&enemy_type).unwrap_or(&0)
+    /// Get kill count for specific enemy ID
+    pub fn get_kills(&self, enemy_id: u32) -> u32 {
+        *self.kills.get(&enemy_id).unwrap_or(&0)
     }
 
     /// Get total kills across all enemies
@@ -46,7 +49,7 @@ impl KillTracker {
     }
 
     /// Get all kill counts
-    pub fn get_all_kills(&self) -> &HashMap<EnemyType, u32> {
+    pub fn get_all_kills(&self) -> &HashMap<u32, u32> {
         &self.kills
     }
 }

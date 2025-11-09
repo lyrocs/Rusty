@@ -22,7 +22,7 @@ pub struct SaveData {
     pub kill_tracker: KillTracker,
 
     /// Current map location ID
-    pub current_location_id: String,
+    pub current_location_id: u32,
 
     /// Total play time in seconds
     pub play_time_seconds: u64,
@@ -42,7 +42,7 @@ impl SaveData {
     pub fn new(
         hero: Hero,
         kill_tracker: KillTracker,
-        current_location_id: String,
+        current_location_id: u32,
         play_time_seconds: u64,
     ) -> Self {
         Self {
@@ -113,12 +113,7 @@ mod tests {
     fn test_save_data_serialization() {
         let hero = Hero::new();
         let kill_tracker = KillTracker::new();
-        let save_data = SaveData::new(
-            hero,
-            kill_tracker,
-            "prontera".to_string(),
-            3600,
-        );
+        let save_data = SaveData::new(hero, kill_tracker, 1, 3600);
 
         // Serialize
         let json = save_data.to_json().unwrap();
@@ -128,6 +123,6 @@ mod tests {
         // Deserialize
         let loaded = SaveData::from_json(&json).unwrap();
         assert_eq!(loaded.version, SaveData::CURRENT_VERSION);
-        assert_eq!(loaded.current_location_id, "prontera");
+        assert_eq!(loaded.current_location_id, 1);
     }
 }

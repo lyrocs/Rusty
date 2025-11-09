@@ -235,12 +235,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Load map data
-    log::info!("Loading map data...");
-    let maps_json = include_str!("../assets/data/maps.json");
-    let world_map = WorldMap::from_json(maps_json, "prontera".to_string())
-        .expect("Failed to load map data");
-    log::info!("Map loaded successfully");
+    // Load game data (maps, enemies, etc.)
+    log::info!("Loading game data...");
+    let game_data = game::GameData::load_from_assets()
+        .expect("Failed to load game data");
+    log::info!("Game data loaded successfully");
+
+    // Create world map with game data
+    let world_map = WorldMap::new(game_data, 1); // Start at Prontera (ID 1)
+    log::info!("World map initialized");
 
     // Try to load save file if SD card is available
     let mut sd_wrapper_mut = sd_card_wrapper;
