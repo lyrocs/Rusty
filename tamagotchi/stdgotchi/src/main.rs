@@ -27,6 +27,7 @@
 //! - BOOT (GPIO0): Shows purple screen when pressed
 //! - PWR (EXIO4): Shows yellow screen when pressed
 
+mod assets;
 mod display;
 mod drivers;
 mod ecs;

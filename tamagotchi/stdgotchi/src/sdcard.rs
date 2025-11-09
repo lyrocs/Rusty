@@ -11,6 +11,7 @@ pub trait SdCardOps {
     fn is_mounted(&self) -> bool;
     fn save_to_file(&mut self, filename: &str, data: &str) -> Result<(), Box<dyn Error>>;
     fn load_from_file(&mut self, filename: &str) -> Result<String, Box<dyn Error>>;
+    fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>>;
     fn file_exists(&mut self, filename: &str) -> bool;
 }
 
@@ -154,6 +155,127 @@ where
 
         log::info!("Loaded {} bytes from {}", data.len(), filename);
         Ok(data)
+    }
+
+    fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        use embedded_sdmmc::Mode;
+
+        log::info!("Loading binary file from {}", filename);
+
+        // Open volume
+        let mut volume = self.volume_mgr.open_volume(VolumeIdx(0))
+            .map_err(|e| {
+                log::error!("Failed to open volume: {:?}", e);
+                format!("Failed to open volume: {:?}", e)
+            })?;
+
+        // Open root directory
+        let mut root_dir = volume.open_root_dir()
+            .map_err(|e| {
+                log::error!("Failed to open root directory: {:?}", e);
+                format!("Failed to open root directory: {:?}", e)
+            })?;
+
+        // Parse path - remove leading slash and split into parts
+        let path = filename.trim_start_matches('/');
+        let parts: Vec<&str> = path.split('/').collect();
+
+        if parts.is_empty() {
+            return Err("Empty filename".into());
+        }
+
+        log::info!("Path parts: {:?}", parts);
+
+        // Helper function to read file in chunks
+        let read_file_chunks = |file: &mut embedded_sdmmc::File<_, _, _, _, _>| -> Result<Vec<u8>, Box<dyn Error>> {
+            let mut buffer = Vec::new();
+            let mut chunk = [0u8; 2048];
+            let mut chunks_read = 0;
+
+            loop {
+                match file.read(&mut chunk) {
+                    Ok(0) => {
+                        log::info!("Loaded {} bytes from binary file {}", buffer.len(), filename);
+                        break;
+                    }
+                    Ok(n) => {
+                        buffer.extend_from_slice(&chunk[..n]);
+                        chunks_read += 1;
+                        if chunks_read % 10 == 0 {
+                            log::debug!("Read {} chunks ({} bytes)...", chunks_read, buffer.len());
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to read binary file after {} chunks: {:?}", chunks_read, e);
+                        return Err(format!("Failed to read file: {:?}", e).into());
+                    }
+                }
+            }
+            Ok(buffer)
+        };
+
+        // Handle different directory depths and read file immediately
+        let buffer = match parts.len() {
+            1 => {
+                // File in root directory
+                let file_name = parts[0];
+                log::info!("Opening file in root: {}", file_name);
+                let mut file = root_dir.open_file_in_dir(file_name, Mode::ReadOnly)
+                    .map_err(|e| {
+                        log::warn!("File {} not found: {:?}", file_name, e);
+                        format!("Failed to open file {}: {:?}", file_name, e)
+                    })?;
+                read_file_chunks(&mut file)?
+            }
+            2 => {
+                // File in one subdirectory (e.g., /DIR/FILE.GIF)
+                let dir_name = parts[0];
+                let file_name = parts[1];
+                log::info!("Opening directory: {} for file: {}", dir_name, file_name);
+                let mut dir = root_dir.open_dir(dir_name)
+                    .map_err(|e| {
+                        log::error!("Failed to open directory {}: {:?}", dir_name, e);
+                        format!("Failed to open directory {}: {:?}", dir_name, e)
+                    })?;
+                let mut file = dir.open_file_in_dir(file_name, Mode::ReadOnly)
+                    .map_err(|e| {
+                        log::warn!("File {} not found in {}: {:?}", file_name, dir_name, e);
+                        format!("Failed to open file {}: {:?}", file_name, e)
+                    })?;
+                read_file_chunks(&mut file)?
+            }
+            3 => {
+                // File in two subdirectories (e.g., /SPRITES/ENEMY/FILE.GIF)
+                let dir1_name = parts[0];
+                let dir2_name = parts[1];
+                let file_name = parts[2];
+                log::info!("Opening path: {}/{}/{}", dir1_name, dir2_name, file_name);
+
+                let mut dir1 = root_dir.open_dir(dir1_name)
+                    .map_err(|e| {
+                        log::error!("Failed to open directory {}: {:?}", dir1_name, e);
+                        format!("Failed to open directory {}: {:?}", dir1_name, e)
+                    })?;
+
+                let mut dir2 = dir1.open_dir(dir2_name)
+                    .map_err(|e| {
+                        log::error!("Failed to open directory {}: {:?}", dir2_name, e);
+                        format!("Failed to open directory {}: {:?}", dir2_name, e)
+                    })?;
+
+                let mut file = dir2.open_file_in_dir(file_name, Mode::ReadOnly)
+                    .map_err(|e| {
+                        log::warn!("File {} not found in {}/{}: {:?}", file_name, dir1_name, dir2_name, e);
+                        format!("Failed to open file {}: {:?}", file_name, e)
+                    })?;
+                read_file_chunks(&mut file)?
+            }
+            _ => {
+                return Err(format!("Path too deep (max 2 subdirectories): {}", filename).into());
+            }
+        };
+
+        Ok(buffer)
     }
 
     fn file_exists(&mut self, filename: &str) -> bool {

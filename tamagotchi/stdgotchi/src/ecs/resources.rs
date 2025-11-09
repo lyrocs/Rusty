@@ -57,29 +57,67 @@ pub struct PageResource {
 
 /// SD card resource for save/load
 /// Generic wrapper to allow any SD card implementation
+/// Uses Rc<RefCell<>> for interior mutability and cloning
 pub struct SdCardWrapper {
-    sd_ops: Box<dyn crate::sdcard::SdCardOps>,
+    sd_ops: std::rc::Rc<std::cell::RefCell<Box<dyn crate::sdcard::SdCardOps>>>,
+}
+
+impl Clone for SdCardWrapper {
+    fn clone(&self) -> Self {
+        Self {
+            sd_ops: std::rc::Rc::clone(&self.sd_ops),
+        }
+    }
 }
 
 impl SdCardWrapper {
     pub fn new(sd_ops: Box<dyn crate::sdcard::SdCardOps>) -> Self {
-        Self { sd_ops }
+        Self {
+            sd_ops: std::rc::Rc::new(std::cell::RefCell::new(sd_ops)),
+        }
     }
 
     pub fn is_mounted(&self) -> bool {
-        self.sd_ops.is_mounted()
+        self.sd_ops.borrow().is_mounted()
     }
 
     pub fn save_to_file(&mut self, filename: &str, data: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.sd_ops.save_to_file(filename, data)
+        self.sd_ops.borrow_mut().save_to_file(filename, data)
     }
 
     pub fn load_from_file(&mut self, filename: &str) -> Result<String, Box<dyn std::error::Error>> {
-        self.sd_ops.load_from_file(filename)
+        self.sd_ops.borrow_mut().load_from_file(filename)
     }
 
     pub fn file_exists(&mut self, filename: &str) -> bool {
-        self.sd_ops.file_exists(filename)
+        self.sd_ops.borrow_mut().file_exists(filename)
+    }
+
+    pub fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        self.sd_ops.borrow_mut().load_binary_file(filename)
+    }
+}
+
+// Implement SdCardOps for SdCardWrapper so it can be used with AssetLoader
+impl crate::sdcard::SdCardOps for SdCardWrapper {
+    fn is_mounted(&self) -> bool {
+        self.sd_ops.borrow().is_mounted()
+    }
+
+    fn save_to_file(&mut self, filename: &str, data: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.sd_ops.borrow_mut().save_to_file(filename, data)
+    }
+
+    fn load_from_file(&mut self, filename: &str) -> Result<String, Box<dyn std::error::Error>> {
+        self.sd_ops.borrow_mut().load_from_file(filename)
+    }
+
+    fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        self.sd_ops.borrow_mut().load_binary_file(filename)
+    }
+
+    fn file_exists(&mut self, filename: &str) -> bool {
+        self.sd_ops.borrow_mut().file_exists(filename)
     }
 }
 

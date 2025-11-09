@@ -5,6 +5,11 @@
 use std::time::{Duration, Instant};
 use crate::display::{GifPlayer, Sh8601Driver, StaticImage};
 
+/// Global animation speed multiplier (higher = faster)
+/// 1.0 = normal speed, 2.0 = 2x speed, 0.5 = half speed
+/// Adjust this value to make all animations faster or slower
+const ANIMATION_SPEED_MULTIPLIER: f32 = 2.0;
+
 /// Static background sprite
 pub struct Background {
     image: StaticImage,
@@ -92,8 +97,12 @@ impl AnimatedSprite {
     /// Update animation (call once per frame)
     /// Returns true if animation is still playing, false if complete
     pub fn update(&mut self) -> bool {
+        // Apply global animation speed multiplier
+        // Higher multiplier = shorter delay = faster animation
+        let effective_delay = self.frame_delay.div_f32(ANIMATION_SPEED_MULTIPLIER);
+
         // Check if enough time has passed for next frame
-        if self.last_frame_time.elapsed() >= self.frame_delay {
+        if self.last_frame_time.elapsed() >= effective_delay {
             self.current_frame += 1;
             self.last_frame_time = Instant::now();
 

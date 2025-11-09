@@ -4,10 +4,11 @@
 //! It supports animated GIFs with proper frame timing and color palette handling.
 //!
 //! # Features
-//! - GIF decoding with automatic frame extraction
+//! - Streaming GIF decoding with on-demand frame loading
 //! - Palette to RGB888 conversion
 //! - Frame timing and animation loop support
 //! - Centered rendering on display
+//! - Memory-efficient: only decodes frames as needed
 //!
 //! # Example
 //! ```no_run
@@ -30,40 +31,54 @@
 
 use embedded_graphics::prelude::*;
 use embedded_graphics::pixelcolor::Rgb888;
-use gif::{ColorOutput, DisposalMethod};
+use gif::{ColorOutput, DisposalMethod, Decoder};
 use std::error::Error;
 use std::io::Cursor;
+use std::cell::RefCell;
 
 use super::Sh8601Driver;
 
-/// Frame information for GIF animation
-#[derive(Debug)]
-pub struct GifFrame {
-    /// Frame pixel data in RGB888 format
-    pub pixels: Vec<u8>,
-    /// Frame width
-    pub width: u16,
-    /// Frame height
-    pub height: u16,
+/// Frame metadata (lightweight, stored for all frames)
+#[derive(Debug, Clone)]
+struct FrameMetadata {
     /// Frame delay in milliseconds
-    pub delay_ms: u16,
+    delay_ms: u16,
     /// X offset from top-left corner
-    pub left: u16,
+    left: u16,
     /// Y offset from top-left corner
-    pub top: u16,
+    top: u16,
+    /// Frame width
+    width: u16,
+    /// Frame height
+    height: u16,
     /// Disposal method for this frame
-    pub disposal: DisposalMethod,
+    disposal: DisposalMethod,
 }
 
-/// GIF animation player
+/// GIF animation player with stateful streaming decoding
+///
+/// This uses a persistent decoder that maintains state between frames,
+/// making sequential playback fast without needing to cache frames.
 pub struct GifPlayer {
-    frames: Vec<GifFrame>,
+    /// Original GIF data (stored for decoder resets)
+    gif_data: Vec<u8>,
+    /// Frame metadata (lightweight)
+    frame_metadata: Vec<FrameMetadata>,
+    /// Overall GIF dimensions
     gif_width: u16,
     gif_height: u16,
+    /// Persistent decoder for sequential playback
+    decoder: RefCell<Option<Decoder<Cursor<Vec<u8>>>>>,
+    /// Current decoder position (which frame it's at)
+    decoder_position: RefCell<usize>,
+    /// Reusable canvas buffer for frame composition
+    canvas: RefCell<Vec<u8>>,
 }
 
 impl GifPlayer {
     /// Create a new GIF player from GIF data
+    ///
+    /// This only parses metadata, not actual frame data, for memory efficiency.
     ///
     /// # Arguments
     /// * `gif_data` - Raw GIF file bytes
@@ -75,116 +90,170 @@ impl GifPlayer {
         let gif_width = decoder.width();
         let gif_height = decoder.height();
 
-        // Get the proper buffer size needed by the decoder
-        let buffer_size = decoder.buffer_size();
-
-        // Calculate canvas size with proper usize casting to prevent overflow
+        // Calculate canvas size for single frame buffer
         let canvas_size = (gif_width as usize) * (gif_height as usize) * 4;
         log::info!(
-            "Loading GIF: {}x{}, decoder buffer: {} bytes, canvas: {} bytes",
-            gif_width, gif_height, buffer_size, canvas_size
+            "Loading GIF (streaming): {}x{}, canvas: {} bytes",
+            gif_width, gif_height, canvas_size
         );
 
-        // Pre-allocate a full-size canvas buffer for frame composition
-        let mut canvas = vec![0u8; canvas_size];
+        let mut frame_metadata = Vec::new();
 
-        let mut frames = Vec::new();
-
-        // Decode all frames
+        // Parse only metadata from all frames
         while let Some(frame) = decoder.read_next_frame()? {
             let delay_ms = frame.delay as u16 * 10; // GIF delay is in 1/100ths of a second
-            let left = frame.left;
-            let top = frame.top;
-            let width = frame.width;
-            let height = frame.height;
-            let disposal = frame.dispose;
-            let interlaced = frame.interlaced;
 
-            if interlaced {
-                log::warn!("Frame {} is interlaced! This may cause display issues.", frames.len() + 1);
+            if frame.interlaced {
+                log::warn!("Frame {} is interlaced! This may cause display issues.", frame_metadata.len() + 1);
             }
 
-            // Handle disposal method before compositing new frame
-            match disposal {
+            frame_metadata.push(FrameMetadata {
+                delay_ms: if delay_ms > 0 { delay_ms } else { 100 },
+                left: frame.left,
+                top: frame.top,
+                width: frame.width,
+                height: frame.height,
+                disposal: frame.dispose,
+            });
+        }
+
+        log::info!(
+            "Loaded GIF metadata: {} frames, {}x{} (stateful streaming: {}KB single buffer)",
+            frame_metadata.len(),
+            gif_width,
+            gif_height,
+            canvas_size / 1024
+        );
+
+        if frame_metadata.is_empty() {
+            return Err("GIF contains no frames".into());
+        }
+
+        Ok(Self {
+            gif_data: gif_data.to_vec(),
+            frame_metadata,
+            gif_width,
+            gif_height,
+            decoder: RefCell::new(None),  // Created on first use
+            decoder_position: RefCell::new(0),
+            canvas: RefCell::new(vec![0u8; canvas_size]),
+        })
+    }
+
+    /// Decode a specific frame using stateful decoder
+    ///
+    /// For sequential playback (frame N -> N+1), this just reads the next frame.
+    /// For non-sequential access, resets decoder and reads from beginning.
+    fn decode_frame(&self, frame_index: usize) -> Result<(), Box<dyn Error>> {
+        if frame_index >= self.frame_metadata.len() {
+            return Err(format!("Frame index {} out of bounds", frame_index).into());
+        }
+
+        // Check if decoder is initialized
+        if self.decoder.borrow().is_none() {
+            // First call - initialize decoder
+            self.reset_decoder_to_frame(frame_index)?;
+            return Ok(());
+        }
+
+        let current_position = *self.decoder_position.borrow();
+
+        // Check if we can continue sequentially
+        if current_position == frame_index + 1 {
+            // Already at this frame, no need to decode
+            return Ok(());
+        }
+
+        if current_position == frame_index {
+            // We're one frame behind, just read next
+            self.decode_next_frame()?;
+            return Ok(());
+        }
+
+        // Non-sequential access or need to restart
+        self.reset_decoder_to_frame(frame_index)?;
+
+        Ok(())
+    }
+
+    /// Reset decoder and decode up to target frame
+    fn reset_decoder_to_frame(&self, target_frame: usize) -> Result<(), Box<dyn Error>> {
+        // Create new decoder
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(ColorOutput::RGBA);
+        let decoder = options.read_info(Cursor::new(self.gif_data.clone()))?;
+
+        *self.decoder.borrow_mut() = Some(decoder);
+        *self.decoder_position.borrow_mut() = 0;
+
+        let mut canvas = self.canvas.borrow_mut();
+        canvas.fill(0);
+
+        // Decode frames up to and including target
+        for _i in 0..=target_frame {
+            self.decode_next_frame_internal(&mut canvas)?;
+        }
+
+        Ok(())
+    }
+
+    /// Decode the next frame from current decoder position
+    fn decode_next_frame(&self) -> Result<(), Box<dyn Error>> {
+        let mut canvas = self.canvas.borrow_mut();
+        self.decode_next_frame_internal(&mut canvas)
+    }
+
+    /// Internal: decode next frame (canvas must already be borrowed)
+    fn decode_next_frame_internal(&self, canvas: &mut [u8]) -> Result<(), Box<dyn Error>> {
+        let mut decoder_opt = self.decoder.borrow_mut();
+        let decoder = decoder_opt.as_mut()
+            .ok_or("Decoder not initialized")?;
+
+        let current_pos = *self.decoder_position.borrow();
+
+        if let Some(frame) = decoder.read_next_frame()? {
+            let metadata = &self.frame_metadata[current_pos];
+
+            // Handle disposal method
+            match metadata.disposal {
                 DisposalMethod::Background => {
-                    // Clear canvas to transparent
                     canvas.fill(0);
                 }
                 DisposalMethod::Previous => {
-                    // Keep previous canvas (do nothing, we'll composite on top)
+                    // Keep canvas as-is
                 }
                 _ => {
-                    // Any/None - keep previous canvas
+                    // Any/None - keep canvas
                 }
             }
 
-            // Composite this frame onto the canvas at (left, top)
-            let frame_buffer_size = frame.buffer.len();
-            let expected_frame_size = (width as usize) * (height as usize) * 4;
-
-            log::info!(
-                "Frame {}: {}x{} at ({},{}) | interlaced:{} | buffer:{} bytes (expected:{})",
-                frames.len() + 1, width, height, left, top, interlaced, frame_buffer_size, expected_frame_size
-            );
-
-            if frame_buffer_size == 0 {
-                log::error!("Frame {} has empty buffer! Skipping...", frames.len() + 1);
-                continue;
-            }
-
-            if frame_buffer_size != expected_frame_size {
-                log::warn!(
-                    "Frame {} buffer size mismatch: got {} bytes, expected {} bytes",
-                    frames.len() + 1, frame_buffer_size, expected_frame_size
-                );
-            }
-
-            // Copy frame pixels onto canvas at the correct position
-            for y in 0..height {
-                for x in 0..width {
-                    let frame_idx = ((y as usize) * (width as usize) + (x as usize)) * 4;
+            // Composite frame onto canvas
+            for y in 0..metadata.height {
+                for x in 0..metadata.width {
+                    let frame_idx = ((y as usize) * (metadata.width as usize) + (x as usize)) * 4;
                     if frame_idx + 3 < frame.buffer.len() {
-                        let canvas_x = left + x;
-                        let canvas_y = top + y;
-                        if canvas_x < gif_width && canvas_y < gif_height {
-                            let canvas_idx = ((canvas_y as usize) * (gif_width as usize) + (canvas_x as usize)) * 4;
-                            canvas[canvas_idx] = frame.buffer[frame_idx];         // R
-                            canvas[canvas_idx + 1] = frame.buffer[frame_idx + 1]; // G
-                            canvas[canvas_idx + 2] = frame.buffer[frame_idx + 2]; // B
-                            canvas[canvas_idx + 3] = frame.buffer[frame_idx + 3]; // A
+                        let canvas_x = metadata.left + x;
+                        let canvas_y = metadata.top + y;
+                        if canvas_x < self.gif_width && canvas_y < self.gif_height {
+                            let canvas_idx = ((canvas_y as usize) * (self.gif_width as usize) + (canvas_x as usize)) * 4;
+                            canvas[canvas_idx] = frame.buffer[frame_idx];
+                            canvas[canvas_idx + 1] = frame.buffer[frame_idx + 1];
+                            canvas[canvas_idx + 2] = frame.buffer[frame_idx + 2];
+                            canvas[canvas_idx + 3] = frame.buffer[frame_idx + 3];
                         }
                     }
                 }
             }
 
-            // Store the full canvas for this frame (using gif_width x gif_height)
-            frames.push(GifFrame {
-                pixels: canvas.clone(),
-                width: gif_width,
-                height: gif_height,
-                delay_ms: if delay_ms > 0 { delay_ms } else { 100 }, // Default 100ms
-                left: 0,    // Frame is now the full canvas, no offset
-                top: 0,     // Frame is now the full canvas, no offset
-                disposal,
-            });
+            *self.decoder_position.borrow_mut() = current_pos + 1;
         }
 
-        log::info!("Loaded {} frames", frames.len());
-
-        if frames.is_empty() {
-            return Err("GIF contains no frames".into());
-        }
-
-        Ok(Self {
-            frames,
-            gif_width,
-            gif_height,
-        })
+        Ok(())
     }
 
     /// Get the total number of frames
     pub fn frame_count(&self) -> usize {
-        self.frames.len()
+        self.frame_metadata.len()
     }
 
     /// Get the GIF dimensions
@@ -199,11 +268,13 @@ impl GifPlayer {
     /// * `frame_index` - Frame index to render
     /// * `position` - Optional (x, y) position for top-left corner. If None, centers the GIF on screen.
     pub fn render_frame(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>) -> Result<(), Box<dyn Error>> {
-        if frame_index >= self.frames.len() {
-            return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frames.len()).into());
+        if frame_index >= self.frame_metadata.len() {
+            return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frame_metadata.len()).into());
         }
 
-        let frame = &self.frames[frame_index];
+        // Decode frame into canvas (fast for sequential access!)
+        self.decode_frame(frame_index)?;
+
         let display_size = display.size();
 
         // Calculate base position for the overall GIF canvas
@@ -217,29 +288,27 @@ impl GifPlayer {
             (center_x, center_y)
         };
 
-        // Calculate frame position within the GIF canvas
-        // frame.left and frame.top are the frame's offset within the GIF
-        let frame_offset_x = base_x + frame.left as i32;
-        let frame_offset_y = base_y + frame.top as i32;
+        // Borrow canvas for rendering
+        let canvas = self.canvas.borrow();
 
         // Draw each pixel of the frame
-        for y in 0..frame.height {
-            for x in 0..frame.width {
-                let pixel_idx = ((y * frame.width + x) * 4) as usize;
+        for y in 0..self.gif_height {
+            for x in 0..self.gif_width {
+                let pixel_idx = ((y as usize) * (self.gif_width as usize) + (x as usize)) * 4;
 
-                if pixel_idx + 3 < frame.pixels.len() {
-                    let r = frame.pixels[pixel_idx];
-                    let g = frame.pixels[pixel_idx + 1];
-                    let b = frame.pixels[pixel_idx + 2];
-                    let a = frame.pixels[pixel_idx + 3];
+                if pixel_idx + 3 < canvas.len() {
+                    let r = canvas[pixel_idx];
+                    let g = canvas[pixel_idx + 1];
+                    let b = canvas[pixel_idx + 2];
+                    let a = canvas[pixel_idx + 3];
 
                     // Skip transparent pixels (alpha < 128)
                     if a < 128 {
                         continue;
                     }
 
-                    let px = frame_offset_x + x as i32;
-                    let py = frame_offset_y + y as i32;
+                    let px = base_x + x as i32;
+                    let py = base_y + y as i32;
 
                     if px >= 0 && px < display_size.width as i32 &&
                        py >= 0 && py < display_size.height as i32 {

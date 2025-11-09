@@ -5,7 +5,8 @@
 use bevy_ecs::prelude::*;
 use embedded_graphics::pixelcolor::Rgb888;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, SharedI2cResource, TouchResource};
+use crate::assets::AssetLoader;
+use crate::ecs::resources::{AppMode, AppState, GameManager, SdCardWrapper, SharedI2cResource, TouchResource};
 use crate::game::EnemyType;
 use crate::ui::pages::battle::EnemyType as BattleEnemyType;
 use crate::ui::pages::BattlePage;
@@ -16,6 +17,7 @@ pub fn map_navigation_system(
     mut touch_res: NonSendMut<TouchResource>,
     i2c_res: NonSendMut<SharedI2cResource>,
     mut game_manager: Option<NonSendMut<GameManager>>,
+    sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     // Only process in Map mode
     if app_state.current_mode != AppMode::Map {
@@ -73,13 +75,25 @@ pub fn map_navigation_system(
                                         }
                                     };
 
-                                    // Create battle page with background, passing hero and kill_tracker
+                                    // Create asset loader if SD card is available
+                                    let asset_loader = if let Some(sd_card) = sd_card_res.as_ref() {
+                                        log::info!("📁 SD card available - will try loading sprites from SD");
+                                        // Clone the SdCardWrapper to pass ownership to AssetLoader
+                                        // Dereference the NonSendMut to get the SdCardWrapper
+                                        Some(AssetLoader::new(Some((**sd_card).clone()), true))
+                                    } else {
+                                        log::info!("📦 No SD card - using embedded sprites");
+                                        None
+                                    };
+
+                                    // Create battle page with background, passing hero, kill_tracker, and asset_loader
                                     let battle_background = include_bytes!("../../assets/images/ui/battle.gif");
                                     let mut battle_page = match BattlePage::new_with_background(
                                         battle_background,
                                         (0, 0),
                                         game_manager.hero.clone(),
                                         game_manager.kill_tracker.clone(),
+                                        asset_loader.clone(),
                                     ) {
                                         Ok(page) => page,
                                         Err(e) => {
@@ -89,6 +103,7 @@ pub fn map_navigation_system(
                                                 Rgb888::new(20, 60, 20),
                                                 game_manager.hero.clone(),
                                                 game_manager.kill_tracker.clone(),
+                                                asset_loader,
                                             )
                                         }
                                     };

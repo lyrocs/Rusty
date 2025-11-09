@@ -2,7 +2,10 @@
 //!
 //! Displays a map background with animated characters in battle.
 
+use crate::assets::battle::{load_enemy_sprites, load_enemy_sprites_embedded, EnemyType as AssetEnemyType};
+use crate::assets::AssetLoader;
 use crate::display::Sh8601Driver;
+use crate::ecs::resources::SdCardWrapper;
 use crate::game::{self, Enemy as GameEnemy, EnemyType as GameEnemyType, Hero, KillTracker};
 use crate::ui::page::Page;
 use crate::ui::sprite::{AnimatedSprite, Background};
@@ -282,6 +285,9 @@ pub struct BattlePage {
 
     // Damage number animations
     damage_numbers: Vec<DamageNumber>,
+
+    // SD card asset loading
+    asset_loader: Option<AssetLoader<SdCardWrapper>>,
 }
 
 impl BattlePage {
@@ -291,7 +297,13 @@ impl BattlePage {
     /// * `background_color` - RGB color for background
     /// * `hero` - Hero state from GameManager
     /// * `kill_tracker` - Kill tracker from GameManager
-    pub fn new(background_color: Rgb888, hero: Hero, kill_tracker: KillTracker) -> Self {
+    /// * `asset_loader` - Optional AssetLoader for SD card support
+    pub fn new(
+        background_color: Rgb888,
+        hero: Hero,
+        kill_tracker: KillTracker,
+        asset_loader: Option<AssetLoader<SdCardWrapper>>,
+    ) -> Self {
         Self {
             background: None,
             background_color,
@@ -305,6 +317,7 @@ impl BattlePage {
             game_enemy: None,
             kill_tracker,
             damage_numbers: Vec::new(),
+            asset_loader,
         }
     }
 
@@ -315,12 +328,14 @@ impl BattlePage {
     /// * `map_position` - Position of the map
     /// * `hero` - Hero state from GameManager
     /// * `kill_tracker` - Kill tracker from GameManager
+    /// * `asset_loader` - Optional AssetLoader for SD card support
     #[allow(dead_code)]
     pub fn new_with_background(
         map_data: &[u8],
         map_position: (i32, i32),
         hero: Hero,
         kill_tracker: KillTracker,
+        asset_loader: Option<AssetLoader<SdCardWrapper>>,
     ) -> Result<Self, Box<dyn Error>> {
         let background = Background::new(map_data, map_position)?;
 
@@ -337,6 +352,7 @@ impl BattlePage {
             game_enemy: None,
             kill_tracker,
             damage_numbers: Vec::new(),
+            asset_loader,
         })
     }
 
@@ -357,6 +373,42 @@ impl BattlePage {
             EnemyType::Poring => GameEnemyType::Poring,
             EnemyType::Fabre => GameEnemyType::Fabre,
         }
+    }
+
+    /// Convert UI EnemyType to asset EnemyType
+    fn to_asset_enemy_type(enemy_type: EnemyType) -> AssetEnemyType {
+        match enemy_type {
+            EnemyType::Hornet => AssetEnemyType::Hornet,
+            EnemyType::Poring => AssetEnemyType::Poring,
+            EnemyType::Fabre => AssetEnemyType::Fabre,
+        }
+    }
+
+    /// Get enemy sprites with SD card support
+    /// Tries to load from SD card first, falls back to embedded assets
+    fn get_enemy_sprites_with_sd(
+        &mut self,
+        enemy_type: EnemyType,
+    ) -> (Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>) {
+        let asset_type = Self::to_asset_enemy_type(enemy_type);
+
+        // Try SD card first if available
+        if let Some(ref mut loader) = self.asset_loader {
+            match load_enemy_sprites(loader, asset_type) {
+                Ok(sprites) => {
+                    log::info!("✅ Loaded {:?} sprites from SD card", enemy_type);
+                    return sprites;
+                }
+                Err(e) => {
+                    log::warn!("⚠️  SD card load failed for {:?}: {}", enemy_type, e);
+                    log::info!("📦 Falling back to embedded sprites");
+                }
+            }
+        }
+
+        // Fallback to embedded
+        log::info!("📦 Loading {:?} sprites from embedded assets", enemy_type);
+        load_enemy_sprites_embedded(asset_type)
     }
 
     /// Get enemy GIF data by type
@@ -380,7 +432,8 @@ impl BattlePage {
                 include_bytes!("../../../assets/images/poring/6.gif"), // idle
                 include_bytes!("../../../assets/images/poring/22.gif"), // attack
                 include_bytes!("../../../assets/images/poring/30.gif"), // attacked
-                None, // death animation too large (341×336), using time-based delay instead
+                Some(include_bytes!("../../../assets/images/poring/38.gif")), // attacked
+                                                                       // None, // death animation too large (341×336), using time-based delay instead
             ),
             EnemyType::Fabre => (
                 include_bytes!("../../../assets/images/fabre/6.gif"), // idle
@@ -430,15 +483,16 @@ impl BattlePage {
         enemy_type: EnemyType,
         position: (i32, i32),
     ) -> Result<(), Box<dyn Error>> {
-        // Get enemy data based on type
-        let (idle_data, attack_data, attacked_data, death_data) = Self::get_enemy_data(enemy_type);
+        // Load sprites with SD card support
+        let (idle_data, attack_data, attacked_data, death_data) =
+            self.get_enemy_sprites_with_sd(enemy_type);
 
         let enemy = BattleEntity::new(
             EntityRole::Enemy,
-            idle_data,
-            attack_data,
-            attacked_data,
-            death_data,
+            &idle_data,
+            &attack_data,
+            &attacked_data,
+            death_data.as_deref(),
             position,
             Duration::from_secs(3), // Enemy attacks every 3 seconds
             (0, 0),                 // No offset for enemies
@@ -490,15 +544,16 @@ impl BattlePage {
         let x = 75;
         let y = 170;
 
-        // Load enemy data on-demand
-        let (idle, attack, attacked, death) = Self::get_enemy_data(enemy_type);
+        // Load sprites with SD card support
+        let (idle_data, attack_data, attacked_data, death_data) =
+            self.get_enemy_sprites_with_sd(enemy_type);
 
         let enemy = BattleEntity::new(
             EntityRole::Enemy,
-            idle,
-            attack,
-            attacked,
-            death,
+            &idle_data,
+            &attack_data,
+            &attacked_data,
+            death_data.as_deref(),
             (x, y),
             Duration::from_secs(3),
             (0, 0), // No offset for enemies
