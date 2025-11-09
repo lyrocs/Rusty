@@ -47,14 +47,10 @@ pub fn battle_loading_system(
         }
     };
 
-    // Create asset loader if SD card is available
-    let asset_loader = if let Some(sd_card) = sd_card_res.as_ref() {
-        log::info!("📁 SD card available - will try loading sprites from SD");
-        Some(AssetLoader::new(Some((**sd_card).clone()), true))
-    } else {
-        log::info!("📦 No SD card - using embedded sprites");
-        None
-    };
+    // Use embedded sprites for instant loading (no SD card delay)
+    // Common enemies (Poring, Fabre, Hornet) are embedded in the binary
+    log::info!("📦 Using embedded sprites for instant battle loading");
+    let asset_loader = None;
 
     // Create battle page with background
     let battle_background = include_bytes!("../../assets/images/ui/battle.gif");

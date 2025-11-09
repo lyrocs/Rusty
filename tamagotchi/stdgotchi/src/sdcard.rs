@@ -336,8 +336,21 @@ pub struct FreeRtosDelay;
 
 impl embedded_hal::delay::DelayNs for FreeRtosDelay {
     fn delay_ns(&mut self, ns: u32) {
-        let ms = (ns / 1_000_000).max(1);
-        esp_idf_svc::hal::delay::FreeRtos.delay_ms(ms);
+        // Use microsecond precision instead of rounding to milliseconds
+        // This is critical for SD card performance
+        if ns >= 1_000_000 {
+            // 1ms or more - use millisecond delay
+            let ms = ns / 1_000_000;
+            esp_idf_svc::hal::delay::FreeRtos.delay_ms(ms);
+        } else if ns >= 1_000 {
+            // 1us or more - use microsecond delay
+            let us = ns / 1_000;
+            esp_idf_svc::hal::delay::FreeRtos.delay_us(us);
+        } else if ns > 0 {
+            // Less than 1us - use minimum 1us delay
+            esp_idf_svc::hal::delay::FreeRtos.delay_us(1);
+        }
+        // If ns == 0, no delay needed
     }
 }
 

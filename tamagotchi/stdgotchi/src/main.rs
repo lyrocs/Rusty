@@ -148,10 +148,11 @@ fn init_sd_card(
     )?;
 
     // Wrap SpiDriver in SpiBusDriver to get embedded-hal SpiBus trait
-    // Note: Baudrate is configured at the bus level
-    let spi_bus = SpiBusDriver::new(spi_driver, &esp_idf_svc::hal::spi::config::Config::new().baudrate(Hertz(400_000)))?;
+    // Start at 400kHz for initialization, then increase to 10MHz for normal operation
+    // Most modern SD cards support 10-25MHz in SPI mode
+    let spi_bus = SpiBusDriver::new(spi_driver, &esp_idf_svc::hal::spi::config::Config::new().baudrate(Hertz(10_000_000)))?;
 
-    log::info!("SPI3 initialized at 400kHz");
+    log::info!("SPI3 initialized at 10MHz for fast SD card access");
 
     // Create CS pin for SD card (EXIO7 on TCA9554)
     // This doesn't borrow the I2C driver, avoiding lifetime issues
