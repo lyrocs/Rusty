@@ -6,16 +6,16 @@ use bevy_ecs::prelude::*;
 use embedded_graphics::pixelcolor::Rgb888;
 
 use crate::assets::AssetLoader;
-use crate::ecs::resources::{AppMode, AppState, GameManager, SdCardWrapper, SharedI2cResource, TouchResource};
+use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel, SdCardWrapper};
 use crate::game::EnemyType;
+use crate::input_thread::InputEvent;
 use crate::ui::pages::battle::EnemyType as BattleEnemyType;
 use crate::ui::pages::BattlePage;
 
 /// System to handle map navigation
 pub fn map_navigation_system(
     mut app_state: ResMut<AppState>,
-    mut touch_res: NonSendMut<TouchResource>,
-    i2c_res: NonSendMut<SharedI2cResource>,
+    input_channel: Res<InputEventChannel>,
     mut game_manager: Option<NonSendMut<GameManager>>,
     sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
@@ -28,138 +28,132 @@ pub fn map_navigation_system(
         return;
     };
 
-    // Get I2C access from shared resource
-    let Some(i2c) = i2c_res.get() else {
-        log::error!("Failed to get I2C access in map_navigation_system");
-        return;
-    };
+    // Process all input events from the channel
+    while let Ok(event) = input_channel.receiver.try_recv() {
+        match event {
+            InputEvent::Touch { x, y } => {
+                let x = x as i32;
+                let y = y as i32;
+                log::info!("Touch at ({}, {})", x, y);
 
-    // Check for touch (taps)
-    if let Ok(count) = touch_res.touch.finger_number(i2c) {
-        if count > 0 && !touch_res.last_touch_active {
-            // New touch detected
-            if let Ok(touches) = touch_res.touch.get_touches(i2c) {
-                if let Some(point) = touches.first() {
-                    let x = point.x as i32;
-                    let y = point.y as i32;
-                    log::info!("Touch at ({}, {})", x, y);
+                    // Handle touch on map page
+                    if let Some(selected_location_id) = game_manager.map_page.handle_touch(x, y) {
+                        // Check if selected location is a field (battle zone)
+                        // Clone location data to avoid borrow conflicts
+                        let location = game_manager.map_page.world_map().get_location(&selected_location_id).cloned();
 
-                // Handle touch on map page
-                if let Some(selected_location_id) = game_manager.map_page.handle_touch(x, y) {
-                    // Check if selected location is a field (battle zone)
-                    // Clone location data to avoid borrow conflicts
-                    let location = game_manager.map_page.world_map().get_location(&selected_location_id).cloned();
+                        if let Some(location) = location {
+                            if location.is_field() {
+                                // Field selected - enter battle mode
+                                log::info!("Entering battle at: {}", location.name);
+                                game_manager.selected_field_id = Some(selected_location_id.clone());
 
-                    if let Some(location) = location {
-                        if location.is_field() {
-                            // Field selected - enter battle mode
-                            log::info!("Entering battle at: {}", location.name);
-                            game_manager.selected_field_id = Some(selected_location_id.clone());
+                                // Create battle page with monsters from this field
+                                if let Some(monsters) = location.monsters() {
+                                    if !monsters.is_empty() {
+                                        // Pick a random monster from the field
+                                        let monster_index = rand::random::<usize>() % monsters.len();
+                                        let monster_type = monsters[monster_index];
 
-                            // Create battle page with monsters from this field
-                            if let Some(monsters) = location.monsters() {
-                                if !monsters.is_empty() {
-                                    // Pick a random monster from the field
-                                    let monster_index = rand::random::<usize>() % monsters.len();
-                                    let monster_type = monsters[monster_index];
-
-                                    // Convert game EnemyType to battle EnemyType
-                                    let battle_enemy_type = match monster_type {
-                                        EnemyType::Hornet => BattleEnemyType::Hornet,
-                                        EnemyType::Poring => BattleEnemyType::Poring,
-                                        EnemyType::Fabre => BattleEnemyType::Fabre,
-                                        EnemyType::Lunatic => {
-                                            // For now, use Poring as placeholder for Lunatic
-                                            log::warn!("Lunatic not implemented in battle, using Poring");
-                                            BattleEnemyType::Poring
-                                        }
-                                    };
-
-                                    // Create asset loader if SD card is available
-                                    let asset_loader = if let Some(sd_card) = sd_card_res.as_ref() {
-                                        log::info!("📁 SD card available - will try loading sprites from SD");
-                                        // Clone the SdCardWrapper to pass ownership to AssetLoader
-                                        // Dereference the NonSendMut to get the SdCardWrapper
-                                        Some(AssetLoader::new(Some((**sd_card).clone()), true))
-                                    } else {
-                                        log::info!("📦 No SD card - using embedded sprites");
-                                        None
-                                    };
-
-                                    // Create battle page with background, passing hero, kill_tracker, and asset_loader
-                                    let battle_background = include_bytes!("../../assets/images/ui/battle.gif");
-                                    let mut battle_page = match BattlePage::new_with_background(
-                                        battle_background,
-                                        (0, 0),
-                                        game_manager.hero.clone(),
-                                        game_manager.kill_tracker.clone(),
-                                        asset_loader.clone(),
-                                    ) {
-                                        Ok(page) => page,
-                                        Err(e) => {
-                                            log::error!("Failed to load battle background: {:?}", e);
-                                            log::info!("Falling back to solid color background");
-                                            BattlePage::new(
-                                                Rgb888::new(20, 60, 20),
-                                                game_manager.hero.clone(),
-                                                game_manager.kill_tracker.clone(),
-                                                asset_loader,
-                                            )
-                                        }
-                                    };
-
-                                    // Add hero (using novice animations)
-                                    let hero_idle = include_bytes!("../../assets/images/novice/32.gif");
-                                    let hero_attack = include_bytes!("../../assets/images/novice/80.gif");
-                                    let hero_attacked = include_bytes!("../../assets/images/novice/48.gif");
-                                    battle_page
-                                        .add_hero(hero_idle, hero_attack, hero_attacked, (175, 170))
-                                        .ok();
-
-                                    // Add enemy
-                                    battle_page
-                                        .add_enemy(battle_enemy_type, (75, 170))
-                                        .ok();
-
-                                    // Add all monsters from this field to the respawn pool
-                                    for monster_type in monsters {
-                                        let battle_monster_type = match monster_type {
+                                        // Convert game EnemyType to battle EnemyType
+                                        let battle_enemy_type = match monster_type {
                                             EnemyType::Hornet => BattleEnemyType::Hornet,
                                             EnemyType::Poring => BattleEnemyType::Poring,
                                             EnemyType::Fabre => BattleEnemyType::Fabre,
                                             EnemyType::Lunatic => {
-                                                log::warn!("Lunatic not implemented in battle pool");
+                                                // For now, use Poring as placeholder for Lunatic
+                                                log::warn!("Lunatic not implemented in battle, using Poring");
                                                 BattleEnemyType::Poring
                                             }
                                         };
-                                        battle_page.add_enemy_type_to_pool(battle_monster_type);
+
+                                        // Create asset loader if SD card is available
+                                        let asset_loader = if let Some(sd_card) = sd_card_res.as_ref() {
+                                            log::info!("📁 SD card available - will try loading sprites from SD");
+                                            // Clone the SdCardWrapper to pass ownership to AssetLoader
+                                            // Dereference the NonSendMut to get the SdCardWrapper
+                                            Some(AssetLoader::new(Some((**sd_card).clone()), true))
+                                        } else {
+                                            log::info!("📦 No SD card - using embedded sprites");
+                                            None
+                                        };
+
+                                        // Create battle page with background, passing hero, kill_tracker, and asset_loader
+                                        let battle_background = include_bytes!("../../assets/images/ui/battle.gif");
+                                        let mut battle_page = match BattlePage::new_with_background(
+                                            battle_background,
+                                            (0, 0),
+                                            game_manager.hero.clone(),
+                                            game_manager.kill_tracker.clone(),
+                                            asset_loader.clone(),
+                                        ) {
+                                            Ok(page) => page,
+                                            Err(e) => {
+                                                log::error!("Failed to load battle background: {:?}", e);
+                                                log::info!("Falling back to solid color background");
+                                                BattlePage::new(
+                                                    Rgb888::new(20, 60, 20),
+                                                    game_manager.hero.clone(),
+                                                    game_manager.kill_tracker.clone(),
+                                                    asset_loader,
+                                                )
+                                            }
+                                        };
+
+                                        // Add hero (using novice animations)
+                                        let hero_idle = include_bytes!("../../assets/images/novice/32.gif");
+                                        let hero_attack = include_bytes!("../../assets/images/novice/80.gif");
+                                        let hero_attacked = include_bytes!("../../assets/images/novice/48.gif");
+                                        battle_page
+                                            .add_hero(hero_idle, hero_attack, hero_attacked, (175, 170))
+                                            .ok();
+
+                                        // Add enemy
+                                        battle_page
+                                            .add_enemy(battle_enemy_type, (75, 170))
+                                            .ok();
+
+                                        // Add all monsters from this field to the respawn pool
+                                        for monster_type in monsters {
+                                            let battle_monster_type = match monster_type {
+                                                EnemyType::Hornet => BattleEnemyType::Hornet,
+                                                EnemyType::Poring => BattleEnemyType::Poring,
+                                                EnemyType::Fabre => BattleEnemyType::Fabre,
+                                                EnemyType::Lunatic => {
+                                                    log::warn!("Lunatic not implemented in battle pool");
+                                                    BattleEnemyType::Poring
+                                                }
+                                            };
+                                            battle_page.add_enemy_type_to_pool(battle_monster_type);
+                                        }
+
+                                        game_manager.battle_page = Some(battle_page);
+
+                                        // Switch to battle mode
+                                        app_state.current_mode = AppMode::Battle;
+                                        app_state.needs_redraw = true;
                                     }
-
-                                    game_manager.battle_page = Some(battle_page);
-
-                                    // Switch to battle mode
-                                    app_state.current_mode = AppMode::Battle;
+                                }
+                            } else {
+                                // City selected - travel there
+                                if let Err(e) = game_manager.map_page.travel_to(&selected_location_id) {
+                                    log::error!("Failed to travel: {}", e);
+                                } else {
                                     app_state.needs_redraw = true;
                                 }
                             }
-                        } else {
-                            // City selected - travel there
-                            if let Err(e) = game_manager.map_page.travel_to(&selected_location_id) {
-                                log::error!("Failed to travel: {}", e);
-                            } else {
-                                app_state.needs_redraw = true;
-                            }
                         }
                     }
-                }
-
-                // Mark touch as active
-                touch_res.last_touch_active = true;
-                }
             }
-        } else if count == 0 && touch_res.last_touch_active {
-            // Touch released
-            touch_res.last_touch_active = false;
+            InputEvent::BootPressed => {
+                // Boot button opens menu
+                log::info!("Boot button pressed - Opening Menu");
+                app_state.current_mode = AppMode::Menu;
+                app_state.needs_redraw = true;
+            }
+            _ => {
+                // Ignore other events in map mode
+            }
         }
     }
 }
@@ -167,8 +161,7 @@ pub fn map_navigation_system(
 /// System to handle hero overview interactions
 pub fn hero_overview_system(
     mut app_state: ResMut<AppState>,
-    mut touch_res: NonSendMut<TouchResource>,
-    i2c_res: NonSendMut<SharedI2cResource>,
+    input_channel: Res<InputEventChannel>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in HeroOverview mode
@@ -180,33 +173,27 @@ pub fn hero_overview_system(
         return;
     };
 
-    // Get I2C access from shared resource
-    let Some(i2c) = i2c_res.get() else {
-        log::error!("Failed to get I2C access in hero_overview_system");
-        return;
-    };
+    // Process all input events from the channel
+    while let Ok(event) = input_channel.receiver.try_recv() {
+        match event {
+            InputEvent::Touch { x, y } => {
+                let x = x as i32;
+                let y = y as i32;
 
-    // Check for touch (button taps)
-    if let Ok(count) = touch_res.touch.finger_number(i2c) {
-        if count > 0 && !touch_res.last_touch_active {
-            // New touch detected
-            if let Ok(touches) = touch_res.touch.get_touches(i2c) {
-                if let Some(point) = touches.first() {
-                    let x = point.x as i32;
-                    let y = point.y as i32;
-
-                    // Handle touch on hero overview page
-                    if game_manager.handle_hero_overview_touch(x, y) {
-                        app_state.needs_redraw = true;
-                    }
-
-                    // Mark touch as active
-                    touch_res.last_touch_active = true;
+                // Handle touch on hero overview page
+                if game_manager.handle_hero_overview_touch(x, y) {
+                    app_state.needs_redraw = true;
                 }
             }
-        } else if count == 0 && touch_res.last_touch_active {
-            // Touch released
-            touch_res.last_touch_active = false;
+            InputEvent::BootPressed => {
+                // Boot button returns to menu
+                log::info!("Boot button pressed - Opening Menu");
+                app_state.current_mode = AppMode::Menu;
+                app_state.needs_redraw = true;
+            }
+            _ => {
+                // Ignore other events in hero overview mode
+            }
         }
     }
 }

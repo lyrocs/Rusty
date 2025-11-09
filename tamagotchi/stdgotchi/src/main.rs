@@ -32,17 +32,18 @@ mod display;
 mod drivers;
 mod ecs;
 mod game;
+mod input_thread;
 mod sdcard;
 mod systems;
 mod ui;
 
 use bevy_ecs::prelude::*;
+use crossbeam_channel::unbounded;
 use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
-use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, GpioResource, SharedI2cResource, TouchResource};
+use ecs::resources::{AppState, DisplayResource, GameManager, InputEventChannel, SharedI2cResource};
 use game::WorldMap;
-use esp_idf_svc::hal::gpio::{Gpio0, PinDriver};
+use esp_idf_svc::hal::gpio::PinDriver;
 use esp_idf_svc::hal::{
-    delay::FreeRtos,
     i2c::{I2cConfig, I2cDriver},
     peripherals::Peripherals,
     spi::{SpiBusDriver, SpiDriver, config::DriverConfig, Dma},
@@ -51,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, button_system, fps_system, hero_overview_system, map_navigation_system, menu_system, render_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_system, fps_system, hero_overview_system, map_navigation_system, menu_system, render_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -271,6 +272,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         GameManager::new(world_map)
     };
 
+    // Create input event channel for Core 0 → Core 1 communication
+    let (input_sender, input_receiver) = unbounded();
+
+    // Spawn input polling thread
+    // This thread handles all input (touch, buttons) at high frequency
+    // FreeRTOS scheduler will distribute threads across both cores automatically
+    log::info!("Starting dual-threaded mode: Input thread + Game thread on dual-core ESP32-S3");
+    let _input_thread = input_thread::spawn_input_thread(
+        boot_pin,
+        touch,
+        input_sender,
+    );
+    log::info!("[MAIN] Input thread spawned - will run on separate core for maximum responsiveness");
+
     // Create ECS World
     let mut world = World::new();
 
@@ -281,21 +296,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Insert autosave state
     world.insert_resource(AutoSaveState::default());
 
+    // Insert input event channel
+    world.insert_resource(InputEventChannel {
+        receiver: input_receiver,
+    });
+
     // Insert non-send resources (hardware peripherals)
     world.insert_non_send_resource(DisplayResource { display });
-    world.insert_non_send_resource(TouchResource {
-        touch,
-        last_touch_active: false,
-    });
-    world.insert_non_send_resource(GpioResource { boot_pin });
-    world.insert_non_send_resource(ButtonResource {
-        boot_last_state: false,
-        pwr_last_state: false,
-        boot_debounce: 0,
-        pwr_debounce: 0,
-    });
+    // Note: TouchResource and GpioResource are now owned by the input thread
+    // Input events come through the InputEventChannel instead
+
     // Insert shared I2C resource - provides access to the static I2C driver
-    // Used by SD card CS pin operations and touch controller in systems
+    // Used by SD card CS pin operations
     world.insert_non_send_resource(SharedI2cResource);
 
     // Insert SD card resource (if available)
@@ -307,13 +319,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     world.insert_non_send_resource(game_manager);
 
     // Create schedule and add systems
-    // Order: FPS tracking → Input → Menu → Map Navigation → Hero Overview → Animation init → Render → Animation cleanup → Auto-save
+    // Order: FPS tracking → Input handlers (Menu/Map/Battle/Hero) → Animation init → Render → Animation cleanup → Auto-save
+    // Note: Input now comes from the input thread via channel, consumed by mode-specific systems
     let mut schedule = Schedule::default();
     schedule.add_systems((
         fps_system,
-        button_system::<Gpio0>,
         menu_system,
         map_navigation_system,
+        battle_system,
         hero_overview_system,
         animation_init_system,
         render_system,
@@ -321,14 +334,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         autosave_system,
     ));
 
-    log::info!("stdgotchi ready! Starting in Menu mode. Press BOOT button to open menu...");
+    log::info!("stdgotchi ready! Dual-threaded mode active.");
+    log::info!("Input thread: GPIO at 100Hz, Touch/I2C at 20Hz (reduced bus contention)");
+    log::info!("Main thread: Game logic and rendering at ~60 FPS");
 
     // Main ECS game loop
     loop {
         // Run all systems
         schedule.run(&mut world);
 
-        // Control frame rate (~100 FPS for responsive input)
-        thread::sleep(Duration::from_millis(10));
+        // Control frame rate (~60 FPS)
+        // Input is handled separately at 200Hz in the input thread
+        thread::sleep(Duration::from_millis(16));
     }
 }

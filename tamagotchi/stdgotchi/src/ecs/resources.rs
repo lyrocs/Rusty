@@ -3,11 +3,13 @@
 //! Non-send resources for hardware components that cannot be shared between threads.
 
 use bevy_ecs::prelude::*;
+use crossbeam_channel::Receiver;
 use esp_idf_svc::hal::gpio::PinDriver;
 use std::time::Instant;
 
 use crate::display::{Ft3x68Driver, Sh8601Driver};
 use crate::game::{Hero, KillTracker, WorldMap};
+use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
 use crate::ui::pages::{BattlePage, HeroOverviewPage, MapPage};
 
@@ -244,6 +246,13 @@ impl GameManager {
             log::debug!("Synced battle state: Hero Lv{}, {} EXP", self.hero.level, self.hero.exp);
         }
     }
+}
+
+/// Input event channel resource - receives events from the input thread on Core 0
+/// This is a regular Resource (not NonSend) because the Receiver is Send
+#[derive(Resource)]
+pub struct InputEventChannel {
+    pub receiver: Receiver<InputEvent>,
 }
 
 /// App state resource
