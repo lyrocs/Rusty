@@ -407,12 +407,14 @@ impl BattlePage {
     /// * `attack_data` - GIF for attack animation
     /// * `attacked_data` - GIF for being attacked animation
     /// * `position` - Position on screen
+    /// * `attack_offset` - Position offset for attack animation
     pub fn add_hero(
         &mut self,
         idle_data: &[u8],
         attack_data: &[u8],
         attacked_data: &[u8],
         position: (i32, i32),
+        attack_offset: (i32, i32),
     ) -> Result<(), Box<dyn Error>> {
         let hero = BattleEntity::new(
             EntityRole::Hero,
@@ -422,7 +424,7 @@ impl BattlePage {
             None, // Heroes don't die in this version
             position,
             Duration::from_secs(2), // Hero attacks every 2 seconds
-            (-40, 10),              // Move attack animation 20px left for Novice
+            attack_offset,          // Job-specific attack animation offset
         )?;
 
         self.hero = Some(hero);

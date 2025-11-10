@@ -66,17 +66,49 @@ pub fn battle_loading_system(
         }
     };
 
-    // Add hero (using novice animations)
-    let hero_idle = include_bytes!("../../assets/images/novice/32.gif");
-    let hero_attack = include_bytes!("../../assets/images/novice/80.gif");
-    let hero_attacked = include_bytes!("../../assets/images/novice/48.gif");
+    // Add hero (using job-specific animations)
+    let hero_job = game_manager.hero.job;
+    log::info!("Loading hero sprites for job: {}", hero_job.name());
+
+    let (hero_idle, hero_attack, hero_attacked, attack_offset): (&[u8], &[u8], &[u8], (i32, i32)) =
+        match hero_job {
+            crate::game::Job::Novice => (
+                include_bytes!("../../assets/images/novice/32.gif"),
+                include_bytes!("../../assets/images/novice/80.gif"),
+                include_bytes!("../../assets/images/novice/48.gif"),
+                (-40, 10), // Novice attack offset
+            ),
+            crate::game::Job::Swordsman => (
+                include_bytes!("../../assets/images/swordman/32.gif"),
+                include_bytes!("../../assets/images/swordman/80.gif"),
+                include_bytes!("../../assets/images/swordman/48.gif"),
+                (-20, -35), // Swordsman attack offset
+            ),
+            crate::game::Job::Knight => (
+                include_bytes!("../../assets/images/knight/32.gif"),
+                include_bytes!("../../assets/images/knight/80.gif"),
+                include_bytes!("../../assets/images/knight/48.gif"),
+                (10, 20), // Knight attack offset
+            ),
+        };
+
     battle_page
-        .add_hero(hero_idle, hero_attack, hero_attacked, (175, 170))
+        .add_hero(
+            hero_idle,
+            hero_attack,
+            hero_attacked,
+            (175, 170),
+            attack_offset,
+        )
         .ok();
 
     // Add enemy by ID
     if let Err(e) = battle_page.add_enemy(loading_data.initial_enemy_id, (75, 170)) {
-        log::error!("Failed to add enemy {}: {:?}", loading_data.initial_enemy_id, e);
+        log::error!(
+            "Failed to add enemy {}: {:?}",
+            loading_data.initial_enemy_id,
+            e
+        );
     }
 
     // Add all monsters from this map to the respawn pool
