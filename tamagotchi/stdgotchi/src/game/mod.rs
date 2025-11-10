@@ -11,6 +11,9 @@ pub mod kill_tracker;
 pub mod map;
 pub mod save;
 pub mod data_loader;
+pub mod item;
+pub mod inventory;
+pub mod equipment;
 
 pub use stats::*;
 pub use hero::*;
@@ -20,6 +23,9 @@ pub use kill_tracker::*;
 pub use map::*;
 pub use save::*;
 pub use data_loader::*;
+pub use item::*;
+pub use inventory::*;
+pub use equipment::*;
 
 use bevy_ecs::prelude::*;
 

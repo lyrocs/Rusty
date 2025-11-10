@@ -52,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, fps_system, hero_overview_system, map_navigation_system, menu_system, render_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, crafting_system, equipment_system, fps_system, hero_overview_system, inventory_system, map_navigation_system, menu_system, render_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -241,8 +241,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("Failed to load game data");
     log::info!("Game data loaded successfully");
 
+    // Clone game data for WorldMap and GameManager
+    let game_data_for_map = game_data.clone();
+
     // Create world map with game data
-    let world_map = WorldMap::new(game_data, 1); // Start at Prontera (ID 1)
+    let world_map = WorldMap::new(game_data_for_map, 1); // Start at Prontera (ID 1)
     log::info!("World map initialized");
 
     // Try to load save file if SD card is available
@@ -258,22 +261,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(save_data) => {
                         log::info!("Save file loaded! Hero level: {}, Job: {:?}",
                                   save_data.hero.level, save_data.hero.job);
-                        GameManager::from_save_data(save_data, world_map)
+                        GameManager::from_save_data(save_data, world_map, game_data)
                     }
                     Err(e) => {
                         log::error!("Failed to parse save file: {:?}. Starting new game.", e);
-                        GameManager::new(world_map)
+                        GameManager::new(world_map, game_data)
                     }
                 }
             }
             Err(e) => {
                 log::info!("Could not load save file: {:?}. Starting new game.", e);
-                GameManager::new(world_map)
+                GameManager::new(world_map, game_data)
             }
         }
     } else {
         log::info!("No SD card available. Starting new game.");
-        GameManager::new(world_map)
+        GameManager::new(world_map, game_data)
     };
 
     // Create input event channel for Core 0 → Core 1 communication
@@ -333,6 +336,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         battle_loading_system, // Creates battle page after loading screen shown
         battle_system,
         hero_overview_system,
+        inventory_system,
+        equipment_system,
+        crafting_system,
         animation_init_system,
         render_system,
         animation_cleanup_system,

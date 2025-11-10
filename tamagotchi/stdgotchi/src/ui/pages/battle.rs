@@ -851,6 +851,38 @@ impl Page for BattlePage {
                             self.game_hero.gain_exp(exp_reward);
                             self.kill_tracker.record_kill(enemy_id, &enemy_name);
 
+                            // Award gold and process drops
+                            if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
+                                // Award gold (random amount between min and max)
+                                let gold_reward = if enemy_data.gold_max > enemy_data.gold_min {
+                                    use rand::Rng;
+                                    let mut rng = rand::thread_rng();
+                                    rng.gen_range(enemy_data.gold_min..=enemy_data.gold_max)
+                                } else {
+                                    enemy_data.gold_min
+                                };
+                                self.game_hero.gold += gold_reward;
+                                log::info!("💰 Gained {} gold (Total: {})", gold_reward, self.game_hero.gold);
+
+                                // Process item drops
+                                for drop in &enemy_data.drops {
+                                    if drop.should_drop() {
+                                        let quantity = drop.random_quantity();
+
+                                        // Add to inventory
+                                        if let Err(e) = self.game_hero.inventory.add_material(
+                                            drop.item_id,
+                                            quantity,
+                                            self.game_data.get_all_items()
+                                        ) {
+                                            log::warn!("Failed to add drop {}: {}", drop.name, e);
+                                        } else {
+                                            log::info!("🎁 Dropped: {} x{}", drop.name, quantity);
+                                        }
+                                    }
+                                }
+                            }
+
                             log::info!(
                                 "{} defeated! Gained {} EXP (Hero: Lv {} - {}/{})",
                                 enemy_name,

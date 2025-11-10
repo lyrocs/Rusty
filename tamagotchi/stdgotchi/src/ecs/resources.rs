@@ -137,8 +137,12 @@ pub struct GameManager {
     pub map_page: MapPage,
     pub battle_page: Option<BattlePage>,
     pub hero_overview_page: HeroOverviewPage,
+    pub inventory_page: crate::ui::pages::InventoryPage,
+    pub equipment_page: crate::ui::pages::EquipmentPage,
+    pub crafting_page: crate::ui::pages::CraftingPage,
     pub hero: Hero,
     pub kill_tracker: KillTracker,
+    pub game_data: crate::game::GameData, // Game data for items, recipes, etc.
     pub selected_map_id: Option<u32>, // Map selected for battle
     pub battle_loading_data: Option<BattleLoadingData>, // Data for deferred battle creation
     pub play_time_seconds: u64,             // Total play time
@@ -146,14 +150,18 @@ pub struct GameManager {
 }
 
 impl GameManager {
-    pub fn new(world_map: WorldMap) -> Self {
+    pub fn new(world_map: WorldMap, game_data: crate::game::GameData) -> Self {
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::new(world_map, None), // Use embedded map backgrounds
             battle_page: None,
             hero_overview_page: HeroOverviewPage::new(),
+            inventory_page: crate::ui::pages::InventoryPage::new(),
+            equipment_page: crate::ui::pages::EquipmentPage::new(),
+            crafting_page: crate::ui::pages::CraftingPage::new(),
             hero: Hero::new(),
             kill_tracker: KillTracker::new(),
+            game_data,
             selected_map_id: None,
             battle_loading_data: None,
             play_time_seconds: 0,
@@ -162,14 +170,18 @@ impl GameManager {
     }
 
     /// Create GameManager from save data
-    pub fn from_save_data(save_data: crate::game::SaveData, world_map: WorldMap) -> Self {
+    pub fn from_save_data(save_data: crate::game::SaveData, world_map: WorldMap, game_data: crate::game::GameData) -> Self {
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
             battle_page: None,
             hero_overview_page: HeroOverviewPage::new(),
+            inventory_page: crate::ui::pages::InventoryPage::new(),
+            equipment_page: crate::ui::pages::EquipmentPage::new(),
+            crafting_page: crate::ui::pages::CraftingPage::new(),
             hero: save_data.hero,
             kill_tracker: save_data.kill_tracker,
+            game_data,
             selected_map_id: None,
             battle_loading_data: None,
             play_time_seconds: save_data.play_time_seconds,
@@ -191,6 +203,9 @@ impl GameManager {
                 }
             }
             AppMode::HeroOverview => Some(&mut self.hero_overview_page as &mut dyn Page),
+            AppMode::Inventory => Some(&mut self.inventory_page as &mut dyn Page),
+            AppMode::Equipment => Some(&mut self.equipment_page as &mut dyn Page),
+            AppMode::Crafting => Some(&mut self.crafting_page as &mut dyn Page),
         }
     }
 
@@ -204,6 +219,21 @@ impl GameManager {
     /// This method borrows both page and hero internally to satisfy the borrow checker
     pub fn draw_hero_overview(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
         self.hero_overview_page.draw_with_hero(display, &self.hero, full_redraw)
+    }
+
+    /// Draw inventory page with hero and game data
+    pub fn draw_inventory(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.inventory_page.draw_inventory(display, &self.hero, &self.game_data, full_redraw)
+    }
+
+    /// Draw equipment page with hero and game data
+    pub fn draw_equipment(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.equipment_page.draw_equipment(display, &self.hero, &self.game_data, full_redraw)
+    }
+
+    /// Draw crafting page with hero and game data
+    pub fn draw_crafting(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.crafting_page.draw_crafting(display, &self.hero, &self.game_data, full_redraw)
     }
 
     /// Save game state to SD card
@@ -290,6 +320,12 @@ pub enum AppMode {
     Battle,
     /// Hero overview and stats
     HeroOverview,
+    /// Inventory screen
+    Inventory,
+    /// Equipment screen
+    Equipment,
+    /// Crafting screen
+    Crafting,
 }
 
 impl Default for AppState {

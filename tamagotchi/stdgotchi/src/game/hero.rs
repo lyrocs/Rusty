@@ -3,6 +3,8 @@
 //! Manages hero stats, level, job progression, and HP/SP
 
 use super::stats::Stats;
+use super::inventory::Inventory;
+use super::equipment::EquippedItems;
 use serde::{Deserialize, Serialize};
 
 /// Hero job types
@@ -89,12 +91,17 @@ pub struct Hero {
     pub current_sp: u32,
     pub max_sp: u32,
 
-    // Combat stats
+    // Combat stats (base + equipment)
     pub atk: u32,
     pub def: u32,
     pub hit: u32,
     pub flee: u32,
     pub crit_rate: f32,
+
+    // Inventory and equipment
+    pub inventory: Inventory,
+    pub equipped_items: EquippedItems,
+    pub gold: u32,
 }
 
 impl Hero {
@@ -124,6 +131,9 @@ impl Hero {
             hit: stats.calculate_hit(level),
             flee: stats.calculate_flee(level),
             crit_rate: stats.calculate_crit_rate(),
+            inventory: Inventory::new(),
+            equipped_items: EquippedItems::new(),
+            gold: 100, // Starting gold
         }
     }
 
@@ -304,6 +314,189 @@ impl Hero {
         // Ensure current HP/SP don't exceed new max
         self.current_hp = self.current_hp.min(self.max_hp);
         self.current_sp = self.current_sp.min(self.max_sp);
+    }
+
+    /// Equip an item from inventory to an equipment slot
+    /// Returns error if item doesn't exist, wrong type, or level too low
+    pub fn equip_item(&mut self, unique_id: u64, item_database: &std::collections::HashMap<u32, super::item::ItemData>) -> Result<(), String> {
+        // Get the item from inventory
+        let item = self.inventory.get_equipment(unique_id)
+            .ok_or("Item not found in inventory")?;
+
+        // Get item data to check slot and requirements
+        let item_data = item_database.get(&item.item_id)
+            .ok_or("Item data not found")?;
+
+        // Check if it's equipment
+        let slot = item_data.slot.ok_or("Item is not equipment")?;
+
+        // Check level requirement
+        if let Some(required_level) = item_data.required_level {
+            if self.level < required_level {
+                return Err(format!("Requires level {}", required_level));
+            }
+        }
+
+        // If slot already has equipment, unequip it first
+        if let Some(old_unique_id) = self.equipped_items.get_slot(slot) {
+            // The old item stays in inventory, just unequipped
+            log::info!("Unequipping previous item from {:?}", slot);
+        }
+
+        // Equip the new item
+        self.equipped_items.equip(slot, unique_id);
+        log::info!("Equipped {} to {:?}", item_data.name, slot);
+
+        // Recalculate stats
+        self.recalculate_combat_stats(item_database);
+
+        Ok(())
+    }
+
+    /// Unequip an item from an equipment slot back to inventory
+    pub fn unequip_item(&mut self, slot: super::item::EquipmentSlot, item_database: &std::collections::HashMap<u32, super::item::ItemData>) -> Result<(), String> {
+        let unique_id = self.equipped_items.unequip(slot)
+            .ok_or("No item equipped in that slot")?;
+
+        log::info!("Unequipped item from {:?}", slot);
+
+        // Recalculate stats
+        self.recalculate_combat_stats(item_database);
+
+        Ok(())
+    }
+
+    /// Recalculate combat stats including equipment bonuses
+    pub fn recalculate_combat_stats(&mut self, item_database: &std::collections::HashMap<u32, super::item::ItemData>) {
+        // Calculate base stats from hero stats
+        self.atk = self.stats.calculate_atk();
+        self.def = self.stats.calculate_def();
+        self.hit = self.stats.calculate_hit(self.level);
+        self.flee = self.stats.calculate_flee(self.level);
+        self.crit_rate = self.stats.calculate_crit_rate();
+
+        // Add equipment bonuses
+        let equipment_stats = super::equipment::EquipmentStats::calculate(
+            &self.equipped_items,
+            self.inventory.items(),
+            item_database,
+        );
+
+        self.atk += equipment_stats.atk;
+        self.def += equipment_stats.def;
+        self.hit += equipment_stats.hit;
+        self.flee += equipment_stats.flee;
+
+        log::debug!(
+            "Stats recalculated - ATK:{} DEF:{} HIT:{} FLEE:{}",
+            self.atk,
+            self.def,
+            self.hit,
+            self.flee
+        );
+    }
+
+    /// Upgrade equipment with materials
+    /// Returns Ok(true) on success, Ok(false) on failure, Err on invalid attempt
+    pub fn upgrade_equipment(
+        &mut self,
+        unique_id: u64,
+        item_database: &std::collections::HashMap<u32, super::item::ItemData>,
+        upgrade_recipes: &std::collections::HashMap<String, Vec<super::item::UpgradeRecipe>>,
+    ) -> Result<bool, String> {
+        // Get the item from inventory
+        let item = self.inventory.get_equipment_mut(unique_id)
+            .ok_or("Item not found in inventory")?;
+
+        // Check if it's equipment
+        if !item.is_equipment() {
+            return Err("Item is not equipment".to_string());
+        }
+
+        let current_level = item.get_upgrade_level();
+        if current_level >= 10 {
+            return Err("Maximum upgrade level reached (+10)".to_string());
+        }
+
+        // Get item data to determine equipment type
+        let item_data = item_database.get(&item.item_id)
+            .ok_or("Item data not found")?;
+
+        let slot = item_data.slot.ok_or("Item has no equipment slot")?;
+
+        // Determine recipe category based on slot
+        let recipe_category = match slot {
+            super::item::EquipmentSlot::Weapon => "weapon_upgrades",
+            super::item::EquipmentSlot::Armor => "armor_upgrades",
+            super::item::EquipmentSlot::Shoes => "shoes_upgrades",
+            super::item::EquipmentSlot::Garment => "garment_upgrades",
+            super::item::EquipmentSlot::Accessory => "accessory_upgrades",
+            super::item::EquipmentSlot::Headgear => "headgear_upgrades",
+        };
+
+        // Get upgrade recipe
+        let recipes = upgrade_recipes.get(recipe_category)
+            .ok_or(format!("No upgrade recipes for {}", recipe_category))?;
+
+        let recipe = recipes.iter()
+            .find(|r| r.from_level == current_level)
+            .ok_or(format!("No upgrade recipe from level {}", current_level))?;
+
+        // Check gold
+        if self.gold < recipe.gold_cost {
+            return Err(format!("Not enough gold (need: {}, have: {})", recipe.gold_cost, self.gold));
+        }
+
+        // Check materials
+        for material in &recipe.materials {
+            let has = self.inventory.get_material_quantity(material.item_id);
+            if has < material.quantity {
+                return Err(format!(
+                    "Not enough {} (need: {}, have: {})",
+                    material.name,
+                    material.quantity,
+                    has
+                ));
+            }
+        }
+
+        // Deduct gold
+        self.gold -= recipe.gold_cost;
+
+        // Consume materials
+        for material in &recipe.materials {
+            self.inventory.remove_material(material.item_id, material.quantity)?;
+        }
+
+        // Roll for success
+        let roll = rand::random::<u32>() % 100;
+        let success = roll < recipe.success_rate;
+
+        // Get the item again (mutable borrow)
+        let item = self.inventory.get_equipment_mut(unique_id)
+            .ok_or("Item disappeared during upgrade")?;
+
+        if success {
+            // Upgrade succeeded
+            item.upgrade()?;
+            log::info!("Upgrade SUCCESS! {} is now +{}", item_data.name, item.get_upgrade_level());
+
+            // Recalculate combat stats if item is equipped
+            if self.equipped_items.get_slot(slot).map(|id| id == unique_id).unwrap_or(false) {
+                self.recalculate_combat_stats(item_database);
+            }
+
+            Ok(true)
+        } else {
+            // Upgrade failed
+            log::warn!("Upgrade FAILED! {} remains at +{}", item_data.name, current_level);
+
+            // On failure at higher levels, equipment may break or downgrade
+            // For now, just keep it at the same level (no downgrade)
+            // Could add downgrade logic here if desired
+
+            Ok(false)
+        }
     }
 }
 

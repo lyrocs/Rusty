@@ -20,6 +20,8 @@ pub enum MenuAction {
     Map,
     Battle,
     Overview,
+    Inventory,
+    Equipment,
 }
 
 /// Touch button area
@@ -77,12 +79,12 @@ impl MenuPage {
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         Text::new("MENU", Point::new(150, 40), title_style).draw(display)?;
 
-        // Button dimensions
+        // Button dimensions (adjusted for 5 buttons)
         let button_width = 280u32;
-        let button_height = 60u32;
+        let button_height = 50u32;
         let button_x = (368 - button_width) as i32 / 2; // Center horizontally
-        let start_y = 100i32;
-        let spacing = 80i32;
+        let start_y = 70i32;
+        let spacing = 62i32;
 
         // Draw Map button
         self.draw_button(
@@ -121,6 +123,32 @@ impl MenuPage {
             "View stats & items",
             Rgb888::new(40, 120, 60),
             MenuAction::Overview,
+        )?;
+
+        // Draw Inventory button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * 3,
+            button_width,
+            button_height,
+            "INVENTORY",
+            "Items & materials",
+            Rgb888::new(80, 60, 100),
+            MenuAction::Inventory,
+        )?;
+
+        // Draw Equipment button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * 4,
+            button_width,
+            button_height,
+            "EQUIPMENT",
+            "Manage gear",
+            Rgb888::new(100, 80, 40),
+            MenuAction::Equipment,
         )?;
 
         // Draw hint text at bottom

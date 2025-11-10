@@ -78,6 +78,32 @@ pub fn map_navigation_system(
                                 }
                             }
                         }
+                        TouchAction::Craft => {
+                            // Open crafting menu
+                            let current_location_id = game_manager.map_page.world_map().current_location_id();
+                            let location_data = game_manager
+                                .map_page
+                                .world_map()
+                                .get_location(current_location_id)
+                                .cloned();
+
+                            if let Some(location) = location_data {
+                                log::info!("Opening crafting menu at: {}", location.name);
+
+                                // Set the current location for crafting (use city name from map data)
+                                let city_name = match current_location_id {
+                                    1 => "prontera",
+                                    2 => "payon",
+                                    3 => "geffen",
+                                    _ => "prontera", // Default to prontera
+                                };
+                                game_manager.crafting_page.set_location(city_name.to_string());
+
+                                // Switch to crafting mode
+                                app_state.current_mode = AppMode::Crafting;
+                                app_state.needs_redraw = true;
+                            }
+                        }
                     }
                 }
             }

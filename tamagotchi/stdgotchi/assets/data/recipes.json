@@ -1,0 +1,150 @@
+{
+  "prontera": [
+    {
+      "id": 1,
+      "result_item_id": 1201,
+      "result_item_name": "Knife",
+      "npc": "Blacksmith",
+      "required_level": 1,
+      "gold_cost": 100,
+      "materials": [
+        {"item_id": 901, "name": "Jellopy", "quantity": 10},
+        {"item_id": 902, "name": "Iron Ore", "quantity": 2}
+      ]
+    },
+    {
+      "id": 2,
+      "result_item_id": 2301,
+      "result_item_name": "Cotton Shirt",
+      "npc": "Tailor",
+      "required_level": 1,
+      "gold_cost": 80,
+      "materials": [
+        {"item_id": 905, "name": "Fabric", "quantity": 5},
+        {"item_id": 901, "name": "Jellopy", "quantity": 5}
+      ]
+    },
+    {
+      "id": 3,
+      "result_item_id": 2401,
+      "result_item_name": "Sandals",
+      "npc": "Tailor",
+      "required_level": 1,
+      "gold_cost": 60,
+      "materials": [
+        {"item_id": 906, "name": "Leather", "quantity": 2},
+        {"item_id": 905, "name": "Fabric", "quantity": 3}
+      ]
+    },
+    {
+      "id": 4,
+      "result_item_id": 2501,
+      "result_item_name": "Hood",
+      "npc": "Tailor",
+      "required_level": 1,
+      "gold_cost": 70,
+      "materials": [
+        {"item_id": 905, "name": "Fabric", "quantity": 4},
+        {"item_id": 909, "name": "Feather", "quantity": 10}
+      ]
+    },
+    {
+      "id": 5,
+      "result_item_id": 2601,
+      "result_item_name": "Clip",
+      "npc": "Jeweler",
+      "required_level": 1,
+      "gold_cost": 50,
+      "materials": [
+        {"item_id": 902, "name": "Iron Ore", "quantity": 1},
+        {"item_id": 901, "name": "Jellopy", "quantity": 8}
+      ]
+    },
+    {
+      "id": 6,
+      "result_item_id": 2701,
+      "result_item_name": "Hat",
+      "npc": "Tailor",
+      "required_level": 1,
+      "gold_cost": 60,
+      "materials": [
+        {"item_id": 905, "name": "Fabric", "quantity": 6}
+      ]
+    },
+    {
+      "id": 7,
+      "result_item_id": 1202,
+      "result_item_name": "Sword",
+      "npc": "Blacksmith",
+      "required_level": 10,
+      "gold_cost": 500,
+      "materials": [
+        {"item_id": 902, "name": "Iron Ore", "quantity": 10},
+        {"item_id": 907, "name": "Coal", "quantity": 5},
+        {"item_id": 910, "name": "Sticky Mucus", "quantity": 15}
+      ]
+    },
+    {
+      "id": 8,
+      "result_item_id": 2302,
+      "result_item_name": "Chain Mail",
+      "npc": "Blacksmith",
+      "required_level": 10,
+      "gold_cost": 400,
+      "materials": [
+        {"item_id": 902, "name": "Iron Ore", "quantity": 8},
+        {"item_id": 907, "name": "Coal", "quantity": 4}
+      ]
+    },
+    {
+      "id": 9,
+      "result_item_id": 2402,
+      "result_item_name": "Boots",
+      "npc": "Tailor",
+      "required_level": 10,
+      "gold_cost": 300,
+      "materials": [
+        {"item_id": 906, "name": "Leather", "quantity": 8},
+        {"item_id": 905, "name": "Fabric", "quantity": 5}
+      ]
+    },
+    {
+      "id": 10,
+      "result_item_id": 2502,
+      "result_item_name": "Manteau",
+      "npc": "Tailor",
+      "required_level": 10,
+      "gold_cost": 350,
+      "materials": [
+        {"item_id": 905, "name": "Fabric", "quantity": 12},
+        {"item_id": 909, "name": "Feather", "quantity": 20}
+      ]
+    },
+    {
+      "id": 11,
+      "result_item_id": 2602,
+      "result_item_name": "Ring",
+      "npc": "Jeweler",
+      "required_level": 10,
+      "gold_cost": 250,
+      "materials": [
+        {"item_id": 902, "name": "Iron Ore", "quantity": 3},
+        {"item_id": 908, "name": "Crystal Fragment", "quantity": 2}
+      ]
+    },
+    {
+      "id": 12,
+      "result_item_id": 2702,
+      "result_item_name": "Helm",
+      "npc": "Blacksmith",
+      "required_level": 10,
+      "gold_cost": 320,
+      "materials": [
+        {"item_id": 902, "name": "Iron Ore", "quantity": 6},
+        {"item_id": 907, "name": "Coal", "quantity": 3}
+      ]
+    }
+  ],
+  "payon": [],
+  "geffen": []
+}

@@ -53,6 +53,16 @@ pub fn menu_system(
                             app_state.current_mode = AppMode::HeroOverview;
                             app_state.needs_redraw = true;
                         }
+                        MenuAction::Inventory => {
+                            log::info!("Navigating to Inventory");
+                            app_state.current_mode = AppMode::Inventory;
+                            app_state.needs_redraw = true;
+                        }
+                        MenuAction::Equipment => {
+                            log::info!("Navigating to Equipment");
+                            app_state.current_mode = AppMode::Equipment;
+                            app_state.needs_redraw = true;
+                        }
                     }
                 }
             }

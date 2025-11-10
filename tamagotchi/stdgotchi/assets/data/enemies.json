@@ -7,35 +7,29 @@
     "attack": 13,
     "defense": 2,
     "base_exp": 150,
+    "gold_min": 5,
+    "gold_max": 15,
     "drops": [
       {
-        "item_id": 909,
+        "item_id": 901,
         "name": "Jellopy",
-        "type": "material",
-        "quantity": 1,
-        "chance": 70.0
+        "drop_rate": 150,
+        "min_quantity": 1,
+        "max_quantity": 2
       },
       {
-        "item_id": 938,
+        "item_id": 910,
         "name": "Sticky Mucus",
-        "type": "material",
-        "quantity": 1,
-        "chance": 30.0
+        "drop_rate": 80,
+        "min_quantity": 1,
+        "max_quantity": 1
       },
       {
-        "item_id": 911,
-        "name": "Poring Essence",
-        "type": "material",
-        "quantity": 1,
-        "chance": 5.0
-      },
-      {
-        "item_id": 4001,
-        "name": "Poring Card",
-        "type": "card",
-        "quantity": 1,
-        "chance": 0.2,
-        "allowed_slots": ["Accessory"]
+        "item_id": 903,
+        "name": "Oridecon",
+        "drop_rate": 5,
+        "min_quantity": 1,
+        "max_quantity": 1
       }
     ]
   },
@@ -47,35 +41,29 @@
     "attack": 27,
     "defense": 24,
     "base_exp": 158,
+    "gold_min": 10,
+    "gold_max": 25,
     "drops": [
       {
-        "item_id": 914,
-        "name": "Fluff",
-        "type": "material",
-        "quantity": 1,
-        "chance": 70.0
+        "item_id": 905,
+        "name": "Fabric",
+        "drop_rate": 180,
+        "min_quantity": 1,
+        "max_quantity": 2
       },
       {
-        "item_id": 915,
-        "name": "Spider Silk",
-        "type": "material",
-        "quantity": 1,
-        "chance": 30.0
+        "item_id": 909,
+        "name": "Feather",
+        "drop_rate": 120,
+        "min_quantity": 1,
+        "max_quantity": 3
       },
       {
-        "item_id": 916,
-        "name": "Fabre Essence",
-        "type": "material",
-        "quantity": 1,
-        "chance": 5.0
-      },
-      {
-        "item_id": 4002,
-        "name": "Fabre Card",
-        "type": "card",
-        "quantity": 1,
-        "chance": 0.2,
-        "allowed_slots": ["Armor"]
+        "item_id": 904,
+        "name": "Elunium",
+        "drop_rate": 10,
+        "min_quantity": 1,
+        "max_quantity": 1
       }
     ]
   },
@@ -87,35 +75,29 @@
     "attack": 33,
     "defense": 7,
     "base_exp": 158,
+    "gold_min": 15,
+    "gold_max": 35,
     "drops": [
       {
-        "item_id": 939,
-        "name": "Bee Sting",
-        "type": "material",
-        "quantity": 1,
-        "chance": 70.0
+        "item_id": 902,
+        "name": "Iron Ore",
+        "drop_rate": 200,
+        "min_quantity": 1,
+        "max_quantity": 2
       },
       {
-        "item_id": 940,
-        "name": "Royal Jelly",
-        "type": "material",
-        "quantity": 1,
-        "chance": 30.0
+        "item_id": 907,
+        "name": "Coal",
+        "drop_rate": 100,
+        "min_quantity": 1,
+        "max_quantity": 1
       },
       {
-        "item_id": 941,
-        "name": "Hornet Essence",
-        "type": "material",
-        "quantity": 1,
-        "chance": 5.0
-      },
-      {
-        "item_id": 4003,
-        "name": "Hornet Card",
-        "type": "card",
-        "quantity": 1,
-        "chance": 0.2,
-        "allowed_slots": ["Weapon"]
+        "item_id": 903,
+        "name": "Oridecon",
+        "drop_rate": 20,
+        "min_quantity": 1,
+        "max_quantity": 1
       }
     ]
   },
@@ -127,35 +109,29 @@
     "attack": 84,
     "defense": 24,
     "base_exp": 188,
+    "gold_min": 25,
+    "gold_max": 60,
     "drops": [
       {
-        "item_id": 955,
-        "name": "Worm Peeling",
-        "type": "material",
-        "quantity": 1,
-        "chance": 70.0
+        "item_id": 906,
+        "name": "Leather",
+        "drop_rate": 220,
+        "min_quantity": 1,
+        "max_quantity": 2
       },
       {
-        "item_id": 956,
-        "name": "Chitin Shell",
-        "type": "material",
-        "quantity": 1,
-        "chance": 30.0
+        "item_id": 908,
+        "name": "Crystal Fragment",
+        "drop_rate": 80,
+        "min_quantity": 1,
+        "max_quantity": 1
       },
       {
-        "item_id": 957,
-        "name": "Bug Essence",
-        "type": "material",
-        "quantity": 1,
-        "chance": 5.0
-      },
-      {
-        "item_id": 4004,
-        "name": "Thief Bug Card",
-        "type": "card",
-        "quantity": 1,
-        "chance": 0.2,
-        "allowed_slots": ["Garment"]
+        "item_id": 904,
+        "name": "Elunium",
+        "drop_rate": 30,
+        "min_quantity": 1,
+        "max_quantity": 1
       }
     ]
   }

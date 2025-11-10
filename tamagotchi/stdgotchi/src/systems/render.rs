@@ -90,6 +90,72 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::Inventory => {
+            // Inventory rendering - needs hero and game data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.inventory_page.update();
+                let full_redraw = game_manager.inventory_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw inventory with hero data
+                if let Err(e) = game_manager.draw_inventory(display, full_redraw) {
+                    log::error!("Failed to draw inventory: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Inventory closed, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
+        AppMode::Equipment => {
+            // Equipment rendering - needs hero and game data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.equipment_page.update();
+                let full_redraw = game_manager.equipment_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw equipment with hero data
+                if let Err(e) = game_manager.draw_equipment(display, full_redraw) {
+                    log::error!("Failed to draw equipment: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Equipment closed, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
+        AppMode::Crafting => {
+            // Crafting rendering - needs hero and game data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.crafting_page.update();
+                let full_redraw = game_manager.crafting_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw crafting with hero data
+                if let Err(e) = game_manager.draw_crafting(display, full_redraw) {
+                    log::error!("Failed to draw crafting: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Crafting closed, returning to map");
+                    app_state.current_mode = AppMode::Map;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
     }
 }
 

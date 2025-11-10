@@ -21,9 +21,10 @@ use std::error::Error;
 #[derive(Debug, Clone)]
 struct TouchArea {
     bounds: (i32, i32, u32, u32), // (x, y, width, height)
-    location_id: Option<u32>,     // None for FIGHT button
-    direction: Option<Direction>,  // None for FIGHT button
+    location_id: Option<u32>,     // None for FIGHT/CRAFT buttons
+    direction: Option<Direction>,  // None for FIGHT/CRAFT buttons
     is_fight_button: bool,
+    is_craft_button: bool,
 }
 
 impl TouchArea {
@@ -50,6 +51,7 @@ pub struct MapPage {
 pub enum TouchAction {
     Travel(u32),  // Travel to location ID
     Fight,        // Enter battle on current map
+    Craft,        // Open crafting menu
 }
 
 impl MapPage {
@@ -142,6 +144,9 @@ impl MapPage {
                 if area.is_fight_button {
                     log::info!("Fight button pressed!");
                     return Some(TouchAction::Fight);
+                } else if area.is_craft_button {
+                    log::info!("Craft button pressed!");
+                    return Some(TouchAction::Craft);
                 } else if let Some(location_id) = area.location_id {
                     if let Some(direction) = area.direction {
                         log::info!("Traveling to location {} via {}", location_id, direction.as_str());
@@ -171,28 +176,24 @@ impl MapPage {
         display: &mut Sh8601Driver,
         location: &MapData,
     ) -> Result<(), Box<dyn Error>> {
-        let header_height = 50;
+        let header_height = 30;
 
         // Draw semi-transparent header background
         Rectangle::new(Point::new(0, 0), Size::new(368, header_height))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 0, 0)))
             .draw(display)?;
 
-        let text_style_name = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 200));
-        let text_style_info = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
+        let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 200));
 
-        // Location name
-        Text::new(&location.name, Point::new(10, 20), text_style_name).draw(display)?;
-
-        // Status: Safe Zone or enemy count
+        // Location name and status on single line, more to the right
         use core::fmt::Write;
+        let mut header_text = heapless::String::<64>::new();
         if !location.enemies.is_empty() {
-            let mut enemies_text = heapless::String::<64>::new();
-            write!(enemies_text, "{} enemy types", location.enemies.len()).ok();
-            Text::new(&enemies_text, Point::new(10, 40), text_style_info).draw(display)?;
+            write!(header_text, "{} - {} enemies", location.name, location.enemies.len()).ok();
         } else {
-            Text::new("Safe Zone", Point::new(10, 40), text_style_info).draw(display)?;
+            write!(header_text, "{} - Safe", location.name).ok();
         }
+        Text::new(&header_text, Point::new(50, 20), text_style).draw(display)?;
 
         Ok(())
     }
@@ -207,12 +208,12 @@ impl MapPage {
             return Ok(());
         }
 
-        let list_start_y = 60;
+        let list_start_y = 40;
         let text_style_title = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 200, 100));
         let text_style_monster = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 255));
 
         // Title
-        Text::new("Monsters:", Point::new(10, list_start_y + 20), text_style_title).draw(display)?;
+        Text::new("Monsters:", Point::new(50, list_start_y + 20), text_style_title).draw(display)?;
 
         // List monsters (get names from game data)
         use core::fmt::Write;
@@ -222,8 +223,8 @@ impl MapPage {
 
                 // Draw background for monster name
                 let bg_rect = Rectangle::new(
-                    Point::new(10, y - 18),
-                    Size::new(348, 26)
+                    Point::new(50, y - 18),
+                    Size::new(308, 26)
                 );
                 bg_rect
                     .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 40, 40)))
@@ -232,7 +233,7 @@ impl MapPage {
                 // Draw monster text
                 let mut monster_text = heapless::String::<64>::new();
                 write!(monster_text, "- {} (Lv {})", enemy_data.name, enemy_data.level).ok();
-                Text::new(&monster_text, Point::new(15, y), text_style_monster).draw(display)?;
+                Text::new(&monster_text, Point::new(55, y), text_style_monster).draw(display)?;
             }
         }
 
@@ -240,67 +241,126 @@ impl MapPage {
     }
 
     /// Draw navigation buttons at bottom
+    /// Cities: Two-column layout with CRAFT button
+    /// Fields: Full-width single-column layout with FIGHT button
     fn draw_navigation_buttons(
         &mut self,
         display: &mut Sh8601Driver,
         connections: &[(Direction, &MapData)],
         has_enemies: bool,
+        is_city: bool,
     ) -> Result<(), Box<dyn Error>> {
         self.touch_areas.clear();
 
-        let bottom_start_y = 310; // Start of bottom navigation area (moved up)
-        let button_height = 42;   // Reduced from 50 to fit 3 buttons
-        let button_spacing = 5;   // Reduced from 8
+        let button_height = 76; // 2x the original 38px
+        let row_spacing = 6;
+        let left_margin = 10;
 
         let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-
         use core::fmt::Write;
 
-        // Draw directional navigation buttons
+        // Collect all buttons to draw
+        let mut buttons: Vec<(String, Option<u32>, Option<Direction>, bool, bool, Rgb888)> = Vec::new();
+
+        // Add directional navigation buttons
         for (direction, location) in connections {
             let mut button_text = heapless::String::<32>::new();
-            write!(button_text, "{} - {}", direction.as_str(), location.name).ok();
-
-            let y = bottom_start_y + (self.touch_areas.len() as i32 * (button_height + button_spacing));
-
-            // Draw button background
-            let button_rect = Rectangle::new(Point::new(10, y), Size::new(348, button_height as u32));
-            button_rect
-                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 60, 100)))
-                .draw(display)?;
-
-            // Draw button text (centered vertically)
-            Text::new(&button_text, Point::new(20, y + 27), text_style).draw(display)?;
-
-            // Store touch area
-            self.touch_areas.push(TouchArea {
-                bounds: (10, y, 348, button_height as u32),
-                location_id: Some(location.id),
-                direction: Some(*direction),
-                is_fight_button: false,
-            });
+            write!(button_text, "{}", direction.as_str()).ok();
+            buttons.push((
+                button_text.to_string(),
+                Some(location.id),
+                Some(*direction),
+                false,
+                false,
+                Rgb888::new(40, 60, 100),
+            ));
         }
 
-        // Draw FIGHT button if enemies present
-        if has_enemies {
-            let y = bottom_start_y + (self.touch_areas.len() as i32 * (button_height + button_spacing));
+        if is_city {
+            // Cities: Add CRAFT button only
+            buttons.push((
+                "CRAFT".to_string(),
+                None,
+                None,
+                false,
+                true,
+                Rgb888::new(100, 60, 120),
+            ));
+        } else {
+            // Fields: Add FIGHT button only (if enemies present)
+            if has_enemies {
+                buttons.push((
+                    "FIGHT!".to_string(),
+                    None,
+                    None,
+                    true,
+                    false,
+                    Rgb888::new(150, 30, 30),
+                ));
+            }
+        }
 
-            // Draw FIGHT button with red background
-            let button_rect = Rectangle::new(Point::new(10, y), Size::new(348, button_height as u32));
-            button_rect
-                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(150, 30, 30)))
-                .draw(display)?;
+        if is_city {
+            // Cities: Two-column layout
+            let button_width = 169;
+            let column_spacing = 10;
+            let bottom_start_y = 280; // Higher up to fit 2 rows of taller buttons
 
-            // Draw FIGHT text (centered)
-            Text::new("FIGHT!", Point::new(140, y + 27), text_style).draw(display)?;
+            for (index, (text, location_id, direction, is_fight, is_craft, color)) in buttons.iter().enumerate() {
+                let row = index / 2;
+                let col = index % 2;
 
-            // Store touch area
-            self.touch_areas.push(TouchArea {
-                bounds: (10, y, 348, button_height as u32),
-                location_id: None,
-                direction: None,
-                is_fight_button: true,
-            });
+                let x = left_margin + (col as i32 * (button_width as i32 + column_spacing));
+                let y = bottom_start_y + (row as i32 * (button_height as i32 + row_spacing));
+
+                // Draw button background
+                let button_rect = Rectangle::new(Point::new(x, y), Size::new(button_width as u32, button_height as u32));
+                button_rect
+                    .into_styled(PrimitiveStyle::with_fill(*color))
+                    .draw(display)?;
+
+                // Draw button text (centered)
+                let text_x = x + ((button_width as i32 - (text.len() as i32 * 10)) / 2);
+                let text_y = y + 48; // Vertically centered for 76px height
+                Text::new(text, Point::new(text_x, text_y), text_style).draw(display)?;
+
+                // Store touch area
+                self.touch_areas.push(TouchArea {
+                    bounds: (x, y, button_width as u32, button_height as u32),
+                    location_id: *location_id,
+                    direction: *direction,
+                    is_fight_button: *is_fight,
+                    is_craft_button: *is_craft,
+                });
+            }
+        } else {
+            // Fields: Full-width single-column layout
+            let button_width = 348;
+            let bottom_start_y = 280;
+
+            for (index, (text, location_id, direction, is_fight, is_craft, color)) in buttons.iter().enumerate() {
+                let y = bottom_start_y + (index as i32 * (button_height as i32 + row_spacing));
+
+                // Draw button background
+                let button_rect = Rectangle::new(Point::new(left_margin, y), Size::new(button_width as u32, button_height as u32));
+                button_rect
+                    .into_styled(PrimitiveStyle::with_fill(*color))
+                    .draw(display)?;
+
+                // Draw button text (centered)
+                let text_x = left_margin + ((button_width as i32 - (text.len() as i32 * 10)) / 2);
+                let text_y = y + 48; // Vertically centered for 76px height
+                Text::new(text, Point::new(text_x, text_y), text_style).draw(display)?;
+
+                // Store touch area
+                self.touch_areas.push(TouchArea {
+                    bounds: (left_margin, y, button_width as u32, button_height as u32),
+                    location_id: *location_id,
+                    direction: *direction,
+                    is_fight_button: *is_fight,
+                    is_craft_button: *is_craft,
+                });
+            }
         }
 
         Ok(())
@@ -348,6 +408,9 @@ impl Page for MapPage {
         // Check if current location has enemies
         let has_enemies = !current_location.enemies.is_empty();
 
+        // Check if current location is a city (has NPCs)
+        let is_city = current_location.npcs.as_ref().map_or(false, |npcs| !npcs.is_empty());
+
         // Draw header with current location info
         self.draw_location_header(display, &current_location)?;
 
@@ -359,7 +422,7 @@ impl Page for MapPage {
             .iter()
             .map(|(dir, map_data)| (*dir, map_data))
             .collect();
-        self.draw_navigation_buttons(display, &connections_refs, has_enemies)?;
+        self.draw_navigation_buttons(display, &connections_refs, has_enemies, is_city)?;
 
         // Flush to display
         display.flush()?;
