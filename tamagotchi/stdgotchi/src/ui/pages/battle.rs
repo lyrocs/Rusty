@@ -285,6 +285,12 @@ pub struct BattlePage {
     // Damage number animations
     damage_numbers: Vec<DamageNumber>,
 
+    // HP regeneration
+    last_hp_regen: Instant,
+
+    // Hero death flag
+    hero_died: bool,
+
     // SD card asset loading
     asset_loader: Option<AssetLoader<SdCardWrapper>>,
 }
@@ -319,6 +325,8 @@ impl BattlePage {
             kill_tracker,
             game_data,
             damage_numbers: Vec::new(),
+            last_hp_regen: Instant::now(),
+            hero_died: false,
             asset_loader,
         }
     }
@@ -357,6 +365,8 @@ impl BattlePage {
             kill_tracker,
             game_data,
             damage_numbers: Vec::new(),
+            last_hp_regen: Instant::now(),
+            hero_died: false,
             asset_loader,
         })
     }
@@ -369,6 +379,11 @@ impl BattlePage {
     /// Get the updated kill tracker (to sync back to GameManager)
     pub fn get_kill_tracker(&self) -> &KillTracker {
         &self.kill_tracker
+    }
+
+    /// Check if hero died
+    pub fn hero_died(&self) -> bool {
+        self.hero_died
     }
 
     /// Get enemy sprites with SD card support
@@ -458,7 +473,7 @@ impl BattlePage {
 
         // Get enemy data from GameData and create game enemy
         if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
-            let game_enemy = GameEnemy::from_data_scaled(
+            let game_enemy = GameEnemy::from_data(
                 enemy_data.id,
                 enemy_data.name.clone(),
                 enemy_data.level,
@@ -466,7 +481,6 @@ impl BattlePage {
                 enemy_data.attack,
                 enemy_data.defense,
                 enemy_data.base_exp,
-                self.game_hero.level,
             );
             log::info!(
                 "Spawned {} (Lv {}, HP: {}, ATK: {})",
@@ -534,7 +548,7 @@ impl BattlePage {
             return Err(format!("Enemy {} not found in game data", enemy_id).into());
         };
 
-        let game_enemy = GameEnemy::from_data_scaled(
+        let game_enemy = GameEnemy::from_data(
             enemy_data.id,
             enemy_data.name.clone(),
             enemy_data.level,
@@ -542,7 +556,6 @@ impl BattlePage {
             enemy_data.attack,
             enemy_data.defense,
             enemy_data.base_exp,
-            self.game_hero.level,
         );
         log::info!(
             "Respawned {} (Lv {}, HP: {}, ATK: {})",
@@ -941,11 +954,11 @@ impl Page for BattlePage {
                     // Mark damage as dealt
                     enemy.mark_damage_dealt();
 
-                    // Check if hero died (game over logic can be added later)
+                    // Check if hero died
                     if !self.game_hero.is_alive() {
-                        log::warn!("Hero defeated! (Game over logic not implemented)");
-                        // For now, just restore hero HP
-                        self.game_hero.current_hp = self.game_hero.max_hp / 2;
+                        log::warn!("💀 Hero defeated!");
+                        self.hero_died = true;
+                        // Death will be handled by battle system (switch to death page)
                     }
                 }
             }
@@ -965,6 +978,19 @@ impl Page for BattlePage {
 
         // Remove completed damage number animations
         self.damage_numbers.retain(|dmg| !dmg.is_complete());
+
+        // HP Regeneration (every 5 seconds)
+        if self.last_hp_regen.elapsed() >= Duration::from_secs(5) {
+            let hp_regen = self.game_hero.stats.calculate_hp_regen();
+            let old_hp = self.game_hero.current_hp;
+            self.game_hero.current_hp = (self.game_hero.current_hp + hp_regen).min(self.game_hero.max_hp);
+
+            if self.game_hero.current_hp > old_hp {
+                log::info!("❤️ HP Regen: +{} ({}/{})", hp_regen, self.game_hero.current_hp, self.game_hero.max_hp);
+            }
+
+            self.last_hp_regen = Instant::now();
+        }
 
         // Check if enemy death animation is complete and should respawn
         // This is done at the END of update so the death animation renders properly

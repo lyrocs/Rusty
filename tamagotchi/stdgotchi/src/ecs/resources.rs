@@ -136,7 +136,9 @@ pub struct GameManager {
     pub menu_page: crate::ui::pages::MenuPage,
     pub map_page: MapPage,
     pub battle_page: Option<BattlePage>,
+    pub death_page: Option<crate::ui::pages::DeathPage>,
     pub hero_overview_page: HeroOverviewPage,
+    pub stats_allocation_page: crate::ui::pages::StatsAllocationPage,
     pub inventory_page: crate::ui::pages::InventoryPage,
     pub equipment_page: crate::ui::pages::EquipmentPage,
     pub crafting_page: crate::ui::pages::CraftingPage,
@@ -155,7 +157,9 @@ impl GameManager {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::new(world_map, None), // Use embedded map backgrounds
             battle_page: None,
+            death_page: None,
             hero_overview_page: HeroOverviewPage::new(),
+            stats_allocation_page: crate::ui::pages::StatsAllocationPage::new(),
             inventory_page: crate::ui::pages::InventoryPage::new(),
             equipment_page: crate::ui::pages::EquipmentPage::new(),
             crafting_page: crate::ui::pages::CraftingPage::new(),
@@ -175,7 +179,9 @@ impl GameManager {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
             battle_page: None,
+            death_page: None,
             hero_overview_page: HeroOverviewPage::new(),
+            stats_allocation_page: crate::ui::pages::StatsAllocationPage::new(),
             inventory_page: crate::ui::pages::InventoryPage::new(),
             equipment_page: crate::ui::pages::EquipmentPage::new(),
             crafting_page: crate::ui::pages::CraftingPage::new(),
@@ -202,7 +208,15 @@ impl GameManager {
                     None
                 }
             }
+            AppMode::Death => {
+                if let Some(ref mut death_page) = self.death_page {
+                    Some(death_page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
             AppMode::HeroOverview => Some(&mut self.hero_overview_page as &mut dyn Page),
+            AppMode::StatsAllocation => Some(&mut self.stats_allocation_page as &mut dyn Page),
             AppMode::Inventory => Some(&mut self.inventory_page as &mut dyn Page),
             AppMode::Equipment => Some(&mut self.equipment_page as &mut dyn Page),
             AppMode::Crafting => Some(&mut self.crafting_page as &mut dyn Page),
@@ -210,9 +224,9 @@ impl GameManager {
     }
 
     /// Handle hero overview page touch input
-    /// This method borrows both page and hero internally to satisfy the borrow checker
-    pub fn handle_hero_overview_touch(&mut self, x: i32, y: i32) -> bool {
-        self.hero_overview_page.handle_touch(x, y, &mut self.hero)
+    /// Returns the action button that was pressed (if any)
+    pub fn handle_hero_overview_touch(&mut self, x: i32, y: i32) -> Option<crate::ui::pages::hero_overview::ButtonAction> {
+        self.hero_overview_page.handle_touch(x, y)
     }
 
     /// Draw hero overview page
@@ -234,6 +248,17 @@ impl GameManager {
     /// Draw crafting page with hero and game data
     pub fn draw_crafting(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
         self.crafting_page.draw_crafting(display, &self.hero, &self.game_data, full_redraw)
+    }
+
+    /// Handle stats allocation page touch input
+    /// Returns the action button that was pressed (if any)
+    pub fn handle_stats_allocation_touch(&mut self, x: i32, y: i32) -> Option<crate::ui::pages::stats_allocation::ButtonAction> {
+        self.stats_allocation_page.handle_touch(x, y)
+    }
+
+    /// Draw stats allocation page with hero data
+    pub fn draw_stats_allocation(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.stats_allocation_page.draw_with_hero(display, &self.hero, full_redraw)
     }
 
     /// Save game state to SD card
@@ -318,8 +343,12 @@ pub enum AppMode {
     BattleLoading,
     /// Battle mode
     Battle,
+    /// Death screen (hero died)
+    Death,
     /// Hero overview and stats
     HeroOverview,
+    /// Stats allocation screen
+    StatsAllocation,
     /// Inventory screen
     Inventory,
     /// Equipment screen

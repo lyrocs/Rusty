@@ -33,18 +33,28 @@ pub fn equipment_system(
                     // Handle touch on dialog
                     handle_dialog_touch(x as i32, y as i32, game_manager, &mut app_state);
                 } else {
-                    // Handle touch on main equipment page
+                    // Handle touch on equipment page
                     if let Some(action) = game_manager.equipment_page.handle_touch(x as i32, y as i32) {
                         use crate::ui::pages::EquipmentAction;
                         match action {
                             EquipmentAction::SelectSlot(slot) => {
-                                log::info!("Opening equipment dialog for {:?}", slot);
+                                log::info!("Opening equipment detail for {:?}", slot);
                                 game_manager.equipment_page.open_dialog(slot);
                                 app_state.needs_redraw = true;
                             }
                             EquipmentAction::SwitchToInventory => {
                                 log::info!("Switching to Inventory");
                                 app_state.current_mode = AppMode::Inventory;
+                                app_state.needs_redraw = true;
+                            }
+                            EquipmentAction::Switch => {
+                                log::info!("Opening item selection");
+                                game_manager.equipment_page.open_selection();
+                                app_state.needs_redraw = true;
+                            }
+                            EquipmentAction::Back => {
+                                log::info!("Going back");
+                                game_manager.equipment_page.back_to_list();
                                 app_state.needs_redraw = true;
                             }
                             EquipmentAction::Upgrade(unique_id) => {
@@ -58,8 +68,6 @@ pub fn equipment_system(
                                         } else {
                                             log::warn!("Upgrade failed!");
                                         }
-                                        // Close dialog and refresh
-                                        game_manager.equipment_page.close_dialog();
                                         app_state.needs_redraw = true;
                                     }
                                     Err(e) => {
@@ -95,7 +103,7 @@ pub fn equipment_system(
     }
 }
 
-/// Handle touch on dialog
+/// Handle touch on dialog (selection view)
 fn handle_dialog_touch(
     x: i32,
     y: i32,
@@ -106,15 +114,15 @@ fn handle_dialog_touch(
         return;
     };
 
-    // Dialog dimensions (must match draw_dialog)
+    // Dialog dimensions (must match draw_selection_dialog)
     let dialog_x = 20;
     let dialog_y = 50;
     let dialog_width = 328;
     let dialog_height = 348;
 
     let list_start_y = dialog_y + 50;
-    let item_height = 35;
-    let visible_items = 7;
+    let item_height = 45; // Updated from 35 to 45
+    let visible_items = 5; // Updated from 7 to 5
 
     // Get eligible items
     let eligible_items: Vec<_> = game_manager
@@ -169,10 +177,13 @@ fn handle_dialog_touch(
         }
     }
 
-    // Check if touch is on unequip button
+    // Check if touch is on unequip button (if equipped)
+    let button_height = 50u32; // Updated from 35 to 50
+    let button_width = 154u32; // Updated from 150 to 154
+
     if game_manager.hero.equipped_items.get_slot(selected_slot).is_some() {
-        let unequip_y = dialog_y + dialog_height - 80;
-        let unequip_bounds = (dialog_x + 10, unequip_y, 150, 35);
+        let unequip_y = dialog_y + dialog_height - 105; // Adjusted for new button sizes
+        let unequip_bounds = (dialog_x + 10, unequip_y, button_width, button_height);
 
         if x >= unequip_bounds.0
             && x < unequip_bounds.0 + unequip_bounds.2 as i32
@@ -186,7 +197,7 @@ fn handle_dialog_touch(
             {
                 Ok(()) => {
                     log::info!("Successfully unequipped item");
-                    game_manager.equipment_page.close_dialog();
+                    game_manager.equipment_page.back_to_detail();
                     app_state.needs_redraw = true;
                 }
                 Err(e) => {
@@ -195,19 +206,49 @@ fn handle_dialog_touch(
             }
             return;
         }
+
+        // Check if touch is on upgrade button
+        let upgrade_x = dialog_x + 10 + button_width as i32 + 10;
+        let upgrade_bounds = (upgrade_x, unequip_y, button_width, button_height);
+
+        if x >= upgrade_bounds.0
+            && x < upgrade_bounds.0 + upgrade_bounds.2 as i32
+            && y >= upgrade_bounds.1
+            && y < upgrade_bounds.1 + upgrade_bounds.3 as i32
+        {
+            // Upgrade button clicked - find the equipped item's unique_id
+            if let Some(equipped_id) = game_manager.hero.equipped_items.get_slot(selected_slot) {
+                log::info!("Attempting to upgrade equipment with unique_id: {}", equipped_id);
+                match upgrade_equipment_helper(game_manager, equipped_id) {
+                    Ok(success) => {
+                        if success {
+                            log::info!("Upgrade succeeded!");
+                        } else {
+                            log::warn!("Upgrade failed!");
+                        }
+                        game_manager.equipment_page.back_to_detail();
+                        app_state.needs_redraw = true;
+                    }
+                    Err(e) => {
+                        log::error!("Upgrade error: {}", e);
+                    }
+                }
+            }
+            return;
+        }
     }
 
     // Check if touch is on close button
-    let close_y = dialog_y + dialog_height - 40;
-    let close_bounds = (dialog_x + 10, close_y, 308, 35);
+    let close_y = dialog_y + dialog_height - 50; // Adjusted for new button size
+    let close_bounds = (dialog_x + 10, close_y, 308, button_height);
 
     if x >= close_bounds.0
         && x < close_bounds.0 + close_bounds.2 as i32
         && y >= close_bounds.1
         && y < close_bounds.1 + close_bounds.3 as i32
     {
-        log::info!("Closing dialog");
-        game_manager.equipment_page.close_dialog();
+        log::info!("Going back from selection to detail");
+        game_manager.equipment_page.back_to_detail();
         app_state.needs_redraw = true;
     }
 }

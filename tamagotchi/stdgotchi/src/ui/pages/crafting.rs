@@ -20,6 +20,14 @@ pub enum CraftingAction {
     SelectRecipe(usize), // Index in filtered recipes list
     Craft,
     Close,
+    Back, // Return from detail view to list
+}
+
+/// View mode for crafting page
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViewMode {
+    RecipeList,   // Showing list of recipes
+    RecipeDetail, // Showing detailed view of selected recipe
 }
 
 /// Touch area
@@ -47,6 +55,7 @@ pub struct CraftingPage {
     selected_recipe_index: Option<usize>, // Selected recipe in filtered list
     scroll_offset: usize,          // Scroll position
     craft_success_item: Option<(String, u32)>, // (item_name, item_id) for confirmation dialog
+    view_mode: ViewMode,          // Current view mode
 }
 
 impl CraftingPage {
@@ -60,6 +69,7 @@ impl CraftingPage {
             selected_recipe_index: None,
             scroll_offset: 0,
             craft_success_item: None,
+            view_mode: ViewMode::RecipeList,
         }
     }
 
@@ -68,6 +78,7 @@ impl CraftingPage {
         self.current_location = location;
         self.selected_recipe_index = None;
         self.scroll_offset = 0;
+        self.view_mode = ViewMode::RecipeList;
         self.needs_full_redraw = true;
     }
 
@@ -76,9 +87,16 @@ impl CraftingPage {
         self.selected_recipe_index
     }
 
-    /// Select a recipe by index
+    /// Select a recipe by index - switches to detail view
     pub fn select_recipe(&mut self, index: usize) {
         self.selected_recipe_index = Some(index);
+        self.view_mode = ViewMode::RecipeDetail;
+        self.needs_full_redraw = true;
+    }
+
+    /// Return to recipe list view
+    pub fn back_to_list(&mut self) {
+        self.view_mode = ViewMode::RecipeList;
         self.needs_full_redraw = true;
     }
 
@@ -125,30 +143,38 @@ impl CraftingPage {
 
         self.touch_areas.clear();
 
-        // Header
-        self.draw_header(display)?;
-
         // Get recipes for current location
         let recipes = game_data.get_recipes_for_city(&self.current_location);
 
-        if let Some(recipes) = recipes {
-            // Recipe list
-            self.draw_recipe_list(display, hero, game_data, recipes)?;
+        // Check view mode
+        match self.view_mode {
+            ViewMode::RecipeList => {
+                // Header
+                self.draw_header(display)?;
 
-            // Selected recipe details
-            if let Some(index) = self.selected_recipe_index {
-                if let Some(recipe) = recipes.get(index) {
-                    self.draw_recipe_details(display, hero, recipe)?;
+                if let Some(recipes) = recipes {
+                    // Recipe list
+                    self.draw_recipe_list(display, hero, game_data, recipes)?;
+                } else {
+                    // No recipes available
+                    let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(150, 150, 150));
+                    Text::new("No recipes available here", Point::new(60, 200), text_style).draw(display)?;
+                }
+
+                // Close button (increased height)
+                self.draw_close_button(display)?;
+            }
+            ViewMode::RecipeDetail => {
+                // Full-screen detail view
+                if let Some(recipes) = recipes {
+                    if let Some(index) = self.selected_recipe_index {
+                        if let Some(recipe) = recipes.get(index) {
+                            self.draw_fullscreen_recipe_detail(display, hero, game_data, recipe)?;
+                        }
+                    }
                 }
             }
-        } else {
-            // No recipes available
-            let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(150, 150, 150));
-            Text::new("No recipes available here", Point::new(60, 200), text_style).draw(display)?;
         }
-
-        // Close button
-        self.draw_close_button(display)?;
 
         // Draw success dialog overlay if crafting was successful
         if self.craft_success_item.is_some() {
@@ -179,9 +205,13 @@ impl CraftingPage {
         game_data: &GameData,
         recipes: &[Recipe],
     ) -> Result<(), Box<dyn Error>> {
+        use core::fmt::Write;
+
+        let margin = 10;
         let start_y = 45;
-        let item_height = 35;
-        let visible_items = 5;
+        let item_height = 55i32;
+        let item_spacing = 5;
+        let visible_items = 6;
 
         let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         let text_style_disabled = MonoTextStyle::new(&FONT_10X20, Rgb888::new(100, 100, 100));
@@ -192,7 +222,7 @@ impl CraftingPage {
             .take(visible_items)
             .enumerate()
         {
-            let y = start_y + (index as i32 * item_height);
+            let y = start_y + (index as i32 * (item_height + item_spacing));
             let actual_index = index + self.scroll_offset;
 
             // Check if can craft
@@ -208,31 +238,30 @@ impl CraftingPage {
                 Rgb888::new(40, 40, 40)
             };
 
-            Rectangle::new(Point::new(5, y), Size::new(358, item_height as u32 - 3))
+            Rectangle::new(Point::new(margin, y), Size::new(348, item_height as u32))
                 .into_styled(PrimitiveStyle::with_fill(bg_color))
                 .draw(display)?;
 
             // Recipe name
-            use core::fmt::Write;
             let mut name_text = heapless::String::<32>::new();
             write!(name_text, "{}", recipe.result_item_name).ok();
 
             let style = if can_craft { text_style } else { text_style_disabled };
-            Text::new(&name_text, Point::new(10, y + 22), style).draw(display)?;
+            Text::new(&name_text, Point::new(margin + 8, y + 35), style).draw(display)?;
 
             // Level requirement
             let level_style = if hero.level >= recipe.required_level {
                 text_style
             } else {
-                MonoTextStyle::new(&FONT_6X10, Rgb888::RED)
+                MonoTextStyle::new(&FONT_10X20, Rgb888::RED)
             };
             let mut level_text = heapless::String::<16>::new();
             write!(level_text, "Lv{}", recipe.required_level).ok();
-            Text::new(&level_text, Point::new(280, y + 20), level_style).draw(display)?;
+            Text::new(&level_text, Point::new(285, y + 35), level_style).draw(display)?;
 
             // Register touch area
             self.touch_areas.push(TouchArea {
-                bounds: (5, y, 358, item_height as u32 - 3),
+                bounds: (margin, y, 348, item_height as u32),
                 action: CraftingAction::SelectRecipe(actual_index),
             });
         }
@@ -320,16 +349,17 @@ impl CraftingPage {
 
     /// Draw close button
     fn draw_close_button(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
-        let button_y = 410;
-        Rectangle::new(Point::new(10, button_y), Size::new(348, 35))
+        let button_y = 395;
+        let button_height = 50u32;
+        Rectangle::new(Point::new(10, button_y), Size::new(348, button_height))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(80, 40, 40)))
             .draw(display)?;
 
         let text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        Text::new("CLOSE", Point::new(150, button_y + 22), text_style).draw(display)?;
+        Text::new("CLOSE", Point::new(150, button_y + 32), text_style).draw(display)?;
 
         self.touch_areas.push(TouchArea {
-            bounds: (10, button_y, 348, 35),
+            bounds: (10, button_y, 348, button_height),
             action: CraftingAction::Close,
         });
 
@@ -434,6 +464,162 @@ impl CraftingPage {
 
         // Hint to close
         Text::new("(Tap to continue)", Point::new(dialog_x + 65, dialog_y + dialog_height as i32 - 20), text_style_hint).draw(display)?;
+
+        Ok(())
+    }
+
+    /// Draw fullscreen recipe detail view
+    fn draw_fullscreen_recipe_detail(
+        &mut self,
+        display: &mut Sh8601Driver,
+        hero: &Hero,
+        game_data: &GameData,
+        recipe: &Recipe,
+    ) -> Result<(), Box<dyn Error>> {
+        use core::fmt::Write;
+
+        let margin = 15;
+        let text_style_title = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
+        let text_style_label = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 200));
+        let text_style_value = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        let text_style_has = MonoTextStyle::new(&FONT_10X20, Rgb888::GREEN);
+        let text_style_missing = MonoTextStyle::new(&FONT_10X20, Rgb888::RED);
+
+        let mut y = margin + 15;
+
+        // Item name
+        Text::new(&recipe.result_item_name, Point::new(margin + 5, y), text_style_title).draw(display)?;
+        y += 25;
+
+        // Get item data to show stats
+        if let Some(item_data) = game_data.get_item(recipe.result_item_id) {
+            // Description
+            if !item_data.description.is_empty() {
+                Text::new(&item_data.description, Point::new(margin + 5, y), text_style_label).draw(display)?;
+                y += 20;
+            }
+
+            // Equipment stats
+            if item_data.slot.is_some() {
+                y += 10;
+                Text::new("STATS:", Point::new(margin + 5, y), text_style_title).draw(display)?;
+                y += 22;
+
+                if let Some(atk) = item_data.base_atk {
+                    let mut text = heapless::String::<32>::new();
+                    write!(text, "  ATK: +{}", atk).ok();
+                    Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+                    y += 20;
+                }
+
+                if let Some(def) = item_data.base_def {
+                    let mut text = heapless::String::<32>::new();
+                    write!(text, "  DEF: +{}", def).ok();
+                    Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+                    y += 20;
+                }
+
+                if let Some(flee) = item_data.base_flee {
+                    let mut text = heapless::String::<32>::new();
+                    write!(text, "  FLEE: +{}", flee).ok();
+                    Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+                    y += 20;
+                }
+
+                if let Some(hit) = item_data.base_hit {
+                    let mut text = heapless::String::<32>::new();
+                    write!(text, "  HIT: +{}", hit).ok();
+                    Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+                    y += 20;
+                }
+            }
+        }
+
+        y += 10;
+
+        // Requirements section
+        Text::new("REQUIREMENTS:", Point::new(margin + 5, y), text_style_title).draw(display)?;
+        y += 22;
+
+        // Level requirement
+        let has_level = hero.level >= recipe.required_level;
+        let level_style = if has_level { text_style_has } else { text_style_missing };
+        let mut level_text = heapless::String::<32>::new();
+        write!(level_text, "  Level: {} (You: {})", recipe.required_level, hero.level).ok();
+        Text::new(&level_text, Point::new(margin + 5, y), level_style).draw(display)?;
+        y += 20;
+
+        // Gold cost
+        let has_gold = hero.gold >= recipe.gold_cost;
+        let gold_style = if has_gold { text_style_has } else { text_style_missing };
+        let mut gold_text = heapless::String::<32>::new();
+        write!(gold_text, "  Gold: {} (You: {})", recipe.gold_cost, hero.gold).ok();
+        Text::new(&gold_text, Point::new(margin + 5, y), gold_style).draw(display)?;
+        y += 20;
+
+        // Materials
+        y += 5;
+        Text::new("  Materials:", Point::new(margin + 5, y), text_style_label).draw(display)?;
+        y += 20;
+
+        for material in &recipe.materials {
+            let has_quantity = hero.inventory.get_material_quantity(material.item_id);
+            let has_enough = has_quantity >= material.quantity;
+            let mat_style = if has_enough { text_style_has } else { text_style_missing };
+
+            let mut mat_text = heapless::String::<48>::new();
+            write!(
+                mat_text,
+                "    {}: {}/{}",
+                material.name,
+                has_quantity,
+                material.quantity
+            ).ok();
+            Text::new(&mat_text, Point::new(margin + 5, y), mat_style).draw(display)?;
+            y += 18;
+        }
+
+        // Buttons at bottom
+        let button_y = 368;
+        let button_height = 55u32;
+        let button_spacing = 8;
+        let button_width = 170u32;
+
+        let can_craft = self.can_craft_recipe(hero, recipe);
+
+        // Back button (left)
+        Rectangle::new(Point::new(margin, button_y), Size::new(button_width, button_height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 60, 60)))
+            .draw(display)?;
+        Text::new("BACK", Point::new(margin + 60, button_y + 35), text_style_value).draw(display)?;
+
+        self.touch_areas.push(TouchArea {
+            bounds: (margin, button_y, button_width, button_height),
+            action: CraftingAction::Back,
+        });
+
+        // Craft button (right)
+        let craft_x = margin + button_width as i32 + button_spacing;
+        let craft_color = if can_craft {
+            Rgb888::new(40, 120, 40)
+        } else {
+            Rgb888::new(60, 60, 60)
+        };
+
+        Rectangle::new(Point::new(craft_x, button_y), Size::new(button_width, button_height))
+            .into_styled(PrimitiveStyle::with_fill(craft_color))
+            .draw(display)?;
+
+        let button_text = if can_craft { "CRAFT" } else { "Cannot Craft" };
+        let text_x = if can_craft { craft_x + 55 } else { craft_x + 20 };
+        Text::new(button_text, Point::new(text_x, button_y + 35), text_style_value).draw(display)?;
+
+        if can_craft {
+            self.touch_areas.push(TouchArea {
+                bounds: (craft_x, button_y, button_width, button_height),
+                action: CraftingAction::Craft,
+            });
+        }
 
         Ok(())
     }

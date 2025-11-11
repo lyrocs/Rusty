@@ -52,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, crafting_system, equipment_system, fps_system, hero_overview_system, inventory_system, map_navigation_system, menu_system, render_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, crafting_system, death_detection_system, death_system, equipment_system, fps_system, hero_overview_system, inventory_system, map_navigation_system, menu_system, render_system, stats_allocation_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -335,7 +335,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         map_navigation_system,
         battle_loading_system, // Creates battle page after loading screen shown
         battle_system,
+        death_detection_system, // Check for hero death in battle
+        death_system, // Handle death screen and respawn
         hero_overview_system,
+        stats_allocation_system,
         inventory_system,
         equipment_system,
         crafting_system,

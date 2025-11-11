@@ -85,6 +85,11 @@ pub fn crafting_system(
                             app_state.current_mode = AppMode::Map;
                             app_state.needs_redraw = true;
                         }
+                        CraftingAction::Back => {
+                            log::info!("Back to recipe list");
+                            game_manager.crafting_page.back_to_list();
+                            app_state.needs_redraw = true;
+                        }
                     }
                 }
             }

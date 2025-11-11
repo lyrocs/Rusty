@@ -143,8 +143,20 @@ pub fn hero_overview_system(
                 let y = y as i32;
 
                 // Handle touch on hero overview page
-                if game_manager.handle_hero_overview_touch(x, y) {
-                    app_state.needs_redraw = true;
+                if let Some(action) = game_manager.handle_hero_overview_touch(x, y) {
+                    use crate::ui::pages::hero_overview::ButtonAction;
+                    match action {
+                        ButtonAction::AllocateStats => {
+                            log::info!("Opening stats allocation page");
+                            app_state.current_mode = AppMode::StatsAllocation;
+                            app_state.needs_redraw = true;
+                        }
+                        ButtonAction::Close => {
+                            log::info!("Closing hero overview - Opening Menu");
+                            app_state.current_mode = AppMode::Menu;
+                            app_state.needs_redraw = true;
+                        }
+                    }
                 }
             }
             InputEvent::BootPressed => {

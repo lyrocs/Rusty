@@ -63,6 +63,30 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::Death => {
+            // Death screen rendering
+            if let Some(mut game_manager) = game_manager {
+                if let Some(ref mut death_page) = game_manager.death_page {
+                    let page_active = death_page.update();
+                    let full_redraw = death_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw death page
+                    if let Err(e) = death_page.draw_death_page(display, full_redraw) {
+                        log::error!("Failed to draw death page: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        info!("Death page completed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
         AppMode::HeroOverview => {
             // Hero overview rendering - needs special handling for hero data
             if let Some(mut game_manager) = game_manager {
@@ -86,6 +110,28 @@ pub fn render_system(
                 if !page_active {
                     info!("Hero overview completed, returning to map");
                     app_state.current_mode = AppMode::Map;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
+        AppMode::StatsAllocation => {
+            // Stats allocation rendering - needs hero data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.stats_allocation_page.update();
+                let full_redraw = game_manager.stats_allocation_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw stats allocation with hero data
+                if let Err(e) = game_manager.draw_stats_allocation(display, full_redraw) {
+                    log::error!("Failed to draw stats allocation: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Stats allocation closed, returning to hero overview");
+                    app_state.current_mode = AppMode::HeroOverview;
                     app_state.needs_redraw = true;
                 }
             }
