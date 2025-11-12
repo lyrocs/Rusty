@@ -316,9 +316,14 @@ impl MapPage {
     ) -> Result<(), Box<dyn Error>> {
         use core::fmt::Write;
 
-        // Card background
+        // Card background with black border
         Rectangle::new(Point::new(x, y), Size::new(width, height))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 60, 80)))
+            .draw(display)?;
+
+        // Black border
+        Rectangle::new(Point::new(x, y), Size::new(width, height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::BLACK, 2))
             .draw(display)?;
 
         // Direction label
@@ -333,12 +338,12 @@ impl MapPage {
         // Destination name
         Text::new(&location.name, Point::new(x + 8, y + 36), *text_style_dest).draw(display)?;
 
-        // Monster names if field (only show first monster name)
+        // Monster names if field (only show first monster name with level)
         if !location.enemies.is_empty() {
             let mut monsters_text = heapless::String::<32>::new();
             if let Some(enemy_data) = location.enemies.get(0)
                 .and_then(|id| self.world_map.game_data().get_enemy(*id)) {
-                write!(monsters_text, "{}", enemy_data.name).ok();
+                write!(monsters_text, "{} (Lv {})", enemy_data.name, enemy_data.level).ok();
                 if location.enemies.len() > 1 {
                     write!(monsters_text, "...").ok();
                 }
@@ -384,14 +389,14 @@ impl MapPage {
             // Field info - show "MONSTERS:" label
             Text::new("MONSTERS:", Point::new(margin + 5, y_start), text_style_label).draw(display)?;
 
-            // Show monster names (up to 3)
+            // Show monster names with levels (up to 3)
             let mut monster_text = heapless::String::<64>::new();
             for (i, enemy_id) in location.enemies.iter().take(3).enumerate() {
                 if let Some(enemy_data) = self.world_map.game_data().get_enemy(*enemy_id) {
                     if i > 0 {
-                        write!(monster_text, ", {}", enemy_data.name).ok();
+                        write!(monster_text, ", {} (Lv {})", enemy_data.name, enemy_data.level).ok();
                     } else {
-                        write!(monster_text, "{}", enemy_data.name).ok();
+                        write!(monster_text, "{} (Lv {})", enemy_data.name, enemy_data.level).ok();
                     }
                 }
             }
