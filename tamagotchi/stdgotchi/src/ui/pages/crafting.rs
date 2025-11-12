@@ -499,37 +499,113 @@ impl CraftingPage {
                 y += 20;
             }
 
-            // Equipment stats
-            if item_data.slot.is_some() {
+            // Equipment stats with comparison to equipped item
+            if let Some(slot) = item_data.slot {
                 y += 10;
                 Text::new("STATS:", Point::new(margin + 5, y), text_style_title).draw(display)?;
                 y += 22;
 
-                if let Some(atk) = item_data.base_atk {
-                    let mut text = heapless::String::<32>::new();
-                    write!(text, "  ATK: +{}", atk).ok();
+                // Get currently equipped item in this slot
+                let equipped_item_data = hero.equipped_items.get_slot(slot)
+                    .and_then(|unique_id| {
+                        hero.inventory.items().iter()
+                            .find(|item| item.unique_id == Some(unique_id))
+                    })
+                    .and_then(|item| game_data.get_item(item.item_id));
+
+                // Helper to display stat comparison
+                let text_style_positive = MonoTextStyle::new(&FONT_10X20, Rgb888::new(100, 255, 100));
+                let text_style_negative = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 100, 100));
+
+                // ATK comparison
+                if let Some(new_atk) = item_data.base_atk {
+                    let old_atk = equipped_item_data.and_then(|d| d.base_atk).unwrap_or(0);
+                    let diff = new_atk as i32 - old_atk as i32;
+
+                    let mut text = heapless::String::<64>::new();
+                    if old_atk > 0 {
+                        write!(text, "  ATK: +{} (Now: +{}) ", new_atk, old_atk).ok();
+                    } else {
+                        write!(text, "  ATK: +{} ", new_atk).ok();
+                    }
                     Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+
+                    // Draw diff with color
+                    if old_atk > 0 && diff != 0 {
+                        let diff_style = if diff > 0 { text_style_positive } else { text_style_negative };
+                        let mut diff_text = heapless::String::<16>::new();
+                        write!(diff_text, "{:+}", diff).ok();
+                        Text::new(&diff_text, Point::new(margin + 250, y), diff_style).draw(display)?;
+                    }
                     y += 20;
                 }
 
-                if let Some(def) = item_data.base_def {
-                    let mut text = heapless::String::<32>::new();
-                    write!(text, "  DEF: +{}", def).ok();
+                // DEF comparison
+                if let Some(new_def) = item_data.base_def {
+                    let old_def = equipped_item_data.and_then(|d| d.base_def).unwrap_or(0);
+                    let diff = new_def as i32 - old_def as i32;
+
+                    let mut text = heapless::String::<64>::new();
+                    if old_def > 0 {
+                        write!(text, "  DEF: +{} (Now: +{}) ", new_def, old_def).ok();
+                    } else {
+                        write!(text, "  DEF: +{} ", new_def).ok();
+                    }
                     Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+
+                    // Draw diff with color
+                    if old_def > 0 && diff != 0 {
+                        let diff_style = if diff > 0 { text_style_positive } else { text_style_negative };
+                        let mut diff_text = heapless::String::<16>::new();
+                        write!(diff_text, "{:+}", diff).ok();
+                        Text::new(&diff_text, Point::new(margin + 250, y), diff_style).draw(display)?;
+                    }
                     y += 20;
                 }
 
-                if let Some(flee) = item_data.base_flee {
-                    let mut text = heapless::String::<32>::new();
-                    write!(text, "  FLEE: +{}", flee).ok();
+                // FLEE comparison
+                if let Some(new_flee) = item_data.base_flee {
+                    let old_flee = equipped_item_data.and_then(|d| d.base_flee).unwrap_or(0);
+                    let diff = new_flee as i32 - old_flee as i32;
+
+                    let mut text = heapless::String::<64>::new();
+                    if old_flee > 0 {
+                        write!(text, "  FLEE: +{} (Now: +{}) ", new_flee, old_flee).ok();
+                    } else {
+                        write!(text, "  FLEE: +{} ", new_flee).ok();
+                    }
                     Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+
+                    // Draw diff with color
+                    if old_flee > 0 && diff != 0 {
+                        let diff_style = if diff > 0 { text_style_positive } else { text_style_negative };
+                        let mut diff_text = heapless::String::<16>::new();
+                        write!(diff_text, "{:+}", diff).ok();
+                        Text::new(&diff_text, Point::new(margin + 250, y), diff_style).draw(display)?;
+                    }
                     y += 20;
                 }
 
-                if let Some(hit) = item_data.base_hit {
-                    let mut text = heapless::String::<32>::new();
-                    write!(text, "  HIT: +{}", hit).ok();
+                // HIT comparison
+                if let Some(new_hit) = item_data.base_hit {
+                    let old_hit = equipped_item_data.and_then(|d| d.base_hit).unwrap_or(0);
+                    let diff = new_hit as i32 - old_hit as i32;
+
+                    let mut text = heapless::String::<64>::new();
+                    if old_hit > 0 {
+                        write!(text, "  HIT: +{} (Now: +{}) ", new_hit, old_hit).ok();
+                    } else {
+                        write!(text, "  HIT: +{} ", new_hit).ok();
+                    }
                     Text::new(&text, Point::new(margin + 5, y), text_style_value).draw(display)?;
+
+                    // Draw diff with color
+                    if old_hit > 0 && diff != 0 {
+                        let diff_style = if diff > 0 { text_style_positive } else { text_style_negative };
+                        let mut diff_text = heapless::String::<16>::new();
+                        write!(diff_text, "{:+}", diff).ok();
+                        Text::new(&diff_text, Point::new(margin + 250, y), diff_style).draw(display)?;
+                    }
                     y += 20;
                 }
             }
