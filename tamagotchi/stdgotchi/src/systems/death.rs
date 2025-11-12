@@ -29,19 +29,27 @@ pub fn death_detection_system(
             // Sync battle state before switching
             game_manager.sync_battle_state();
 
-            // Create death page
-            match crate::ui::pages::DeathPage::new() {
-                Ok(death_page) => {
-                    game_manager.death_page = Some(death_page);
-                    app_state.current_mode = AppMode::Death;
-                    app_state.needs_redraw = true;
+            // Only create death page if it doesn't already exist (to preserve timer)
+            if game_manager.death_page.is_none() {
+                // Create death page
+                match crate::ui::pages::DeathPage::new() {
+                    Ok(death_page) => {
+                        log::info!("Created new death page with 2-minute timer");
+                        game_manager.death_page = Some(death_page);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create death page: {:?}", e);
+                        // Fallback: just reset HP and continue
+                        game_manager.hero.current_hp = game_manager.hero.max_hp / 2;
+                    }
                 }
-                Err(e) => {
-                    log::error!("Failed to create death page: {:?}", e);
-                    // Fallback: just reset HP and continue
-                    game_manager.hero.current_hp = game_manager.hero.max_hp / 2;
-                }
+            } else {
+                log::info!("Death page already exists, keeping existing timer");
             }
+
+            // Switch to death mode
+            app_state.current_mode = AppMode::Death;
+            app_state.needs_redraw = true;
         }
     }
 }

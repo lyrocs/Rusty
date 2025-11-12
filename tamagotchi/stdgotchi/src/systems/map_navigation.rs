@@ -43,6 +43,26 @@ pub fn map_navigation_system(
                                 app_state.needs_redraw = true;
                             }
                         }
+                        TouchAction::ViewMapDetails(_map_id) => {
+                            // Map details view - just redraw (state changed in handle_touch)
+                            log::info!("Viewing map details for map {}", _map_id);
+                            app_state.needs_redraw = true;
+                        }
+                        TouchAction::ViewMonsterList(_map_id) => {
+                            // Monster list view - just redraw (state changed in handle_touch)
+                            log::info!("Viewing monster list for map {}", _map_id);
+                            app_state.needs_redraw = true;
+                        }
+                        TouchAction::BackToWorldMap => {
+                            // Back to world map grid - just redraw (state changed in handle_touch)
+                            log::info!("Returning to world map grid");
+                            app_state.needs_redraw = true;
+                        }
+                        TouchAction::BackToMapDetails => {
+                            // Back to map details - just redraw (state changed in handle_touch)
+                            log::info!("Returning to map details");
+                            app_state.needs_redraw = true;
+                        }
                         TouchAction::Fight => {
                             // Enter battle on current map
                             let current_location_id = game_manager.map_page.world_map().current_location_id();

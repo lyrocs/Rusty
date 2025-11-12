@@ -208,6 +208,13 @@ impl GameData {
         self.maps.get(&id)
     }
 
+    /// Get all map IDs
+    pub fn get_all_map_ids(&self) -> Vec<u32> {
+        let mut ids: Vec<u32> = self.maps.keys().copied().collect();
+        ids.sort();
+        ids
+    }
+
     /// Get enemy by ID
     pub fn get_enemy(&self, id: u32) -> Option<&EnemyData> {
         self.enemies.get(&id)
