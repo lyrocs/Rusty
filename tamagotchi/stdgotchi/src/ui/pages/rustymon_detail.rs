@@ -1,0 +1,445 @@
+//! Rustymon Detail Page
+//!
+//! Shows detailed stats of a single Rustymon and allows team management
+
+use crate::display::Sh8601Driver;
+use crate::game::{Rustymon, RustymonTeam};
+use crate::game::element_system::get_element_color;
+use crate::ui::page::Page;
+use embedded_graphics::{
+    mono_font::{ascii::FONT_10X20, MonoTextStyle},
+    pixelcolor::Rgb888,
+    prelude::*,
+    primitives::{PrimitiveStyle, Rectangle, PrimitiveStyleBuilder},
+    text::Text,
+};
+use std::error::Error;
+
+/// Actions from detail page
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RustymonDetailAction {
+    AddToTeam,
+    RemoveFromTeam,
+    Close,
+}
+
+/// Touch area
+#[derive(Debug, Clone)]
+struct TouchArea {
+    bounds: (i32, i32, u32, u32),
+    action: RustymonDetailAction,
+}
+
+impl TouchArea {
+    fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.bounds.0
+            && x < self.bounds.0 + self.bounds.2 as i32
+            && y >= self.bounds.1
+            && y < self.bounds.1 + self.bounds.3 as i32
+    }
+}
+
+/// Rustymon Detail page
+pub struct RustymonDetailPage {
+    background_color: Rgb888,
+    touch_areas: Vec<TouchArea>,
+    needs_full_redraw: bool,
+}
+
+impl RustymonDetailPage {
+    /// Create new Rustymon detail page
+    pub fn new() -> Self {
+        Self {
+            background_color: Rgb888::new(15, 20, 30),
+            touch_areas: Vec::new(),
+            needs_full_redraw: true,
+        }
+    }
+
+    /// Handle touch input
+    pub fn handle_touch(&mut self, x: i32, y: i32) -> Option<RustymonDetailAction> {
+        for area in &self.touch_areas {
+            if area.contains(x, y) {
+                log::info!("Rustymon detail action: {:?}", area.action);
+                return Some(area.action);
+            }
+        }
+        None
+    }
+
+    /// Draw Rustymon detail screen
+    pub fn draw_rustymon_detail(
+        &mut self,
+        display: &mut Sh8601Driver,
+        rustymon: &Rustymon,
+        rustymon_team: &RustymonTeam,
+        full_redraw: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        use core::fmt::Write;
+
+        if full_redraw || self.needs_full_redraw {
+            display.clear(self.background_color)?;
+            self.needs_full_redraw = false;
+        }
+
+        self.touch_areas.clear();
+
+        let element_color = get_element_color(rustymon.element);
+
+        // Draw header with element color
+        Rectangle::new(Point::new(0, 0), Size::new(368, 60))
+            .into_styled(PrimitiveStyle::with_fill(element_color))
+            .draw(display)?;
+
+        // Draw name
+        let name_style = MonoTextStyle::new(&FONT_10X20, Rgb888::BLACK);
+        let mut name_str = heapless::String::<32>::new();
+        write!(name_str, "{}", rustymon.name).ok();
+        Text::new(&name_str, Point::new(10, 25), name_style).draw(display)?;
+
+        // Draw level
+        let mut level_str = heapless::String::<16>::new();
+        write!(level_str, "Lv {}", rustymon.level).ok();
+        Text::new(&level_str, Point::new(10, 50), name_style).draw(display)?;
+
+        // Draw element name
+        let elem_str = rustymon.element.as_str();
+        Text::new(elem_str, Point::new(250, 50), name_style).draw(display)?;
+
+        // Stats section
+        let stat_label_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 200));
+        let stat_value_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 255));
+
+        let mut y = 80;
+        let label_x = 20;
+        let value_x = 200;
+        let line_height = 25;
+
+        // HP
+        let mut label_str = heapless::String::<16>::new();
+        write!(label_str, "HP:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+
+        let mut value_str = heapless::String::<24>::new();
+        write!(value_str, "{}/{}", rustymon.current_hp, rustymon.max_hp).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+
+        // HP bar
+        self.draw_hp_bar(
+            display,
+            (label_x + 80, y - 15),
+            rustymon.current_hp,
+            rustymon.max_hp,
+            150,
+        )?;
+
+        y += line_height + 10;
+
+        // EXP
+        label_str.clear();
+        write!(label_str, "EXP:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+
+        value_str.clear();
+        write!(value_str, "{}/{}", rustymon.exp, rustymon.exp_to_next).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+
+        // EXP bar
+        self.draw_exp_bar(
+            display,
+            (label_x + 80, y - 15),
+            rustymon.exp,
+            rustymon.exp_to_next,
+            150,
+        )?;
+
+        y += line_height + 10;
+
+        // Base Stats Section
+        y += 10;
+        let section_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 100));
+        Text::new("Base Stats", Point::new(label_x, y), section_style).draw(display)?;
+        y += line_height;
+
+        // STR
+        label_str.clear();
+        write!(label_str, "STR:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.str).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // DEX
+        label_str.clear();
+        write!(label_str, "DEX:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.dex).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // VIT
+        label_str.clear();
+        write!(label_str, "VIT:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.vit).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // INT
+        label_str.clear();
+        write!(label_str, "INT:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.int).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // LUK
+        label_str.clear();
+        write!(label_str, "LUK:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.luk).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // Combat Stats Section
+        y += 10;
+        Text::new("Combat Stats", Point::new(label_x, y), section_style).draw(display)?;
+        y += line_height;
+
+        // ATK
+        label_str.clear();
+        write!(label_str, "ATK:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.atk).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // DEF
+        label_str.clear();
+        write!(label_str, "DEF:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.def).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // HIT
+        label_str.clear();
+        write!(label_str, "HIT:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.hit).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // FLEE
+        label_str.clear();
+        write!(label_str, "FLEE:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{}", rustymon.flee).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+        y += line_height;
+
+        // CRIT
+        label_str.clear();
+        write!(label_str, "CRIT:").ok();
+        Text::new(&label_str, Point::new(label_x, y), stat_label_style).draw(display)?;
+        value_str.clear();
+        write!(value_str, "{:.1}%", rustymon.crit_rate).ok();
+        Text::new(&value_str, Point::new(value_x, y), stat_value_style).draw(display)?;
+
+        // Draw buttons at bottom
+        let in_team = rustymon_team.is_in_team(&rustymon.id);
+
+        if in_team {
+            // Remove from team button
+            Rectangle::new(Point::new(120, 420), Size::new(140, 30))
+                .into_styled(
+                    PrimitiveStyleBuilder::new()
+                        .fill_color(Rgb888::new(80, 40, 40))
+                        .stroke_color(Rgb888::new(160, 80, 80))
+                        .stroke_width(2)
+                        .build(),
+                )
+                .draw(display)?;
+
+            let btn_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+            Text::new("Remove", Point::new(140, 440), btn_style).draw(display)?;
+
+            self.touch_areas.push(TouchArea {
+                bounds: (120, 420, 140, 30),
+                action: RustymonDetailAction::RemoveFromTeam,
+            });
+        } else {
+            // Add to team button
+            Rectangle::new(Point::new(120, 420), Size::new(140, 30))
+                .into_styled(
+                    PrimitiveStyleBuilder::new()
+                        .fill_color(Rgb888::new(40, 80, 40))
+                        .stroke_color(Rgb888::new(80, 160, 80))
+                        .stroke_width(2)
+                        .build(),
+                )
+                .draw(display)?;
+
+            let btn_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+            Text::new("Add to Team", Point::new(125, 440), btn_style).draw(display)?;
+
+            self.touch_areas.push(TouchArea {
+                bounds: (120, 420, 140, 30),
+                action: RustymonDetailAction::AddToTeam,
+            });
+        }
+
+        // Back button
+        Rectangle::new(Point::new(10, 420), Size::new(100, 30))
+            .into_styled(
+                PrimitiveStyleBuilder::new()
+                    .fill_color(Rgb888::new(60, 60, 80))
+                    .stroke_color(Rgb888::new(120, 120, 160))
+                    .stroke_width(2)
+                    .build(),
+            )
+            .draw(display)?;
+
+        let back_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        Text::new("Back", Point::new(30, 440), back_style).draw(display)?;
+
+        self.touch_areas.push(TouchArea {
+            bounds: (10, 420, 100, 30),
+            action: RustymonDetailAction::Close,
+        });
+
+        display.flush()?;
+        Ok(())
+    }
+
+    /// Draw HP bar
+    fn draw_hp_bar(
+        &self,
+        display: &mut Sh8601Driver,
+        position: (i32, i32),
+        current: u32,
+        max: u32,
+        width: u32,
+    ) -> Result<(), Box<dyn Error>> {
+        let (x, y) = position;
+        let height = 12;
+
+        // Background
+        Rectangle::new(Point::new(x, y), Size::new(width, height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 40, 40)))
+            .draw(display)?;
+
+        // Fill
+        let fill_width = if max > 0 {
+            ((current as f32 / max as f32) * width as f32) as u32
+        } else {
+            0
+        };
+
+        let fill_color = if current as f32 / max as f32 > 0.5 {
+            Rgb888::new(100, 255, 100)
+        } else if current as f32 / max as f32 > 0.2 {
+            Rgb888::new(255, 200, 100)
+        } else {
+            Rgb888::new(255, 100, 100)
+        };
+
+        Rectangle::new(Point::new(x, y), Size::new(fill_width, height))
+            .into_styled(PrimitiveStyle::with_fill(fill_color))
+            .draw(display)?;
+
+        // Border
+        Rectangle::new(Point::new(x, y), Size::new(width, height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 1))
+            .draw(display)?;
+
+        Ok(())
+    }
+
+    /// Draw EXP bar
+    fn draw_exp_bar(
+        &self,
+        display: &mut Sh8601Driver,
+        position: (i32, i32),
+        current: u32,
+        max: u32,
+        width: u32,
+    ) -> Result<(), Box<dyn Error>> {
+        let (x, y) = position;
+        let height = 12;
+
+        // Background
+        Rectangle::new(Point::new(x, y), Size::new(width, height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 40, 40)))
+            .draw(display)?;
+
+        // Fill
+        let fill_width = if max > 0 {
+            ((current as f32 / max as f32) * width as f32) as u32
+        } else {
+            0
+        };
+
+        Rectangle::new(Point::new(x, y), Size::new(fill_width, height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 255)))
+            .draw(display)?;
+
+        // Border
+        Rectangle::new(Point::new(x, y), Size::new(width, height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 1))
+            .draw(display)?;
+
+        Ok(())
+    }
+}
+
+impl Default for RustymonDetailPage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Page for RustymonDetailPage {
+    fn update(&mut self) -> bool {
+        true // Stay active until explicitly closed
+    }
+
+    fn draw(
+        &mut self,
+        _display: &mut Sh8601Driver,
+        _full_redraw: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        // This page requires external data
+        Ok(())
+    }
+
+    fn on_enter(&mut self) {
+        log::info!("Entering Rustymon detail page");
+        self.needs_full_redraw = true;
+    }
+
+    fn on_exit(&mut self) {
+        log::info!("Exiting Rustymon detail page");
+    }
+
+    fn mark_dirty(&mut self) {
+        self.needs_full_redraw = true;
+    }
+
+    fn needs_full_redraw(&self) -> bool {
+        self.needs_full_redraw
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}

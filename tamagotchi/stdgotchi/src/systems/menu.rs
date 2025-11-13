@@ -63,6 +63,16 @@ pub fn menu_system(
                             app_state.current_mode = AppMode::Equipment;
                             app_state.needs_redraw = true;
                         }
+                        MenuAction::Rustymon => {
+                            log::info!("Navigating to Rustymon List");
+                            app_state.current_mode = AppMode::RustymonList;
+                            app_state.needs_redraw = true;
+                        }
+                        MenuAction::Fragments => {
+                            log::info!("Navigating to Fragment Collection");
+                            app_state.current_mode = AppMode::FragmentCollection;
+                            app_state.needs_redraw = true;
+                        }
                     }
                 }
             }

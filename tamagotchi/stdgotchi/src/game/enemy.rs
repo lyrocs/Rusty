@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::rustymon::Element;
+
 /// Enemy instance in battle
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Enemy {
@@ -17,11 +19,12 @@ pub struct Enemy {
     pub hit: u32,
     pub flee: u32,
     pub exp_reward: u64,
+    pub element: Element,
 }
 
 impl Enemy {
     /// Create enemy from loaded data
-    pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, base_exp: u64) -> Self {
+    pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, base_exp: u64, element: Element) -> Self {
         let max_hp = hp;
         let atk = attack;
         let def = defense;
@@ -37,6 +40,7 @@ impl Enemy {
             hit: 90 + level * 2,
             flee: 10 + level,
             exp_reward: base_exp,
+            element,
         }
     }
 
@@ -49,6 +53,7 @@ impl Enemy {
         base_attack: u32,
         base_defense: u32,
         base_exp: u64,
+        element: Element,
         hero_level: u32,
     ) -> Self {
         // Scale enemy stats based on hero level, but keep base level for display
@@ -71,6 +76,7 @@ impl Enemy {
             hit: 90 + base_level * 2, // Use base level for derived stats
             flee: 10 + base_level,
             exp_reward,
+            element,
         }
     }
 

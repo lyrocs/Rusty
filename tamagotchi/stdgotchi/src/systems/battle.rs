@@ -25,6 +25,26 @@ pub fn battle_system(
     // Process all input events from the channel
     while let Ok(event) = input_channel.receiver.try_recv() {
         match event {
+            InputEvent::Touch { x, y } => {
+                let x = x as i32;
+                let y = y as i32;
+
+                // Handle touch on battle page (for team switching)
+                if let Some(ref mut battle_page) = game_manager.battle_page {
+                    if let Some(action) = battle_page.handle_touch(x, y) {
+                        use crate::ui::pages::battle::BattleAction;
+                        match action {
+                            BattleAction::SwitchRustymon(slot) => {
+                                log::info!("Switching to team slot {}", slot);
+                                if let Err(e) = battle_page.switch_rustymon(slot) {
+                                    log::error!("Failed to switch Rustymon: {:?}", e);
+                                }
+                                app_state.needs_redraw = true;
+                            }
+                        }
+                    }
+                }
+            }
             InputEvent::BootPressed => {
                 // Boot button opens menu from battle
                 log::info!("Boot button pressed - Opening Menu from Battle");
@@ -36,7 +56,6 @@ pub fn battle_system(
                 app_state.needs_redraw = true;
             }
             _ => {
-                // Battle pages handle their own touch input internally via Page::update()
                 // Other events are not needed in battle mode
             }
         }

@@ -6,7 +6,8 @@ use crate::assets::battle::{load_enemy_sprites, load_enemy_sprites_embedded};
 use crate::assets::AssetLoader;
 use crate::display::Sh8601Driver;
 use crate::ecs::resources::SdCardWrapper;
-use crate::game::{self, Enemy as GameEnemy, GameData, Hero, KillTracker};
+use crate::game::{self, Enemy as GameEnemy, FragmentCollection, GameData, Hero, KillTracker, Rustymon, RustymonTeam};
+use crate::game::battle::DamageResult;
 use crate::ui::page::Page;
 use crate::ui::sprite::{AnimatedSprite, Background};
 use embedded_graphics::{
@@ -265,6 +266,28 @@ impl DamageNumber {
     }
 }
 
+/// Actions from battle page
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BattleAction {
+    SwitchRustymon(usize), // Switch to team slot index
+}
+
+/// Touch area for battle interactions
+#[derive(Debug, Clone)]
+struct TouchArea {
+    bounds: (i32, i32, u32, u32), // (x, y, width, height)
+    action: BattleAction,
+}
+
+impl TouchArea {
+    fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.bounds.0
+            && x < self.bounds.0 + self.bounds.2 as i32
+            && y >= self.bounds.1
+            && y < self.bounds.1 + self.bounds.3 as i32
+    }
+}
+
 /// Battle page showing map and battle entities
 pub struct BattlePage {
     background: Option<Background>,
@@ -277,10 +300,15 @@ pub struct BattlePage {
     current_enemy_index: usize,
 
     // RPG game state
-    game_hero: Hero,
+    game_hero: Hero,              // Keep hero for now (future: may be removed)
     game_enemy: Option<GameEnemy>,
     kill_tracker: KillTracker,
     game_data: GameData,          // Game data for enemy loading
+
+    // Rustymon system
+    rustymon_collection: Vec<Rustymon>, // All owned Rustymon
+    rustymon_team: RustymonTeam,        // Active team and bank
+    fragment_collection: FragmentCollection, // Current fragment counts
 
     // Damage number animations
     damage_numbers: Vec<DamageNumber>,
@@ -288,11 +316,18 @@ pub struct BattlePage {
     // HP regeneration
     last_hp_regen: Instant,
 
-    // Hero death flag
+    // Hero death flag (kept for compatibility)
     hero_died: bool,
 
     // SD card asset loading
     asset_loader: Option<AssetLoader<SdCardWrapper>>,
+
+    // Fragment drops during this battle session
+    fragment_drops: Vec<(u32, String)>, // (enemy_id, enemy_name)
+    fragment_notification: Option<(String, Instant)>, // (message, timestamp)
+
+    // Touch interaction
+    touch_areas: Vec<TouchArea>,
 }
 
 impl BattlePage {
@@ -303,12 +338,18 @@ impl BattlePage {
     /// * `hero` - Hero state from GameManager
     /// * `kill_tracker` - Kill tracker from GameManager
     /// * `game_data` - Game data for enemy loading
+    /// * `rustymon_collection` - All owned Rustymon
+    /// * `rustymon_team` - Active team and bank
+    /// * `fragment_collection` - Current fragment counts
     /// * `asset_loader` - Optional AssetLoader for SD card support
     pub fn new(
         background_color: Rgb888,
         hero: Hero,
         kill_tracker: KillTracker,
         game_data: GameData,
+        rustymon_collection: Vec<Rustymon>,
+        rustymon_team: RustymonTeam,
+        fragment_collection: FragmentCollection,
         asset_loader: Option<AssetLoader<SdCardWrapper>>,
     ) -> Self {
         Self {
@@ -324,10 +365,16 @@ impl BattlePage {
             game_enemy: None,
             kill_tracker,
             game_data,
+            rustymon_collection,
+            rustymon_team,
+            fragment_collection,
             damage_numbers: Vec::new(),
             last_hp_regen: Instant::now(),
             hero_died: false,
             asset_loader,
+            fragment_drops: Vec::new(),
+            fragment_notification: None,
+            touch_areas: Vec::new(),
         }
     }
 
@@ -339,6 +386,9 @@ impl BattlePage {
     /// * `hero` - Hero state from GameManager
     /// * `kill_tracker` - Kill tracker from GameManager
     /// * `game_data` - Game data for enemy loading
+    /// * `rustymon_collection` - All owned Rustymon
+    /// * `rustymon_team` - Active team and bank
+    /// * `fragment_collection` - Current fragment counts
     /// * `asset_loader` - Optional AssetLoader for SD card support
     #[allow(dead_code)]
     pub fn new_with_background(
@@ -347,6 +397,9 @@ impl BattlePage {
         hero: Hero,
         kill_tracker: KillTracker,
         game_data: GameData,
+        rustymon_collection: Vec<Rustymon>,
+        rustymon_team: RustymonTeam,
+        fragment_collection: FragmentCollection,
         asset_loader: Option<AssetLoader<SdCardWrapper>>,
     ) -> Result<Self, Box<dyn Error>> {
         let background = Background::new(map_data, map_position)?;
@@ -364,10 +417,16 @@ impl BattlePage {
             game_enemy: None,
             kill_tracker,
             game_data,
+            rustymon_collection,
+            rustymon_team,
+            fragment_collection,
             damage_numbers: Vec::new(),
             last_hp_regen: Instant::now(),
             hero_died: false,
             asset_loader,
+            fragment_drops: Vec::new(),
+            fragment_notification: None,
+            touch_areas: Vec::new(),
         })
     }
 
@@ -381,9 +440,124 @@ impl BattlePage {
         &self.kill_tracker
     }
 
+    /// Get the updated Rustymon collection (to sync back to GameManager)
+    pub fn get_rustymon_collection(&self) -> &Vec<Rustymon> {
+        &self.rustymon_collection
+    }
+
+    /// Get the updated Rustymon team (to sync back to GameManager)
+    pub fn get_rustymon_team(&self) -> &RustymonTeam {
+        &self.rustymon_team
+    }
+
+    /// Get the currently active Rustymon (if any)
+    fn get_active_rustymon(&self) -> Option<&Rustymon> {
+        let active_id = self.rustymon_team.get_active_rustymon_id()?;
+        self.rustymon_collection
+            .iter()
+            .find(|r| &r.id == active_id)
+    }
+
+    /// Get the currently active Rustymon (mutable, if any)
+    fn get_active_rustymon_mut(&mut self) -> Option<&mut Rustymon> {
+        let active_id = self.rustymon_team.get_active_rustymon_id()?.clone();
+        self.rustymon_collection
+            .iter_mut()
+            .find(|r| r.id == active_id)
+    }
+
+    /// Get and clear fragment drops from this battle session
+    /// Returns list of (enemy_id, enemy_name) that dropped fragments
+    pub fn take_fragment_drops(&mut self) -> Vec<(u32, String)> {
+        std::mem::take(&mut self.fragment_drops)
+    }
+
     /// Check if hero died
     pub fn hero_died(&self) -> bool {
         self.hero_died
+    }
+
+    /// Handle touch input on battle screen
+    pub fn handle_touch(&mut self, x: i32, y: i32) -> Option<BattleAction> {
+        for area in &self.touch_areas {
+            if area.contains(x, y) {
+                return Some(area.action);
+            }
+        }
+        None
+    }
+
+    /// Switch to a different Rustymon from the team
+    pub fn switch_rustymon(&mut self, team_slot: usize) -> Result<(), Box<dyn Error>> {
+        // Get the team rustymon IDs
+        let team_rustymon_ids = self.rustymon_team.get_team_ids();
+
+        if team_slot >= team_rustymon_ids.len() {
+            log::warn!("Invalid team slot: {}", team_slot);
+            return Ok(());
+        }
+
+        let new_rustymon_id = &team_rustymon_ids[team_slot];
+        let active_id = self.rustymon_team.get_active_rustymon_id();
+
+        // Don't switch if already active
+        if active_id.map(|id| id == new_rustymon_id).unwrap_or(false) {
+            log::info!("Rustymon already active");
+            return Ok(());
+        }
+
+        // Find the Rustymon in collection
+        let rustymon = self.rustymon_collection
+            .iter()
+            .find(|r| r.id == *new_rustymon_id);
+
+        if let Some(rustymon) = rustymon {
+            // Check if Rustymon is alive
+            if rustymon.current_hp == 0 {
+                log::warn!("Cannot switch to {} - HP is 0", rustymon.name);
+                return Ok(());
+            }
+
+            log::info!("Switching to {} (Lv{})", rustymon.name, rustymon.level);
+
+            // Set as active in team
+            self.rustymon_team.set_active_rustymon(new_rustymon_id.clone());
+
+            // Reload hero sprite with Rustymon sprite
+            use crate::assets::battle::load_enemy_sprites_embedded;
+            if let Some((idle, attack, attacked, _death)) = load_enemy_sprites_embedded(rustymon.species_id) {
+                // Remove old hero
+                self.hero = None;
+
+                // Add new Rustymon sprite as hero
+                let hero_result = BattleEntity::new(
+                    EntityRole::Hero,
+                    &idle,
+                    &attack,
+                    &attacked,
+                    None,
+                    (175, 170),
+                    Duration::from_secs(2),
+                    (0, 0), // Center attack for Rustymon
+                );
+
+                match hero_result {
+                    Ok(hero) => {
+                        self.hero = Some(hero);
+                        log::info!("✅ Switched to {} successfully", rustymon.name);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load Rustymon sprite: {:?}", e);
+                    }
+                }
+            } else {
+                log::error!("Failed to load sprites for species {}", rustymon.species_id);
+            }
+        } else {
+            log::warn!("Rustymon {} not found in collection", new_rustymon_id);
+        }
+
+        Ok(())
     }
 
     /// Get enemy sprites with SD card support
@@ -481,6 +655,7 @@ impl BattlePage {
                 enemy_data.attack,
                 enemy_data.defense,
                 enemy_data.base_exp,
+                enemy_data.get_element(),
             );
             log::info!(
                 "Spawned {} (Lv {}, HP: {}, ATK: {})",
@@ -556,6 +731,7 @@ impl BattlePage {
             enemy_data.attack,
             enemy_data.defense,
             enemy_data.base_exp,
+            enemy_data.get_element(),
         );
         log::info!(
             "Respawned {} (Lv {}, HP: {}, ATK: {})",
@@ -719,40 +895,74 @@ impl BattlePage {
             Text::new(&hp_str, Point::new(left_x, hp_bar_y + 20), text_style_info).draw(display)?;
         }
 
-        // RIGHT SIDE - HERO INFO
+        // RIGHT SIDE - RUSTYMON or HERO INFO
         let right_x = 368 - 140; // Right aligned with some margin
         let name_y = 20;
 
-        // Hero job/name
-        let mut name_str = heapless::String::<32>::new();
-        write!(name_str, "{}", self.game_hero.job.name()).ok();
-        Text::new(&name_str, Point::new(right_x, name_y), text_style_name).draw(display)?;
+        // Show Rustymon info if present, otherwise hero
+        if let Some(rustymon) = self.get_active_rustymon() {
+            // Rustymon name
+            let mut name_str = heapless::String::<32>::new();
+            write!(name_str, "{}", rustymon.name).ok();
+            Text::new(&name_str, Point::new(right_x, name_y), text_style_name).draw(display)?;
 
-        // Hero level
-        let mut lvl_str = heapless::String::<16>::new();
-        write!(lvl_str, "Lv {}", self.game_hero.level).ok();
-        Text::new(&lvl_str, Point::new(right_x, name_y + 20), text_style_info).draw(display)?;
+            // Rustymon level and element
+            let mut lvl_str = heapless::String::<24>::new();
+            write!(lvl_str, "Lv {} {}", rustymon.level, rustymon.element.as_str()).ok();
+            Text::new(&lvl_str, Point::new(right_x, name_y + 20), text_style_info).draw(display)?;
 
-        // Hero HP bar
-        let hp_bar_y = 45;
-        let hp_bar_width = 100;
-        self.draw_hp_bar(
-            display,
-            (right_x, hp_bar_y),
-            self.game_hero.current_hp,
-            self.game_hero.max_hp,
-            hp_bar_width,
-        )?;
+            // Rustymon HP bar
+            let hp_bar_y = 45;
+            let hp_bar_width = 100;
+            self.draw_hp_bar(
+                display,
+                (right_x, hp_bar_y),
+                rustymon.current_hp,
+                rustymon.max_hp,
+                hp_bar_width,
+            )?;
 
-        // HP text only (SP removed)
-        let mut hp_str = heapless::String::<32>::new();
-        write!(
-            hp_str,
-            "HP:{}/{}",
-            self.game_hero.current_hp, self.game_hero.max_hp
-        )
-        .ok();
-        Text::new(&hp_str, Point::new(right_x, hp_bar_y + 20), text_style_info).draw(display)?;
+            // HP text
+            let mut hp_str = heapless::String::<32>::new();
+            write!(
+                hp_str,
+                "HP:{}/{}",
+                rustymon.current_hp, rustymon.max_hp
+            )
+            .ok();
+            Text::new(&hp_str, Point::new(right_x, hp_bar_y + 20), text_style_info).draw(display)?;
+        } else {
+            // Hero job/name
+            let mut name_str = heapless::String::<32>::new();
+            write!(name_str, "{}", self.game_hero.job.name()).ok();
+            Text::new(&name_str, Point::new(right_x, name_y), text_style_name).draw(display)?;
+
+            // Hero level
+            let mut lvl_str = heapless::String::<16>::new();
+            write!(lvl_str, "Lv {}", self.game_hero.level).ok();
+            Text::new(&lvl_str, Point::new(right_x, name_y + 20), text_style_info).draw(display)?;
+
+            // Hero HP bar
+            let hp_bar_y = 45;
+            let hp_bar_width = 100;
+            self.draw_hp_bar(
+                display,
+                (right_x, hp_bar_y),
+                self.game_hero.current_hp,
+                self.game_hero.max_hp,
+                hp_bar_width,
+            )?;
+
+            // HP text only (SP removed)
+            let mut hp_str = heapless::String::<32>::new();
+            write!(
+                hp_str,
+                "HP:{}/{}",
+                self.game_hero.current_hp, self.game_hero.max_hp
+            )
+            .ok();
+            Text::new(&hp_str, Point::new(right_x, hp_bar_y + 20), text_style_info).draw(display)?;
+        }
 
         Ok(())
     }
@@ -794,6 +1004,193 @@ impl BattlePage {
 
         Ok(())
     }
+
+    /// Draw fragment drop notification (centered at bottom)
+    fn draw_fragment_notification(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        if let Some((message, timestamp)) = &self.fragment_notification {
+            // Show notification for 2 seconds
+            let elapsed = timestamp.elapsed().as_secs_f32();
+            if elapsed < 2.0 {
+                use core::fmt::Write;
+
+                // Calculate opacity (fade out in last 0.5 seconds)
+                let opacity = if elapsed > 1.5 {
+                    ((2.0 - elapsed) / 0.5) * 255.0
+                } else {
+                    255.0
+                } as u8;
+
+                // Draw background panel at bottom center
+                let panel_width = 300;
+                let panel_height = 40;
+                let panel_x = (368 - panel_width) / 2;
+                let panel_y = 450 - panel_height - 20; // 20px from bottom
+
+                // Semi-transparent dark background
+                Rectangle::new(
+                    Point::new(panel_x as i32, panel_y as i32),
+                    Size::new(panel_width, panel_height),
+                )
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 20, 60)))
+                .draw(display)?;
+
+                // Draw border
+                Rectangle::new(
+                    Point::new(panel_x as i32, panel_y as i32),
+                    Size::new(panel_width, panel_height),
+                )
+                .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(150, 100, 255), 2))
+                .draw(display)?;
+
+                // Draw text (centered)
+                let text_color = Rgb888::new(255, 255, 100); // Yellow
+                let text_style = MonoTextStyle::new(&FONT_10X20, text_color);
+
+                // Center the text
+                let text_x = panel_x as i32 + 10;
+                let text_y = panel_y as i32 + 25;
+
+                let mut msg_str = heapless::String::<64>::new();
+                write!(msg_str, "✨ {}", message).ok();
+                Text::new(&msg_str, Point::new(text_x, text_y), text_style).draw(display)?;
+            } else {
+                // Clear notification after 2 seconds
+                self.fragment_notification = None;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Draw team Rustymon buttons at bottom of screen
+    fn draw_team_buttons(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        use core::fmt::Write;
+
+        // Clear touch areas before redrawing
+        self.touch_areas.clear();
+
+        // Get team Rustymon IDs
+        let team_rustymon_ids = self.rustymon_team.get_team_ids();
+        let active_id = self.rustymon_team.get_active_rustymon_id();
+
+        if team_rustymon_ids.is_empty() {
+            return Ok(());
+        }
+
+        // Button dimensions and positions
+        let button_width = 55u32;
+        let button_height = 50u32;
+        let spacing = 5i32;
+        let start_x = 10i32;
+        let y = 400i32; // Bottom of screen
+
+        // Draw up to 6 team buttons
+        for (slot_index, rustymon_id) in team_rustymon_ids.iter().enumerate().take(6) {
+            let x = start_x + (slot_index as i32 * (button_width as i32 + spacing));
+
+            // Find the Rustymon in collection
+            let rustymon = self.rustymon_collection
+                .iter()
+                .find(|r| r.id == *rustymon_id);
+
+            if let Some(rustymon) = rustymon {
+                let is_active = active_id.map(|id| id == rustymon_id).unwrap_or(false);
+                let is_fainted = rustymon.current_hp == 0;
+
+                // Button color based on state
+                let (bg_color, border_color) = if is_fainted {
+                    (Rgb888::new(60, 30, 30), Rgb888::new(100, 50, 50)) // Red for fainted
+                } else if is_active {
+                    (Rgb888::new(40, 80, 120), Rgb888::new(80, 160, 255)) // Blue for active
+                } else {
+                    (Rgb888::new(40, 60, 40), Rgb888::new(80, 120, 80)) // Green for available
+                };
+
+                // Draw button background
+                Rectangle::new(
+                    Point::new(x, y),
+                    Size::new(button_width, button_height),
+                )
+                .into_styled(
+                    embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                        .fill_color(bg_color)
+                        .stroke_color(border_color)
+                        .stroke_width(if is_active { 3 } else { 2 })
+                        .build(),
+                )
+                .draw(display)?;
+
+                // Draw level
+                let level_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+                let mut level_str = heapless::String::<8>::new();
+                write!(level_str, "Lv{}", rustymon.level).ok();
+                Text::new(&level_str, Point::new(x + 2, y + 10), level_style).draw(display)?;
+
+                // Draw HP bar
+                let hp_bar_width = button_width - 4;
+                let hp_bar_height = 4u32;
+                let hp_bar_x = x + 2;
+                let hp_bar_y = y + 15;
+
+                // HP bar background
+                Rectangle::new(
+                    Point::new(hp_bar_x, hp_bar_y),
+                    Size::new(hp_bar_width, hp_bar_height),
+                )
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(40, 40, 40)))
+                .draw(display)?;
+
+                // HP bar fill
+                let hp_percentage = rustymon.current_hp as f32 / rustymon.max_hp as f32;
+                let hp_fill_width = (hp_bar_width as f32 * hp_percentage) as u32;
+                let hp_color = if hp_percentage > 0.5 {
+                    Rgb888::new(100, 255, 100) // Green
+                } else if hp_percentage > 0.25 {
+                    Rgb888::new(255, 255, 100) // Yellow
+                } else {
+                    Rgb888::new(255, 100, 100) // Red
+                };
+
+                if hp_fill_width > 0 {
+                    Rectangle::new(
+                        Point::new(hp_bar_x, hp_bar_y),
+                        Size::new(hp_fill_width, hp_bar_height),
+                    )
+                    .into_styled(PrimitiveStyle::with_fill(hp_color))
+                    .draw(display)?;
+                }
+
+                // Draw name (truncated)
+                let name_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+                let mut name_str = heapless::String::<12>::new();
+                if rustymon.name.len() > 9 {
+                    write!(name_str, "{}.", &rustymon.name[..8]).ok();
+                } else {
+                    write!(name_str, "{}", rustymon.name).ok();
+                }
+                Text::new(&name_str, Point::new(x + 2, y + 30), name_style).draw(display)?;
+
+                // Draw element indicator (small colored box)
+                let element_color = crate::game::element_system::get_element_color(rustymon.element);
+                Rectangle::new(
+                    Point::new(x + 2, y + 35),
+                    Size::new(button_width - 4, 10),
+                )
+                .into_styled(PrimitiveStyle::with_fill(element_color))
+                .draw(display)?;
+
+                // Add touch area (only if not fainted)
+                if !is_fainted {
+                    self.touch_areas.push(TouchArea {
+                        bounds: (x, y, button_width, button_height),
+                        action: BattleAction::SwitchRustymon(slot_index),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Page for BattlePage {
@@ -825,77 +1222,110 @@ impl Page for BattlePage {
         }
 
         // Update entity animations
+        // Check for hero attack hit point first (before mutably borrowing)
+        let hero_at_hit_point = self.hero.as_ref().map_or(false, |h| h.is_attack_hit_point());
+
+        // Check if we have an active Rustymon (before complex borrows)
+        let has_active_rustymon = self.rustymon_team.get_active_rustymon_id().is_some();
+
         if let Some(hero) = &mut self.hero {
             hero.update();
+        }
 
-            // Deal damage mid-attack animation (when hit lands)
-            if hero.is_attack_hit_point() {
-                if let (Some(enemy), Some(game_enemy)) = (&mut self.enemy, &mut self.game_enemy) {
-                    if !enemy.is_dead {
-                        // Calculate damage using RPG system
-                        let damage_result = game::hero_attack(&self.game_hero, game_enemy);
+        // Deal damage mid-attack animation (when hit lands)
+        if hero_at_hit_point {
+            // Get enemy bounds first
+            let enemy_bounds = self.enemy.as_ref().map(|e| e.bounds());
+            let enemy_is_dead = self.enemy.as_ref().map_or(true, |e| e.is_dead);
 
-                        // Create floating damage number near enemy
-                        let bounds = enemy.bounds();
-                        let damage_pos = (
-                            bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
-                            bounds.1 + 10,                    // Slightly below top
-                        );
-                        let damage_num = DamageNumber::new(
-                            damage_result.damage,
-                            damage_pos,
-                            damage_result.is_critical,
-                            damage_result.is_miss,
-                        );
-                        self.damage_numbers.push(damage_num);
-
-                        // Mark damage as dealt
-                        hero.mark_damage_dealt();
-
-                        // Check if enemy died from the attack
-                        if !game_enemy.is_alive() {
-                            // Enemy died - show death animation
-                            enemy.start_death();
-
-                            // Award EXP and record kill
-                            let exp_reward = game_enemy.exp_reward;
-                            let enemy_id = game_enemy.id;
-                            let enemy_name = game_enemy.name.clone();
-                            self.game_hero.gain_exp(exp_reward);
-                            self.kill_tracker.record_kill(enemy_id, &enemy_name);
-
-                            // Award gold and process drops
-                            if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
-                                // Award gold (random amount between min and max)
-                                let gold_reward = if enemy_data.gold_max > enemy_data.gold_min {
-                                    use rand::Rng;
-                                    let mut rng = rand::thread_rng();
-                                    rng.gen_range(enemy_data.gold_min..=enemy_data.gold_max)
-                                } else {
-                                    enemy_data.gold_min
-                                };
-                                self.game_hero.gold += gold_reward;
-                                log::info!("💰 Gained {} gold (Total: {})", gold_reward, self.game_hero.gold);
-
-                                // Process item drops
-                                for drop in &enemy_data.drops {
-                                    if drop.should_drop() {
-                                        let quantity = drop.random_quantity();
-
-                                        // Add to inventory
-                                        if let Err(e) = self.game_hero.inventory.add_material(
-                                            drop.item_id,
-                                            quantity,
-                                            self.game_data.get_all_items()
-                                        ) {
-                                            log::warn!("Failed to add drop {}: {}", drop.name, e);
-                                        } else {
-                                            log::info!("🎁 Dropped: {} x{}", drop.name, quantity);
-                                        }
-                                    }
-                                }
+            if !enemy_is_dead {
+                // Calculate damage using RPG system
+                // Prefer Rustymon attack if available, otherwise use hero
+                let damage_result = if has_active_rustymon {
+                    // Need to borrow rustymon_collection and game_enemy mutably at the same time
+                    // Can't use helper method because it borrows through self
+                    let active_id = self.rustymon_team.get_active_rustymon_id().map(|id| id.clone());
+                    if let Some(id) = active_id {
+                        // Find the active rustymon and borrow game_enemy in the same scope
+                        let rustymon = self.rustymon_collection.iter_mut().find(|r| r.id == id);
+                        match (rustymon, &mut self.game_enemy) {
+                            (Some(rustymon), Some(game_enemy)) => {
+                                game::rustymon_attack_enemy(rustymon, game_enemy)
                             }
+                            (_, Some(game_enemy)) => {
+                                // Rustymon not found, fallback to hero
+                                game::hero_attack(&self.game_hero, game_enemy)
+                            }
+                            _ => {
+                                // No game_enemy, shouldn't happen but handle gracefully
+                                DamageResult { damage: 0, is_critical: false, is_miss: true }
+                            }
+                        }
+                    } else {
+                        // No active rustymon, use hero
+                        if let Some(game_enemy) = &mut self.game_enemy {
+                            game::hero_attack(&self.game_hero, game_enemy)
+                        } else {
+                            DamageResult { damage: 0, is_critical: false, is_miss: true }
+                        }
+                    }
+                } else {
+                    // No active rustymon, use hero
+                    if let Some(game_enemy) = &mut self.game_enemy {
+                        game::hero_attack(&self.game_hero, game_enemy)
+                    } else {
+                        DamageResult { damage: 0, is_critical: false, is_miss: true }
+                    }
+                };
 
+                // Create floating damage number near enemy
+                if let Some(bounds) = enemy_bounds {
+                    let damage_pos = (
+                        bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
+                        bounds.1 + 10,                    // Slightly below top
+                    );
+                    let damage_num = DamageNumber::new(
+                        damage_result.damage,
+                        damage_pos,
+                        damage_result.is_critical,
+                        damage_result.is_miss,
+                    );
+                    self.damage_numbers.push(damage_num);
+                }
+
+                // Check if enemy died from the attack
+                if let Some(game_enemy) = &mut self.game_enemy {
+                    if !game_enemy.is_alive() {
+                        // Enemy died - show death animation
+                        if let Some(enemy) = &mut self.enemy {
+                            enemy.start_death();
+                        }
+
+                        // Award EXP and record kill
+                        let exp_reward = game_enemy.exp_reward;
+                        let enemy_id = game_enemy.id;
+                        let enemy_name = game_enemy.name.clone();
+
+                        // Award EXP to active Rustymon if present, otherwise to hero
+                        if has_active_rustymon {
+                            if let Some(rustymon) = self.get_active_rustymon_mut() {
+                                let exp_to_give = exp_reward as u32; // Cast u64 to u32
+                                let leveled_up = rustymon.gain_exp(exp_to_give);
+                                if leveled_up {
+                                    log::info!("🎉 {} leveled up to Lv {}!", rustymon.name, rustymon.level);
+                                }
+                                log::info!(
+                                    "{} defeated! {} gained {} EXP (Lv {} - {}/{})",
+                                    enemy_name,
+                                    rustymon.name,
+                                    exp_to_give,
+                                    rustymon.level,
+                                    rustymon.exp,
+                                    rustymon.exp_to_next
+                                );
+                            }
+                        } else {
+                            self.game_hero.gain_exp(exp_reward);
                             log::info!(
                                 "{} defeated! Gained {} EXP (Hero: Lv {} - {}/{})",
                                 enemy_name,
@@ -904,71 +1334,196 @@ impl Page for BattlePage {
                                 self.game_hero.exp,
                                 self.game_hero.exp_to_next_level
                             );
-                        } else {
-                            // Enemy survived - show attacked animation
+                        }
+
+                        self.kill_tracker.record_kill(enemy_id, &enemy_name);
+
+                        // Award gold and process drops
+                        if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
+                            // Award gold (random amount between min and max)
+                            let gold_reward = if enemy_data.gold_max > enemy_data.gold_min {
+                                use rand::Rng;
+                                let mut rng = rand::thread_rng();
+                                rng.gen_range(enemy_data.gold_min..=enemy_data.gold_max)
+                            } else {
+                                enemy_data.gold_min
+                            };
+                            self.game_hero.gold += gold_reward;
+                            log::info!("💰 Gained {} gold (Total: {})", gold_reward, self.game_hero.gold);
+
+                            // Process item drops
+                            for drop in &enemy_data.drops {
+                                if drop.should_drop() {
+                                    let quantity = drop.random_quantity();
+
+                                    // Add to inventory
+                                    if let Err(e) = self.game_hero.inventory.add_material(
+                                        drop.item_id,
+                                        quantity,
+                                        self.game_data.get_all_items()
+                                    ) {
+                                        log::warn!("Failed to add drop {}: {}", drop.name, e);
+                                    } else {
+                                        log::info!("🎁 Dropped: {} x{}", drop.name, quantity);
+                                    }
+                                }
+                            }
+
+                            // Check for fragment drop
+                            use rand::Rng;
+                            let mut rng = rand::thread_rng();
+                            let roll: f32 = rng.gen();
+
+                            if roll < enemy_data.fragment_drop_rate {
+                                // Check if we can still collect fragments (not at cap)
+                                let current_count = self.fragment_collection.get_fragment_count(enemy_id);
+                                let required_count = enemy_data.fragments_required;
+
+                                if current_count < required_count {
+                                    // Fragment dropped!
+                                    self.fragment_drops.push((enemy_id, enemy_name.clone()));
+
+                                    // Update local fragment_collection to enforce cap in same battle
+                                    self.fragment_collection.add_fragment(enemy_id, 1);
+
+                                    let message = format!("Fragment obtained: {}! ({}/{})",
+                                        enemy_name, current_count + 1, required_count);
+                                    self.fragment_notification = Some((message.clone(), Instant::now()));
+                                    log::info!("✨ {}", message);
+                                } else {
+                                    log::debug!("Fragment cap reached for {} ({}/{}), no drop",
+                                        enemy_name, current_count, required_count);
+                                }
+                            }
+                        }
+                    } else {
+                        // Enemy survived - show attacked animation
+                        if let Some(enemy) = &mut self.enemy {
                             enemy.start_attacked();
                         }
                     }
                 }
-            }
 
-            // Return to idle after attack animation completes
+                // Mark damage as dealt
+                if let Some(hero) = &mut self.hero {
+                    hero.mark_damage_dealt();
+                }
+            }
+        }
+
+        // Return to idle after attack/attacked animation completes
+        if let Some(hero) = &mut self.hero {
             if hero.current_animation == AnimationType::Attack && hero.is_animation_complete() {
                 hero.set_animation(AnimationType::Idle);
             }
 
-            // Return to idle after being attacked
             if hero.current_animation == AnimationType::Attacked && hero.is_animation_complete() {
                 hero.set_animation(AnimationType::Idle);
             }
         }
 
+        // Check for enemy attack hit point first (before mutably borrowing)
+        let enemy_at_hit_point = self.enemy.as_ref().map_or(false, |e| e.is_attack_hit_point());
+
         if let Some(enemy) = &mut self.enemy {
             enemy.update();
+        }
 
-            // Deal damage mid-attack animation (when hit lands)
-            if enemy.is_attack_hit_point() {
-                if let Some(game_enemy) = &self.game_enemy {
-                    // Calculate damage using RPG system
-                    let damage_result = game::enemy_attack(game_enemy, &mut self.game_hero);
+        // Deal damage mid-attack animation (when hit lands)
+        if enemy_at_hit_point {
+            // Get hero bounds first
+            let hero_bounds = self.hero.as_ref().map(|h| h.bounds());
 
-                    // Create floating damage number near hero
-                    if let Some(hero) = &mut self.hero {
-                        let bounds = hero.bounds();
-                        let damage_pos = (
-                            bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
-                            bounds.1 + 10,                    // Slightly below top
-                        );
-                        let damage_num = DamageNumber::new(
-                            damage_result.damage,
-                            damage_pos,
-                            damage_result.is_critical,
-                            damage_result.is_miss,
-                        );
-                        self.damage_numbers.push(damage_num);
-
-                        // Show attacked animation on hero
-                        hero.start_attacked();
+            // Calculate damage using RPG system
+            // Prefer attacking Rustymon if available, otherwise attack hero
+            let damage_result = if has_active_rustymon {
+                // Need to borrow rustymon_collection and game_enemy at the same time
+                let active_id = self.rustymon_team.get_active_rustymon_id().map(|id| id.clone());
+                if let Some(id) = active_id {
+                    let rustymon = self.rustymon_collection.iter_mut().find(|r| r.id == id);
+                    match (rustymon, &self.game_enemy) {
+                        (Some(rustymon), Some(game_enemy)) => {
+                            game::enemy_attack_rustymon(game_enemy, rustymon)
+                        }
+                        (_, Some(game_enemy)) => {
+                            // Rustymon not found, fallback to hero
+                            game::enemy_attack(game_enemy, &mut self.game_hero)
+                        }
+                        _ => {
+                            DamageResult { damage: 0, is_critical: false, is_miss: true }
+                        }
                     }
+                } else {
+                    // No active rustymon, attack hero
+                    if let Some(game_enemy) = &self.game_enemy {
+                        game::enemy_attack(game_enemy, &mut self.game_hero)
+                    } else {
+                        DamageResult { damage: 0, is_critical: false, is_miss: true }
+                    }
+                }
+            } else {
+                // No active rustymon, attack hero
+                if let Some(game_enemy) = &self.game_enemy {
+                    game::enemy_attack(game_enemy, &mut self.game_hero)
+                } else {
+                    DamageResult { damage: 0, is_critical: false, is_miss: true }
+                }
+            };
 
-                    // Mark damage as dealt
-                    enemy.mark_damage_dealt();
+            if self.game_enemy.is_some() {
 
-                    // Check if hero died
+                // Create floating damage number near hero
+                if let Some(bounds) = hero_bounds {
+                    let damage_pos = (
+                        bounds.0 + (bounds.2 / 2) as i32, // Center of sprite
+                        bounds.1 + 10,                    // Slightly below top
+                    );
+                    let damage_num = DamageNumber::new(
+                        damage_result.damage,
+                        damage_pos,
+                        damage_result.is_critical,
+                        damage_result.is_miss,
+                    );
+                    self.damage_numbers.push(damage_num);
+                }
+
+                // Show attacked animation on hero
+                if let Some(hero) = &mut self.hero {
+                    hero.start_attacked();
+                }
+
+                // Check if active Rustymon fainted or hero died
+                if has_active_rustymon {
+                    if let Some(rustymon) = self.get_active_rustymon() {
+                        if !rustymon.is_alive() {
+                            log::warn!("💀 {} fainted!", rustymon.name);
+                            // TODO: Auto-switch to next available Rustymon
+                            // For now, treat as hero death
+                            self.hero_died = true;
+                        }
+                    }
+                } else {
                     if !self.game_hero.is_alive() {
                         log::warn!("💀 Hero defeated!");
                         self.hero_died = true;
-                        // Death will be handled by battle system (switch to death page)
                     }
                 }
+
+                // Death will be handled by battle system (switch to death page)
             }
 
-            // Return to idle after attack animation completes
+            // Mark damage as dealt
+            if let Some(enemy) = &mut self.enemy {
+                enemy.mark_damage_dealt();
+            }
+        }
+
+        // Return to idle after attack/attacked animation completes
+        if let Some(enemy) = &mut self.enemy {
             if enemy.current_animation == AnimationType::Attack && enemy.is_animation_complete() {
                 enemy.set_animation(AnimationType::Idle);
             }
 
-            // Return to idle after being attacked
             if enemy.current_animation == AnimationType::Attacked && enemy.is_animation_complete() {
                 if !enemy.is_dead {
                     enemy.set_animation(AnimationType::Idle);
@@ -981,12 +1536,24 @@ impl Page for BattlePage {
 
         // HP Regeneration (every 5 seconds)
         if self.last_hp_regen.elapsed() >= Duration::from_secs(5) {
-            let hp_regen = self.game_hero.stats.calculate_hp_regen();
-            let old_hp = self.game_hero.current_hp;
-            self.game_hero.current_hp = (self.game_hero.current_hp + hp_regen).min(self.game_hero.max_hp);
+            // Heal active Rustymon if present, otherwise heal hero
+            if let Some(rustymon) = self.get_active_rustymon_mut() {
+                // Rustymon regenerate 5% of max HP
+                let hp_regen = (rustymon.max_hp as f32 * 0.05) as u32;
+                let old_hp = rustymon.current_hp;
+                rustymon.heal(hp_regen);
 
-            if self.game_hero.current_hp > old_hp {
-                log::info!("❤️ HP Regen: +{} ({}/{})", hp_regen, self.game_hero.current_hp, self.game_hero.max_hp);
+                if rustymon.current_hp > old_hp {
+                    log::info!("❤️ {} HP Regen: +{} ({}/{})", rustymon.name, hp_regen, rustymon.current_hp, rustymon.max_hp);
+                }
+            } else {
+                let hp_regen = self.game_hero.stats.calculate_hp_regen();
+                let old_hp = self.game_hero.current_hp;
+                self.game_hero.current_hp = (self.game_hero.current_hp + hp_regen).min(self.game_hero.max_hp);
+
+                if self.game_hero.current_hp > old_hp {
+                    log::info!("❤️ HP Regen: +{} ({}/{})", hp_regen, self.game_hero.current_hp, self.game_hero.max_hp);
+                }
             }
 
             self.last_hp_regen = Instant::now();
@@ -1097,6 +1664,12 @@ impl Page for BattlePage {
 
         // Draw top info panel with monster and hero information
         self.draw_top_info_panel(display)?;
+
+        // Draw fragment notification (if any)
+        self.draw_fragment_notification(display)?;
+
+        // Draw team Rustymon buttons at bottom
+        self.draw_team_buttons(display)?;
 
         // Flush to display once at the end
         display.flush()?;

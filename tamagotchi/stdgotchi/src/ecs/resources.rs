@@ -8,10 +8,10 @@ use esp_idf_svc::hal::gpio::PinDriver;
 use std::time::Instant;
 
 use crate::display::{Ft3x68Driver, Sh8601Driver};
-use crate::game::{Hero, KillTracker, WorldMap};
+use crate::game::{FragmentCollection, Hero, KillTracker, Rustymon, RustymonTeam, WorldMap};
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, HeroOverviewPage, MapPage};
+use crate::ui::pages::{BattlePage, HeroOverviewPage, MapPage, RustymonListPage, RustymonDetailPage, FragmentCollectionPage, RustymonSummonPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource {
@@ -142,6 +142,10 @@ pub struct GameManager {
     pub inventory_page: crate::ui::pages::InventoryPage,
     pub equipment_page: crate::ui::pages::EquipmentPage,
     pub crafting_page: crate::ui::pages::CraftingPage,
+    pub rustymon_list_page: RustymonListPage,
+    pub rustymon_detail_page: RustymonDetailPage,
+    pub fragment_collection_page: FragmentCollectionPage,
+    pub rustymon_summon_page: RustymonSummonPage,
     pub hero: Hero,
     pub kill_tracker: KillTracker,
     pub game_data: crate::game::GameData, // Game data for items, recipes, etc.
@@ -149,10 +153,34 @@ pub struct GameManager {
     pub battle_loading_data: Option<BattleLoadingData>, // Data for deferred battle creation
     pub play_time_seconds: u64,             // Total play time
     pub session_start: Instant,             // Session start time for tracking play time
+    // Rustymon system fields
+    pub rustymon_collection: Vec<Rustymon>, // All owned Rustymon
+    pub rustymon_team: RustymonTeam,        // Active team and bank
+    pub fragment_collection: FragmentCollection, // Monster fragments
+    pub selected_rustymon_index: Option<usize>, // Index of currently selected Rustymon for detail view
+    pub pending_summon_rustymon: Option<Rustymon>, // Rustymon pending summon confirmation
 }
 
 impl GameManager {
     pub fn new(world_map: WorldMap, game_data: crate::game::GameData) -> Self {
+        // Create starter Rustymon (Poring - ID 1002, level 1)
+        use crate::game::{Element, RustymonFactory};
+        let starter = RustymonFactory::create_from_enemy(
+            1002,
+            "Poring".to_string(),
+            1,
+            Element::Water
+        );
+        let starter_id = starter.id.clone();
+
+        let mut rustymon_collection = Vec::new();
+        rustymon_collection.push(starter);
+
+        let mut rustymon_team = RustymonTeam::new();
+        rustymon_team.add_rustymon(starter_id); // Add to team and set as active
+
+        log::info!("🎮 New game started with starter Rustymon: Poring");
+
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::new(world_map, None), // Use embedded map backgrounds
@@ -163,6 +191,10 @@ impl GameManager {
             inventory_page: crate::ui::pages::InventoryPage::new(),
             equipment_page: crate::ui::pages::EquipmentPage::new(),
             crafting_page: crate::ui::pages::CraftingPage::new(),
+            rustymon_list_page: RustymonListPage::new(),
+            rustymon_detail_page: RustymonDetailPage::new(),
+            fragment_collection_page: FragmentCollectionPage::new(),
+            rustymon_summon_page: RustymonSummonPage::new(),
             hero: Hero::new(),
             kill_tracker: KillTracker::new(),
             game_data,
@@ -170,6 +202,11 @@ impl GameManager {
             battle_loading_data: None,
             play_time_seconds: 0,
             session_start: Instant::now(),
+            rustymon_collection,
+            rustymon_team,
+            fragment_collection: FragmentCollection::new(),
+            selected_rustymon_index: None,
+            pending_summon_rustymon: None,
         }
     }
 
@@ -185,6 +222,10 @@ impl GameManager {
             inventory_page: crate::ui::pages::InventoryPage::new(),
             equipment_page: crate::ui::pages::EquipmentPage::new(),
             crafting_page: crate::ui::pages::CraftingPage::new(),
+            rustymon_list_page: RustymonListPage::new(),
+            rustymon_detail_page: RustymonDetailPage::new(),
+            fragment_collection_page: FragmentCollectionPage::new(),
+            rustymon_summon_page: RustymonSummonPage::new(),
             hero: save_data.hero,
             kill_tracker: save_data.kill_tracker,
             game_data,
@@ -192,6 +233,11 @@ impl GameManager {
             battle_loading_data: None,
             play_time_seconds: save_data.play_time_seconds,
             session_start: Instant::now(),
+            rustymon_collection: save_data.rustymon_collection,
+            rustymon_team: save_data.rustymon_team,
+            fragment_collection: save_data.fragment_collection,
+            selected_rustymon_index: None,
+            pending_summon_rustymon: None,
         }
     }
 
@@ -220,6 +266,10 @@ impl GameManager {
             AppMode::Inventory => Some(&mut self.inventory_page as &mut dyn Page),
             AppMode::Equipment => Some(&mut self.equipment_page as &mut dyn Page),
             AppMode::Crafting => Some(&mut self.crafting_page as &mut dyn Page),
+            AppMode::RustymonList => Some(&mut self.rustymon_list_page as &mut dyn Page),
+            AppMode::RustymonDetail => Some(&mut self.rustymon_detail_page as &mut dyn Page),
+            AppMode::FragmentCollection => Some(&mut self.fragment_collection_page as &mut dyn Page),
+            AppMode::RustymonSummon => Some(&mut self.rustymon_summon_page as &mut dyn Page),
         }
     }
 
@@ -261,6 +311,38 @@ impl GameManager {
         self.stats_allocation_page.draw_with_hero(display, &self.hero, full_redraw)
     }
 
+    /// Draw rustymon list page with collection and team data
+    pub fn draw_rustymon_list(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.rustymon_list_page.draw_rustymon_list(display, &self.rustymon_collection, &self.rustymon_team, full_redraw)
+    }
+
+    /// Draw rustymon detail page
+    pub fn draw_rustymon_detail(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        // Get the selected rustymon
+        if let Some(index) = self.selected_rustymon_index {
+            if let Some(rustymon) = self.rustymon_collection.get(index) {
+                return self.rustymon_detail_page.draw_rustymon_detail(display, rustymon, &self.rustymon_team, full_redraw);
+            }
+        }
+        // If no rustymon selected, just clear the screen
+        Ok(())
+    }
+
+    /// Draw fragment collection page
+    pub fn draw_fragment_collection(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.fragment_collection_page.draw_fragment_collection(display, &self.fragment_collection, &self.game_data, full_redraw)
+    }
+
+    /// Draw rustymon summon preview page
+    pub fn draw_rustymon_summon(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        // Get the pending summon rustymon
+        if let Some(ref rustymon) = self.pending_summon_rustymon {
+            return self.rustymon_summon_page.draw_summon_preview(display, rustymon, full_redraw);
+        }
+        // If no pending summon, just clear the screen
+        Ok(())
+    }
+
     /// Save game state to SD card
     pub fn save_to_sd(&mut self, sd_card: &mut SdCardWrapper, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Update total play time
@@ -275,6 +357,9 @@ impl GameManager {
             self.kill_tracker.clone(),
             current_location_id,
             self.play_time_seconds,
+            self.rustymon_collection.clone(),
+            self.rustymon_team.clone(),
+            self.fragment_collection.clone(),
         );
 
         // Serialize to JSON
@@ -304,13 +389,32 @@ impl GameManager {
         }
     }
 
-    /// Sync hero and kill tracker from battle page back to GameManager
+    /// Sync hero, kill tracker, fragments, and Rustymon from battle page back to GameManager
     /// This ensures battle progress is saved
     pub fn sync_battle_state(&mut self) {
-        if let Some(ref battle_page) = self.battle_page {
+        if let Some(ref mut battle_page) = self.battle_page {
             self.hero = battle_page.get_hero().clone();
             self.kill_tracker = battle_page.get_kill_tracker().clone();
+
+            // Sync Rustymon collection (EXP, levels, HP changes)
+            self.rustymon_collection = battle_page.get_rustymon_collection().clone();
+            self.rustymon_team = battle_page.get_rustymon_team().clone();
+
+            // Sync fragment drops
+            let fragment_drops = battle_page.take_fragment_drops();
+            for (enemy_id, _enemy_name) in fragment_drops {
+                self.fragment_collection.add_fragment(enemy_id, 1);
+            }
+
             log::debug!("Synced battle state: Hero Lv{}, {} EXP", self.hero.level, self.hero.exp);
+
+            // Log Rustymon sync for debugging
+            if let Some(rustymon_id) = self.rustymon_team.get_active_rustymon_id() {
+                if let Some(rustymon) = self.rustymon_collection.iter().find(|r| &r.id == rustymon_id) {
+                    log::debug!("Synced Rustymon: {} Lv{}, {}/{} EXP",
+                        rustymon.name, rustymon.level, rustymon.exp, rustymon.exp_to_next);
+                }
+            }
         }
     }
 }
@@ -355,6 +459,14 @@ pub enum AppMode {
     Equipment,
     /// Crafting screen
     Crafting,
+    /// Rustymon list screen
+    RustymonList,
+    /// Rustymon detail screen
+    RustymonDetail,
+    /// Fragment collection screen
+    FragmentCollection,
+    /// Rustymon summon preview screen
+    RustymonSummon,
 }
 
 impl Default for AppState {

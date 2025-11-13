@@ -15,6 +15,7 @@ pub mod inventory;
 pub mod map_navigation;
 pub mod menu;
 pub mod render;
+pub mod rustymon_navigation;
 pub mod stats_allocation;
 
 // Re-export all systems
@@ -31,4 +32,8 @@ pub use inventory::inventory_system;
 pub use map_navigation::{hero_overview_system, map_navigation_system};
 pub use menu::menu_system;
 pub use render::render_system;
+pub use rustymon_navigation::{
+    fragment_collection_system, rustymon_detail_system, rustymon_list_system,
+    rustymon_summon_system,
+};
 pub use stats_allocation::stats_allocation_system;

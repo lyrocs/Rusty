@@ -8,6 +8,9 @@ use std::fs;
 use std::path::Path;
 
 use super::{Hero, KillTracker};
+use super::fragment_collection::FragmentCollection;
+use super::rustymon::Rustymon;
+use super::rustymon_team::RustymonTeam;
 
 /// Save data structure containing all persistent game state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +32,18 @@ pub struct SaveData {
 
     /// Save timestamp (unix timestamp)
     pub save_timestamp: u64,
+
+    /// Rustymon collection (all owned Rustymon)
+    #[serde(default)]
+    pub rustymon_collection: Vec<Rustymon>,
+
+    /// Rustymon team (active team and bank)
+    #[serde(default)]
+    pub rustymon_team: RustymonTeam,
+
+    /// Fragment collection (monster fragments)
+    #[serde(default)]
+    pub fragment_collection: FragmentCollection,
 }
 
 impl SaveData {
@@ -44,6 +59,9 @@ impl SaveData {
         kill_tracker: KillTracker,
         current_location_id: u32,
         play_time_seconds: u64,
+        rustymon_collection: Vec<Rustymon>,
+        rustymon_team: RustymonTeam,
+        fragment_collection: FragmentCollection,
     ) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
@@ -52,6 +70,9 @@ impl SaveData {
             current_location_id,
             play_time_seconds,
             save_timestamp: Self::current_timestamp(),
+            rustymon_collection,
+            rustymon_team,
+            fragment_collection,
         }
     }
 
@@ -113,7 +134,18 @@ mod tests {
     fn test_save_data_serialization() {
         let hero = Hero::new();
         let kill_tracker = KillTracker::new();
-        let save_data = SaveData::new(hero, kill_tracker, 1, 3600);
+        let rustymon_collection = Vec::new();
+        let rustymon_team = RustymonTeam::new();
+        let fragment_collection = FragmentCollection::new();
+        let save_data = SaveData::new(
+            hero,
+            kill_tracker,
+            1,
+            3600,
+            rustymon_collection,
+            rustymon_team,
+            fragment_collection,
+        );
 
         // Serialize
         let json = save_data.to_json().unwrap();

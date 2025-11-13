@@ -12,7 +12,7 @@
     "id": 2,
     "name": "Prontera South",
     "north": 1,
-    "enemies": [1002, 1007]
+    "enemies": [1002]
   },
   {
     "id": 3,

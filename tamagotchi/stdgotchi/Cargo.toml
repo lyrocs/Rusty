@@ -43,6 +43,7 @@ embedded-sdmmc = "0.8.1"
 embedded-hal = "1.0.0"
 embedded-hal-bus = "0.3.0"
 crossbeam-channel = "0.5"
+uuid = { version = "1.0", features = ["v4", "std", "serde"] }
 
 # --- Optional Embassy Integration ---
 # esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }

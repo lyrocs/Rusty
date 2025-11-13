@@ -1,8 +1,10 @@
 //! Battle system
 //!
-//! Handles damage calculations, hit/miss, critical hits
+//! Handles damage calculations, hit/miss, critical hits, and fragment drops
 
-use super::{Enemy, Hero};
+use super::{Enemy, Hero, Rustymon};
+use super::fragment_collection::FragmentCollection;
+use super::element_system::get_element_advantage;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +14,15 @@ pub struct DamageResult {
     pub damage: u32,
     pub is_critical: bool,
     pub is_miss: bool,
+}
+
+/// Result of fragment drop attempt
+#[derive(Debug, Clone)]
+pub enum FragmentDropResult {
+    /// Fragment was dropped (enemy_id, enemy_name)
+    Dropped(u32, String),
+    /// No fragment dropped
+    None,
 }
 
 /// Battle state tracking
@@ -116,7 +127,7 @@ pub fn enemy_attack(enemy: &Enemy, hero: &mut Hero) -> DamageResult {
         hero.def,
         hero.flee,
     );
-    
+
     if !result.is_miss {
         hero.take_damage(result.damage);
         log::info!(
@@ -132,6 +143,138 @@ pub fn enemy_attack(enemy: &Enemy, hero: &mut Hero) -> DamageResult {
     } else {
         log::info!("{}'s attack missed!", enemy.name);
     }
-    
+
     result
+}
+
+/// Check for fragment drop when enemy is defeated
+/// Returns FragmentDropResult indicating if a fragment was dropped
+pub fn check_fragment_drop(
+    enemy_id: u32,
+    enemy_name: &str,
+    drop_rate: f32,
+    fragment_collection: &mut FragmentCollection,
+) -> FragmentDropResult {
+    let mut rng = rand::thread_rng();
+    let roll: f32 = rng.gen();
+
+    if roll < drop_rate {
+        // Fragment dropped!
+        fragment_collection.add_fragment(enemy_id, 1);
+        log::info!("Fragment dropped from {}!", enemy_name);
+        FragmentDropResult::Dropped(enemy_id, enemy_name.to_string())
+    } else {
+        FragmentDropResult::None
+    }
+}
+
+/// Rustymon attacks enemy with element advantage
+pub fn rustymon_attack_enemy(rustymon: &Rustymon, enemy: &mut Enemy) -> DamageResult {
+    let mut result = calculate_damage(
+        rustymon.atk,
+        rustymon.hit,
+        rustymon.crit_rate,
+        enemy.def,
+        enemy.flee,
+    );
+
+    // Apply element advantage
+    let element_multiplier = get_element_advantage(rustymon.element, enemy.element);
+    if element_multiplier != 1.0 && !result.is_miss {
+        result.damage = (result.damage as f32 * element_multiplier) as u32;
+        result.damage = result.damage.max(1); // Ensure at least 1 damage
+    }
+
+    if !result.is_miss {
+        enemy.take_damage(result.damage);
+        let advantage_text = if element_multiplier > 1.0 {
+            " (Super Effective!)"
+        } else if element_multiplier < 1.0 {
+            " (Not Very Effective...)"
+        } else {
+            ""
+        };
+
+        log::info!("{} attacks for {} damage{}{}",
+                   rustymon.name,
+                   result.damage,
+                   if result.is_critical { " (CRITICAL!)" } else { "" },
+                   advantage_text);
+    } else {
+        log::info!("{}'s attack missed!", rustymon.name);
+    }
+
+    result
+}
+
+/// Enemy attacks Rustymon with element advantage
+pub fn enemy_attack_rustymon(enemy: &Enemy, rustymon: &mut Rustymon) -> DamageResult {
+    let mut result = calculate_damage(
+        enemy.atk,
+        enemy.hit,
+        5.0,  // Enemies have 5% base crit rate
+        rustymon.def,
+        rustymon.flee,
+    );
+
+    // Apply element advantage
+    let element_multiplier = get_element_advantage(enemy.element, rustymon.element);
+    if element_multiplier != 1.0 && !result.is_miss {
+        result.damage = (result.damage as f32 * element_multiplier) as u32;
+        result.damage = result.damage.max(1); // Ensure at least 1 damage
+    }
+
+    if !result.is_miss {
+        rustymon.take_damage(result.damage);
+        let advantage_text = if element_multiplier > 1.0 {
+            " (Super Effective!)"
+        } else if element_multiplier < 1.0 {
+            " (Not Very Effective...)"
+        } else {
+            ""
+        };
+
+        log::info!(
+            "{} attacks {} for {} damage{}{}",
+            enemy.name,
+            rustymon.name,
+            result.damage,
+            if result.is_critical { " (CRITICAL!)" } else { "" },
+            advantage_text
+        );
+    } else {
+        log::info!("{}'s attack on {} missed!", enemy.name, rustymon.name);
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fragment_drop() {
+        let mut collection = FragmentCollection::new();
+
+        // Test with 100% drop rate
+        let result = check_fragment_drop(1002, "Poring", 1.0, &mut collection);
+        match result {
+            FragmentDropResult::Dropped(id, name) => {
+                assert_eq!(id, 1002);
+                assert_eq!(name, "Poring");
+                assert_eq!(collection.get_fragment_count(1002), 1);
+            }
+            FragmentDropResult::None => panic!("Expected fragment drop with 100% rate"),
+        }
+
+        // Test with 0% drop rate
+        let result = check_fragment_drop(1007, "Fabre", 0.0, &mut collection);
+        match result {
+            FragmentDropResult::Dropped(_, _) => panic!("Unexpected fragment drop with 0% rate"),
+            FragmentDropResult::None => {
+                assert_eq!(collection.get_fragment_count(1007), 0);
+            }
+        }
+    }
 }

@@ -3,6 +3,7 @@
 //! Centralized JSON data loading for maps, enemies, items, etc.
 
 use super::item::{ItemData, ItemDrop, Recipe, UpgradeRecipe};
+use super::rustymon::Element;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
@@ -19,7 +20,17 @@ pub struct EnemyData {
     pub base_exp: u64,
     pub gold_min: u32,
     pub gold_max: u32,
+    pub element: String, // Will be parsed to Element enum
+    pub fragment_drop_rate: f32,
+    pub fragments_required: u32,
     pub drops: Vec<ItemDrop>,
+}
+
+impl EnemyData {
+    /// Get the element type as Element enum
+    pub fn get_element(&self) -> Element {
+        Element::from_str(&self.element).unwrap_or(Element::Neutral)
+    }
 }
 
 /// Map data loaded from JSON

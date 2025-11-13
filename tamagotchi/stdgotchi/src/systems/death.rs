@@ -84,6 +84,14 @@ pub fn death_system(
                         // Restore hero HP to full
                         game_manager.hero.current_hp = game_manager.hero.max_hp;
 
+                        // Restore all Rustymon HP to full
+                        for rustymon in &mut game_manager.rustymon_collection {
+                            rustymon.current_hp = rustymon.max_hp;
+                            log::debug!("Restored {} HP to full ({}/{})",
+                                rustymon.name, rustymon.current_hp, rustymon.max_hp);
+                        }
+                        log::info!("All Rustymon HP restored to full");
+
                         // Clear battle and death pages
                         game_manager.battle_page = None;
                         game_manager.death_page = None;

@@ -202,6 +202,94 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::RustymonList => {
+            // Rustymon list rendering - needs rustymon collection and team data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.rustymon_list_page.update();
+                let full_redraw = game_manager.rustymon_list_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw rustymon list with collection data
+                if let Err(e) = game_manager.draw_rustymon_list(display, full_redraw) {
+                    log::error!("Failed to draw rustymon list: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Rustymon list closed, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
+        AppMode::RustymonDetail => {
+            // Rustymon detail rendering - needs specific rustymon and team data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.rustymon_detail_page.update();
+                let full_redraw = game_manager.rustymon_detail_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw rustymon detail
+                if let Err(e) = game_manager.draw_rustymon_detail(display, full_redraw) {
+                    log::error!("Failed to draw rustymon detail: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Rustymon detail closed, returning to list");
+                    app_state.current_mode = AppMode::RustymonList;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
+        AppMode::FragmentCollection => {
+            // Fragment collection rendering - needs fragment data and game data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.fragment_collection_page.update();
+                let full_redraw = game_manager.fragment_collection_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw fragment collection
+                if let Err(e) = game_manager.draw_fragment_collection(display, full_redraw) {
+                    log::error!("Failed to draw fragment collection: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Fragment collection closed, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
+        AppMode::RustymonSummon => {
+            // Rustymon summon preview rendering - needs pending summon data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.rustymon_summon_page.update();
+                let full_redraw = game_manager.rustymon_summon_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw rustymon summon preview
+                if let Err(e) = game_manager.draw_rustymon_summon(display, full_redraw) {
+                    log::error!("Failed to draw rustymon summon: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Rustymon summon closed, returning to fragment collection");
+                    app_state.current_mode = AppMode::FragmentCollection;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
     }
 }
 

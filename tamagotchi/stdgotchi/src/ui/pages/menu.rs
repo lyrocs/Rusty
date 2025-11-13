@@ -22,6 +22,8 @@ pub enum MenuAction {
     Overview,
     Inventory,
     Equipment,
+    Rustymon,
+    Fragments,
 }
 
 /// Touch button area
@@ -79,12 +81,12 @@ impl MenuPage {
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         Text::new("MENU", Point::new(150, 40), title_style).draw(display)?;
 
-        // Button dimensions (adjusted for 5 buttons)
+        // Button dimensions (adjusted for 7 buttons)
         let button_width = 280u32;
-        let button_height = 50u32;
+        let button_height = 45u32;
         let button_x = (368 - button_width) as i32 / 2; // Center horizontally
-        let start_y = 70i32;
-        let spacing = 62i32;
+        let start_y = 60i32;
+        let spacing = 53i32;
 
         // Draw Map button
         self.draw_button(
@@ -151,9 +153,35 @@ impl MenuPage {
             MenuAction::Equipment,
         )?;
 
+        // Draw Rustymon button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * 5,
+            button_width,
+            button_height,
+            "RUSTYMON",
+            "View your team",
+            Rgb888::new(100, 40, 120),
+            MenuAction::Rustymon,
+        )?;
+
+        // Draw Fragments button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * 6,
+            button_width,
+            button_height,
+            "FRAGMENTS",
+            "Summon Rustymon",
+            Rgb888::new(120, 100, 40),
+            MenuAction::Fragments,
+        )?;
+
         // Draw hint text at bottom
         let hint_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
-        Text::new("Tap to select", Point::new(130, 420), hint_style).draw(display)?;
+        Text::new("Tap to select", Point::new(130, 430), hint_style).draw(display)?;
 
         display.flush()?;
         Ok(())
