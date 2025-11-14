@@ -164,12 +164,20 @@ pub struct GameManager {
 impl GameManager {
     pub fn new(world_map: WorldMap, game_data: crate::game::GameData) -> Self {
         // Create starter Rustymon (Poring - ID 1002, level 1)
-        use crate::game::{Element, RustymonFactory};
+        use crate::game::RustymonFactory;
+
+        // Get Poring data from game_data to use its stats
+        let poring_data = game_data.get_enemy(1002).expect("Poring data not found");
         let starter = RustymonFactory::create_from_enemy(
-            1002,
-            "Poring".to_string(),
-            1,
-            Element::Water
+            poring_data.id,
+            poring_data.name.clone(),
+            poring_data.level,
+            poring_data.get_element(),
+            poring_data.str,
+            poring_data.dex,
+            poring_data.vit,
+            poring_data.int,
+            poring_data.luk,
         );
         let starter_id = starter.id.clone();
 

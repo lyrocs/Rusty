@@ -211,21 +211,19 @@ impl Rustymon {
         self.level += 1;
         self.exp = 0;
 
-        // Every 5 levels, randomly increase one base stat
-        if self.level % 5 == 0 {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let stat_choice = rng.gen_range(0..5);
+        // Every level, randomly increase one base stat by 1
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let stat_choice = rng.gen_range(0..5);
 
-            match stat_choice {
-                0 => self.str += 1,
-                1 => self.dex += 1,
-                2 => self.vit += 1,
-                3 => self.int += 1,
-                4 => self.luk += 1,
-                _ => {}
-            }
-        }
+        let stat_name = match stat_choice {
+            0 => { self.str += 1; "STR" },
+            1 => { self.dex += 1; "DEX" },
+            2 => { self.vit += 1; "VIT" },
+            3 => { self.int += 1; "INT" },
+            4 => { self.luk += 1; "LUK" },
+            _ => "UNKNOWN"
+        };
 
         // Recalculate stats
         let old_max_hp = self.max_hp;
@@ -235,7 +233,7 @@ impl Rustymon {
         let hp_gained = self.max_hp - old_max_hp;
         self.current_hp += hp_gained;
 
-        log::info!("{} leveled up to {}!", self.name, self.level);
+        log::info!("{} leveled up to {}! {} +1", self.name, self.level, stat_name);
     }
 
     /// Take damage in battle

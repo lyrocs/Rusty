@@ -654,6 +654,8 @@ impl BattlePage {
                 enemy_data.hp,
                 enemy_data.attack,
                 enemy_data.defense,
+                enemy_data.hit,
+                enemy_data.flee,
                 enemy_data.base_exp,
                 enemy_data.get_element(),
             );
@@ -730,6 +732,8 @@ impl BattlePage {
             enemy_data.hp,
             enemy_data.attack,
             enemy_data.defense,
+            enemy_data.hit,
+            enemy_data.flee,
             enemy_data.base_exp,
             enemy_data.get_element(),
         );
@@ -1081,8 +1085,8 @@ impl BattlePage {
         let button_width = 55u32;
         let button_height = 50u32;
         let spacing = 5i32;
-        let start_x = 10i32;
-        let y = 400i32; // Bottom of screen
+        let start_x = 30i32; // 20px from left edge to avoid rounded corners
+        let y = 390i32; // 10px up from previous position to avoid bottom rounded corners
 
         // Draw up to 6 team buttons
         for (slot_index, rustymon_id) in team_rustymon_ids.iter().enumerate().take(6) {
@@ -1308,8 +1312,15 @@ impl Page for BattlePage {
 
                         // Award EXP to active Rustymon if present, otherwise to hero
                         if has_active_rustymon {
+                            let exp_to_give = exp_reward as u32; // Cast u64 to u32
+                            let shared_exp = (exp_to_give as f32 * 0.5) as u32; // 50% for team members
+
+                            // Get active Rustymon ID and team IDs
+                            let active_id = self.rustymon_team.get_active_rustymon_id().map(|id| id.clone());
+                            let team_ids = self.rustymon_team.get_team_ids();
+
+                            // Award 100% EXP to active Rustymon
                             if let Some(rustymon) = self.get_active_rustymon_mut() {
-                                let exp_to_give = exp_reward as u32; // Cast u64 to u32
                                 let leveled_up = rustymon.gain_exp(exp_to_give);
                                 if leveled_up {
                                     log::info!("🎉 {} leveled up to Lv {}!", rustymon.name, rustymon.level);
@@ -1323,6 +1334,33 @@ impl Page for BattlePage {
                                     rustymon.exp,
                                     rustymon.exp_to_next
                                 );
+                            }
+
+                            // Award 50% EXP to other team members
+                            if shared_exp > 0 {
+                                for rustymon in &mut self.rustymon_collection {
+                                    // Skip the active Rustymon and those not in team
+                                    if Some(&rustymon.id) == active_id.as_ref() {
+                                        continue;
+                                    }
+                                    if !team_ids.contains(&rustymon.id) {
+                                        continue;
+                                    }
+
+                                    // Award shared EXP
+                                    let leveled_up = rustymon.gain_exp(shared_exp);
+                                    if leveled_up {
+                                        log::info!("🎉 {} leveled up to Lv {} (shared EXP)!", rustymon.name, rustymon.level);
+                                    }
+                                    log::info!(
+                                        "{} gained {} shared EXP (Lv {} - {}/{})",
+                                        rustymon.name,
+                                        shared_exp,
+                                        rustymon.level,
+                                        rustymon.exp,
+                                        rustymon.exp_to_next
+                                    );
+                                }
                             }
                         } else {
                             self.game_hero.gain_exp(exp_reward);
@@ -1338,19 +1376,8 @@ impl Page for BattlePage {
 
                         self.kill_tracker.record_kill(enemy_id, &enemy_name);
 
-                        // Award gold and process drops
+                        // Process item drops
                         if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
-                            // Award gold (random amount between min and max)
-                            let gold_reward = if enemy_data.gold_max > enemy_data.gold_min {
-                                use rand::Rng;
-                                let mut rng = rand::thread_rng();
-                                rng.gen_range(enemy_data.gold_min..=enemy_data.gold_max)
-                            } else {
-                                enemy_data.gold_min
-                            };
-                            self.game_hero.gold += gold_reward;
-                            log::info!("💰 Gained {} gold (Total: {})", gold_reward, self.game_hero.gold);
-
                             // Process item drops
                             for drop in &enemy_data.drops {
                                 if drop.should_drop() {
@@ -1537,16 +1564,43 @@ impl Page for BattlePage {
         // HP Regeneration (every 5 seconds)
         if self.last_hp_regen.elapsed() >= Duration::from_secs(5) {
             // Heal active Rustymon if present, otherwise heal hero
-            if let Some(rustymon) = self.get_active_rustymon_mut() {
-                // Rustymon regenerate 5% of max HP
-                let hp_regen = (rustymon.max_hp as f32 * 0.05) as u32;
-                let old_hp = rustymon.current_hp;
-                rustymon.heal(hp_regen);
+            let active_id = self.rustymon_team.get_active_rustymon_id().map(|id| id.clone());
+            let has_active = active_id.is_some();
 
-                if rustymon.current_hp > old_hp {
-                    log::info!("❤️ {} HP Regen: +{} ({}/{})", rustymon.name, hp_regen, rustymon.current_hp, rustymon.max_hp);
+            if has_active {
+                // Get team IDs for team member regen
+                let team_ids = self.rustymon_team.get_team_ids();
+
+                // Heal all Rustymon (active gets 5%, team members get 2.5%)
+                for rustymon in &mut self.rustymon_collection {
+                    // Skip if not in team
+                    if !team_ids.contains(&rustymon.id) {
+                        continue;
+                    }
+
+                    let is_active = Some(&rustymon.id) == active_id.as_ref();
+
+                    // Active Rustymon regenerate 5% of max HP, team members 2.5%
+                    let regen_rate = if is_active { 0.05 } else { 0.025 };
+                    let hp_regen = (rustymon.max_hp as f32 * regen_rate) as u32;
+
+                    if hp_regen == 0 {
+                        continue; // Skip if regen amount is 0
+                    }
+
+                    let old_hp = rustymon.current_hp;
+                    rustymon.heal(hp_regen);
+
+                    if rustymon.current_hp > old_hp {
+                        if is_active {
+                            log::info!("❤️ {} HP Regen: +{} ({}/{})", rustymon.name, hp_regen, rustymon.current_hp, rustymon.max_hp);
+                        } else {
+                            log::info!("💚 {} HP Regen (team): +{} ({}/{})", rustymon.name, hp_regen, rustymon.current_hp, rustymon.max_hp);
+                        }
+                    }
                 }
             } else {
+                // Hero regen if no active Rustymon
                 let hp_regen = self.game_hero.stats.calculate_hp_regen();
                 let old_hp = self.game_hero.current_hp;
                 self.game_hero.current_hp = (self.game_hero.current_hp + hp_regen).min(self.game_hero.max_hp);

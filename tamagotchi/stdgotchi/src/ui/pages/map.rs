@@ -276,6 +276,34 @@ impl MapPage {
                 };
                 Text::new(icon, Point::new(thumb_x + 10, thumb_y + 40), icon_style).draw(display)?;
 
+                // Draw level range if map has enemies
+                if !map_data.enemies.is_empty() {
+                    let mut min_level = u32::MAX;
+                    let mut max_level = u32::MIN;
+
+                    // Calculate level range from enemies
+                    for enemy_id in &map_data.enemies {
+                        if let Some(enemy_data) = self.world_map.game_data().get_enemy(*enemy_id) {
+                            min_level = min_level.min(enemy_data.level);
+                            max_level = max_level.max(enemy_data.level);
+                        }
+                    }
+
+                    if min_level != u32::MAX && max_level != u32::MIN {
+                        // Draw level range on top of thumbnail
+                        let level_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0)); // Yellow
+                        let mut level_str = heapless::String::<16>::new();
+
+                        if min_level == max_level {
+                            write!(level_str, "Lv {}", min_level).ok();
+                        } else {
+                            write!(level_str, "Lv {}-{}", min_level, max_level).ok();
+                        }
+
+                        Text::new(&level_str, Point::new(thumb_x + 5, thumb_y + 15), level_style).draw(display)?;
+                    }
+                }
+
                 // Draw border
                 Self::draw_rect_outline(
                     display,

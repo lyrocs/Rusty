@@ -24,21 +24,17 @@ pub struct Enemy {
 
 impl Enemy {
     /// Create enemy from loaded data
-    pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, base_exp: u64, element: Element) -> Self {
-        let max_hp = hp;
-        let atk = attack;
-        let def = defense;
-
+    pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, hit: u32, flee: u32, base_exp: u64, element: Element) -> Self {
         Self {
             id,
             name,
             level,
-            current_hp: max_hp,
-            max_hp,
-            atk,
-            def,
-            hit: 90 + level * 2,
-            flee: 10 + level,
+            current_hp: hp,
+            max_hp: hp,
+            atk: attack,
+            def: defense,
+            hit,
+            flee,
             exp_reward: base_exp,
             element,
         }
@@ -52,6 +48,8 @@ impl Enemy {
         base_hp: u32,
         base_attack: u32,
         base_defense: u32,
+        base_hit: u32,
+        base_flee: u32,
         base_exp: u64,
         element: Element,
         hero_level: u32,
@@ -63,6 +61,8 @@ impl Enemy {
         let max_hp = (base_hp as f32 * level_modifier).max(1.0) as u32;
         let atk = (base_attack as f32 * level_modifier).max(1.0) as u32;
         let def = (base_defense as f32 * level_modifier).max(0.0) as u32;
+        let hit = (base_hit as f32 * level_modifier).max(1.0) as u32;
+        let flee = (base_flee as f32 * level_modifier).max(1.0) as u32;
         let exp_reward = (base_exp as f32 * level_modifier).max(1.0) as u64;
 
         Self {
@@ -73,8 +73,8 @@ impl Enemy {
             max_hp,
             atk,
             def,
-            hit: 90 + base_level * 2, // Use base level for derived stats
-            flee: 10 + base_level,
+            hit,
+            flee,
             exp_reward,
             element,
         }

@@ -18,8 +18,16 @@ pub struct EnemyData {
     pub attack: u32,
     pub defense: u32,
     pub base_exp: u64,
-    pub gold_min: u32,
-    pub gold_max: u32,
+    // Base stats
+    pub str: u32,
+    pub int: u32,
+    pub dex: u32,
+    pub vit: u32,
+    pub agi: u32,
+    pub luk: u32,
+    // Combat stats
+    pub hit: u32,
+    pub flee: u32,
     pub element: String, // Will be parsed to Element enum
     pub fragment_drop_rate: f32,
     pub fragments_required: u32,

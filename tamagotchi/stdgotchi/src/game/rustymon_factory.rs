@@ -11,33 +11,29 @@ use super::rustymon::{Element, Rustymon};
 pub struct RustymonFactory;
 
 impl RustymonFactory {
-    /// Create a new Rustymon from enemy data with random stats
+    /// Create a new Rustymon from enemy data with base stats from the enemy
     ///
     /// # Arguments
     /// * `species_id` - The monster ID (e.g., 1002 for Poring)
     /// * `name` - The species name
-    /// * `level` - The enemy's base level (used for stat ranges)
+    /// * `base_level` - The enemy's base level
     /// * `element` - The element type
+    /// * `str` - Base STR stat from enemy
+    /// * `dex` - Base DEX stat from enemy
+    /// * `vit` - Base VIT stat from enemy
+    /// * `int` - Base INT stat from enemy
+    /// * `luk` - Base LUK stat from enemy
     pub fn create_from_enemy(
         species_id: u32,
         name: String,
         base_level: u32,
         element: Element,
+        str: u32,
+        dex: u32,
+        vit: u32,
+        int: u32,
+        luk: u32,
     ) -> Rustymon {
-        let mut rng = rand::thread_rng();
-
-        // Calculate stat ranges based on enemy level
-        // Base stat starts at 5 + level, with variance of 5
-        let base_stat = 5 + base_level;
-        let variance = 5;
-
-        // Randomly generate base stats within range
-        let str = rng.gen_range(base_stat..=base_stat + variance);
-        let dex = rng.gen_range(base_stat..=base_stat + variance);
-        let vit = rng.gen_range(base_stat..=base_stat + variance);
-        let int = rng.gen_range(base_stat..=base_stat + variance);
-        let luk = rng.gen_range(base_stat..=base_stat + variance);
-
         log::info!(
             "Creating {} with stats - STR:{} DEX:{} VIT:{} INT:{} LUK:{}",
             name, str, dex, vit, int, luk
@@ -60,13 +56,20 @@ impl RustymonFactory {
 
     /// Create a starter Rustymon (Poring) at a specific level
     /// Used for new players or migration
+    /// Note: This uses hardcoded Poring stats - ideally should get from game data
     pub fn create_starter(level: u32) -> Rustymon {
-        // Create a Poring with slightly better stats
+        // Create a Poring with base stats (hardcoded for simplicity)
+        // In production, should get these from game data
         let mut rustymon = Self::create_from_enemy(
             1002,
             "Starter Poring".to_string(),
             1,
             Element::Water,
+            1,  // str
+            1,  // dex
+            1,  // vit
+            1,  // int
+            1,  // luk
         );
 
         // Level it up to the desired level
@@ -96,13 +99,20 @@ mod tests {
             "Poring".to_string(),
             1,
             Element::Water,
+            5,  // str
+            5,  // dex
+            5,  // vit
+            5,  // int
+            5,  // luk
         );
 
         assert_eq!(rustymon.species_id, 1002);
         assert_eq!(rustymon.name, "Poring");
         assert_eq!(rustymon.level, 1);
         assert_eq!(rustymon.element, Element::Water);
-        assert!(rustymon.str >= 6 && rustymon.str <= 11); // 5+1 to 5+1+5
+        assert_eq!(rustymon.str, 5);
+        assert_eq!(rustymon.dex, 5);
+        assert_eq!(rustymon.vit, 5);
         assert!(rustymon.max_hp > 0);
         assert!(rustymon.is_alive());
     }
@@ -118,28 +128,39 @@ mod tests {
     }
 
     #[test]
-    fn test_random_stats_variation() {
-        // Create multiple Rustymon and ensure they have different stats
+    fn test_stats_from_enemy_data() {
+        // Test that stats are correctly copied from enemy data
         let rustymon1 = RustymonFactory::create_from_enemy(
             1002,
             "Poring".to_string(),
             1,
             Element::Water,
+            10,  // str
+            8,   // dex
+            12,  // vit
+            5,   // int
+            7,   // luk
         );
 
         let rustymon2 = RustymonFactory::create_from_enemy(
-            1002,
-            "Poring".to_string(),
+            1007,
+            "Fabre".to_string(),
             1,
-            Element::Water,
+            Element::Earth,
+            15,  // str
+            10,  // dex
+            8,   // vit
+            6,   // int
+            9,   // luk
         );
 
-        // Very unlikely to have identical stats (5^5 combinations)
-        let stats1 = (rustymon1.str, rustymon1.dex, rustymon1.vit, rustymon1.int, rustymon1.luk);
-        let stats2 = (rustymon2.str, rustymon2.dex, rustymon2.vit, rustymon2.int, rustymon2.luk);
+        // Verify stats are correctly set
+        assert_eq!(rustymon1.str, 10);
+        assert_eq!(rustymon1.dex, 8);
+        assert_eq!(rustymon1.vit, 12);
 
-        // This might occasionally fail, but probability is very low
-        // Comment out if it causes test flakiness
-        // assert_ne!(stats1, stats2);
+        assert_eq!(rustymon2.str, 15);
+        assert_eq!(rustymon2.dex, 10);
+        assert_eq!(rustymon2.vit, 8);
     }
 }

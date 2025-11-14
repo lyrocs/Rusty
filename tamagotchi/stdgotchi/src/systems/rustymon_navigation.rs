@@ -192,6 +192,11 @@ pub fn fragment_collection_system(
                                         enemy_data.name.clone(),
                                         enemy_data.level,
                                         enemy_data.get_element(),
+                                        enemy_data.str,
+                                        enemy_data.dex,
+                                        enemy_data.vit,
+                                        enemy_data.int,
+                                        enemy_data.luk,
                                     );
                                     game_manager.pending_summon_rustymon = Some(rustymon);
 
