@@ -4,6 +4,7 @@
 //! Each has unique stats, elements, and levels.
 
 use serde::{Deserialize, Serialize};
+use super::skill::RustymonSkills;
 
 /// Element types for Rustymon and enemies
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,6 +117,10 @@ pub struct Rustymon {
 
     /// Critical hit rate (percentage)
     pub crit_rate: f32,
+
+    /// Skills system
+    #[serde(default)]
+    pub skills: RustymonSkills,
 }
 
 impl Rustymon {
@@ -152,6 +157,7 @@ impl Rustymon {
             hit: 0,
             flee: 0,
             crit_rate: 0.0,
+            skills: RustymonSkills::new(),
         };
 
         // Calculate derived stats
@@ -280,6 +286,43 @@ impl Rustymon {
             0.0
         } else {
             self.exp as f32 / self.exp_to_next as f32
+        }
+    }
+
+    /// Check and learn skills for current level
+    /// Returns list of newly learned skill IDs
+    pub fn check_and_learn_skills(&mut self, learnable_skills: &[super::skill::LearnableSkill]) -> Vec<u32> {
+        let mut newly_learned = Vec::new();
+
+        for learnable in learnable_skills {
+            // Check if Rustymon meets level requirement and hasn't learned this skill yet
+            if self.level >= learnable.learn_level && !self.skills.learned_skills.contains(&learnable.skill_id) {
+                if self.skills.learn_skill(learnable.skill_id) {
+                    newly_learned.push(learnable.skill_id);
+                    log::info!("{} learned skill ID {}!", self.name, learnable.skill_id);
+                }
+            }
+        }
+
+        newly_learned
+    }
+
+    /// Auto-enable the first available passive skill
+    pub fn auto_enable_first_passive(&mut self, skill_data: &std::collections::HashMap<u32, super::skill::Skill>) {
+        // Find first learned passive skill that isn't enabled
+        for skill_id in &self.skills.learned_skills {
+            if let Some(skill) = skill_data.get(skill_id) {
+                if skill.is_passive() && !self.skills.get_enabled_skills().contains(skill_id) {
+                    // Try to enable in first available slot
+                    for slot in 0..3 {
+                        if self.skills.enabled_skills[slot].is_none() {
+                            self.skills.enable_skill(*skill_id, slot);
+                            log::info!("{} auto-enabled passive skill: {}", self.name, skill.name);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }

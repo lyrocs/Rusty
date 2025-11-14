@@ -4,6 +4,7 @@
 
 use super::item::{ItemData, ItemDrop, Recipe, UpgradeRecipe};
 use super::rustymon::Element;
+use super::skill::{Skill, LearnableSkill};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
@@ -32,6 +33,8 @@ pub struct EnemyData {
     pub fragment_drop_rate: f32,
     pub fragments_required: u32,
     pub drops: Vec<ItemDrop>,
+    #[serde(default)]
+    pub learnable_skills: Vec<LearnableSkill>,
 }
 
 impl EnemyData {
@@ -159,6 +162,7 @@ pub struct GameData {
     pub items: HashMap<u32, ItemData>,
     pub recipes_by_city: HashMap<String, Vec<Recipe>>,
     pub upgrade_recipes: HashMap<String, Vec<UpgradeRecipe>>,
+    pub skills: HashMap<u32, Skill>,
 }
 
 impl GameData {
@@ -213,12 +217,22 @@ impl GameData {
         upgrade_recipes.insert("headgear".to_string(), upgrade_data.headgear_upgrades);
         log::info!("Loaded upgrade recipes for {} equipment types", upgrade_recipes.len());
 
+        // Load skills
+        let skills_json = include_str!("../../assets/data/skills.json");
+        let skills_vec: Vec<Skill> = serde_json::from_str(skills_json)?;
+        let mut skills = HashMap::new();
+        for skill in skills_vec {
+            skills.insert(skill.id, skill);
+        }
+        log::info!("Loaded {} skills", skills.len());
+
         Ok(Self {
             maps,
             enemies,
             items,
             recipes_by_city,
-            upgrade_recipes
+            upgrade_recipes,
+            skills,
         })
     }
 
@@ -280,5 +294,20 @@ impl GameData {
     /// Get all upgrade recipes
     pub fn get_upgrade_recipes(&self) -> &HashMap<String, Vec<UpgradeRecipe>> {
         &self.upgrade_recipes
+    }
+
+    /// Get skill by ID
+    pub fn get_skill(&self, id: u32) -> Option<&Skill> {
+        self.skills.get(&id)
+    }
+
+    /// Get all skills
+    pub fn get_all_skills(&self) -> &HashMap<u32, Skill> {
+        &self.skills
+    }
+
+    /// Get learnable skills for an enemy/Rustymon species
+    pub fn get_learnable_skills(&self, species_id: u32) -> Option<&Vec<LearnableSkill>> {
+        self.get_enemy(species_id).map(|e| &e.learnable_skills)
     }
 }

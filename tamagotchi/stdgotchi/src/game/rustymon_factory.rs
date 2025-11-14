@@ -6,6 +6,7 @@ use rand::Rng;
 use uuid::Uuid;
 
 use super::rustymon::{Element, Rustymon};
+use super::data_loader::GameData;
 
 /// Factory for creating Rustymon instances
 pub struct RustymonFactory;
@@ -52,6 +53,54 @@ impl RustymonFactory {
             int,
             luk,
         )
+    }
+
+    /// Create a new Rustymon from enemy data and learn skills based on level
+    ///
+    /// # Arguments
+    /// * `species_id` - The monster ID (e.g., 1002 for Poring)
+    /// * `name` - The species name
+    /// * `base_level` - The enemy's base level
+    /// * `element` - The element type
+    /// * `str` - Base STR stat from enemy
+    /// * `dex` - Base DEX stat from enemy
+    /// * `vit` - Base VIT stat from enemy
+    /// * `int` - Base INT stat from enemy
+    /// * `luk` - Base LUK stat from enemy
+    /// * `game_data` - Game data for skill learning
+    pub fn create_from_enemy_with_skills(
+        species_id: u32,
+        name: String,
+        base_level: u32,
+        element: Element,
+        str: u32,
+        dex: u32,
+        vit: u32,
+        int: u32,
+        luk: u32,
+        game_data: &GameData,
+    ) -> Rustymon {
+        let mut rustymon = Self::create_from_enemy(
+            species_id,
+            name,
+            base_level,
+            element,
+            str,
+            dex,
+            vit,
+            int,
+            luk,
+        );
+
+        // Learn skills based on species and level
+        if let Some(enemy_data) = game_data.get_enemy(species_id) {
+            let newly_learned = rustymon.check_and_learn_skills(&enemy_data.learnable_skills);
+            if !newly_learned.is_empty() {
+                log::info!("✨ {} learned {} skills at creation", rustymon.name, newly_learned.len());
+            }
+        }
+
+        rustymon
     }
 
     /// Create a starter Rustymon (Poring) at a specific level

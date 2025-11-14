@@ -163,12 +163,12 @@ pub struct GameManager {
 
 impl GameManager {
     pub fn new(world_map: WorldMap, game_data: crate::game::GameData) -> Self {
-        // Create starter Rustymon (Poring - ID 1002, level 1)
+        // Create starter Rustymon (Poring - ID 1002, level 1) with skills
         use crate::game::RustymonFactory;
 
         // Get Poring data from game_data to use its stats
         let poring_data = game_data.get_enemy(1002).expect("Poring data not found");
-        let starter = RustymonFactory::create_from_enemy(
+        let starter = RustymonFactory::create_from_enemy_with_skills(
             poring_data.id,
             poring_data.name.clone(),
             poring_data.level,
@@ -178,6 +178,7 @@ impl GameManager {
             poring_data.vit,
             poring_data.int,
             poring_data.luk,
+            &game_data,
         );
         let starter_id = starter.id.clone();
 
@@ -220,6 +221,17 @@ impl GameManager {
 
     /// Create GameManager from save data
     pub fn from_save_data(save_data: crate::game::SaveData, world_map: WorldMap, game_data: crate::game::GameData) -> Self {
+        // Learn skills for all existing Rustymon (migration for old saves)
+        let mut rustymon_collection = save_data.rustymon_collection;
+        for rustymon in &mut rustymon_collection {
+            if let Some(enemy_data) = game_data.get_enemy(rustymon.species_id) {
+                let newly_learned = rustymon.check_and_learn_skills(&enemy_data.learnable_skills);
+                if !newly_learned.is_empty() {
+                    log::info!("✨ {} learned {} skills (migration)", rustymon.name, newly_learned.len());
+                }
+            }
+        }
+
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
@@ -241,7 +253,7 @@ impl GameManager {
             battle_loading_data: None,
             play_time_seconds: save_data.play_time_seconds,
             session_start: Instant::now(),
-            rustymon_collection: save_data.rustymon_collection,
+            rustymon_collection,
             rustymon_team: save_data.rustymon_team,
             fragment_collection: save_data.fragment_collection,
             selected_rustymon_index: None,
@@ -329,7 +341,7 @@ impl GameManager {
         // Get the selected rustymon
         if let Some(index) = self.selected_rustymon_index {
             if let Some(rustymon) = self.rustymon_collection.get(index) {
-                return self.rustymon_detail_page.draw_rustymon_detail(display, rustymon, &self.rustymon_team, full_redraw);
+                return self.rustymon_detail_page.draw_rustymon_detail(display, rustymon, &self.rustymon_team, &self.game_data, full_redraw);
             }
         }
         // If no rustymon selected, just clear the screen

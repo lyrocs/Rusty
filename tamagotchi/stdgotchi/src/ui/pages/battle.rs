@@ -6,7 +6,7 @@ use crate::assets::battle::{load_enemy_sprites, load_enemy_sprites_embedded};
 use crate::assets::AssetLoader;
 use crate::display::Sh8601Driver;
 use crate::ecs::resources::SdCardWrapper;
-use crate::game::{self, Enemy as GameEnemy, FragmentCollection, GameData, Hero, KillTracker, Rustymon, RustymonTeam};
+use crate::game::{self, Enemy as GameEnemy, FragmentCollection, GameData, Hero, KillTracker, Rustymon, RustymonTeam, BattleState};
 use crate::game::battle::DamageResult;
 use crate::ui::page::Page;
 use crate::ui::sprite::{AnimatedSprite, Background};
@@ -270,6 +270,7 @@ impl DamageNumber {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattleAction {
     SwitchRustymon(usize), // Switch to team slot index
+    UseSkill(u32), // Use skill with given ID
 }
 
 /// Touch area for battle interactions
@@ -328,6 +329,9 @@ pub struct BattlePage {
 
     // Touch interaction
     touch_areas: Vec<TouchArea>,
+
+    // Battle state for skill effects
+    battle_state: BattleState,
 }
 
 impl BattlePage {
@@ -375,6 +379,7 @@ impl BattlePage {
             fragment_drops: Vec::new(),
             fragment_notification: None,
             touch_areas: Vec::new(),
+            battle_state: BattleState::default(),
         }
     }
 
@@ -427,6 +432,7 @@ impl BattlePage {
             fragment_drops: Vec::new(),
             fragment_notification: None,
             touch_areas: Vec::new(),
+            battle_state: BattleState::default(),
         })
     }
 
@@ -485,6 +491,103 @@ impl BattlePage {
             }
         }
         None
+    }
+
+    /// Use a skill with the active Rustymon
+    pub fn use_skill(&mut self, skill_id: u32) -> Result<(), Box<dyn Error>> {
+        // Get active Rustymon ID first (no borrow held)
+        let Some(active_id) = self.rustymon_team.get_active_rustymon_id().cloned() else {
+            return Err("No active Rustymon".into());
+        };
+
+        // Get skill data (immutable borrow, released immediately)
+        let skill_name = self.game_data.get_skill(skill_id)
+            .map(|s| s.name.clone())
+            .ok_or_else(|| format!("Skill {} not found", skill_id))?;
+
+        // Now we can borrow multiple parts mutably in the same scope
+        let rustymon = self.rustymon_collection.iter_mut()
+            .find(|r| r.id == active_id)
+            .ok_or("Active Rustymon not found in collection")?;
+
+        let game_enemy = self.game_enemy.as_mut()
+            .ok_or("No enemy in battle")?;
+
+        // Check if skill is on cooldown
+        if rustymon.skills.is_on_cooldown(skill_id) {
+            log::warn!("Skill {} is on cooldown!", skill_name);
+            return Err("Skill is on cooldown".into());
+        }
+
+        // Get skill again for actual use (we know it exists)
+        let skill = self.game_data.get_skill(skill_id).unwrap();
+
+        // Use the skill!
+        use crate::game::battle::rustymon_use_skill;
+        let result = rustymon_use_skill(
+            rustymon,
+            game_enemy,
+            skill,
+            &mut self.battle_state
+        );
+
+        // Create floating damage number if skill dealt damage
+        if result.damage > 0 || result.is_miss {
+            if let Some(enemy) = &self.enemy {
+                let bounds = enemy.bounds();
+                let damage_pos = (
+                    bounds.0 + (bounds.2 / 2) as i32,
+                    bounds.1 + 10,
+                );
+                let damage_num = DamageNumber::new(
+                    result.damage,
+                    damage_pos,
+                    result.is_critical,
+                    result.is_miss,
+                );
+                self.damage_numbers.push(damage_num);
+            }
+        }
+
+        // Check if enemy died from the skill
+        let enemy_alive = game_enemy.is_alive();
+        if !enemy_alive {
+            if let Some(enemy) = &mut self.enemy {
+                enemy.start_death();
+            }
+            log::info!("💀 Enemy defeated by {}!", skill_name);
+        }
+
+        Ok(())
+    }
+
+    /// Initialize battle state with team passives from all team members
+    fn initialize_battle_state(&mut self) {
+        // Collect all enabled skills from the entire team
+        let mut team_skills = Vec::new();
+
+        // Iterate through team member IDs
+        for team_id_opt in &self.rustymon_team.active_slots {
+            if let Some(team_id) = team_id_opt {
+                // Find this Rustymon in the collection
+                if let Some(rustymon) = self.rustymon_collection.iter().find(|r| &r.id == team_id) {
+                    // Collect enabled skills from this team member
+                    for &skill_id_opt in &rustymon.skills.enabled_skills {
+                        if let Some(skill_id) = skill_id_opt {
+                            if let Some(skill) = self.game_data.get_skill(skill_id) {
+                                team_skills.push(skill);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Initialize battle state with collected team skills
+        let skill_refs: Vec<&game::skill::Skill> = team_skills.iter().map(|s| *s).collect();
+        self.battle_state.start_battle(&skill_refs);
+
+        log::info!("⚔️ Battle initialized with {} team skills", team_skills.len());
     }
 
     /// Switch to a different Rustymon from the team
@@ -674,6 +777,10 @@ impl BattlePage {
 
             self.enemy = Some(enemy);
             self.game_enemy = Some(game_enemy);
+
+            // Initialize battle state with team passives
+            self.initialize_battle_state();
+
             Ok(())
         } else {
             Err(format!("Enemy {} not found in game data", enemy_id).into())
@@ -747,6 +854,10 @@ impl BattlePage {
 
         self.enemy = Some(enemy);
         self.game_enemy = Some(game_enemy);
+
+        // Initialize battle state with team passives
+        self.initialize_battle_state();
+
         Ok(())
     }
 
@@ -971,6 +1082,109 @@ impl BattlePage {
         Ok(())
     }
 
+    /// Draw active effects (buffs/debuffs/DOTs) in the top info panel
+    fn draw_active_effects(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        use core::fmt::Write;
+
+        let effect_size = 18u32;
+        let effect_spacing = 4i32;
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+
+        // LEFT SIDE - Enemy effects (debuffs and DOTs)
+        let enemy_effects_x = 25;
+        let enemy_effects_y = 72;
+
+        let mut x_offset = 0;
+        for effect in &self.battle_state.enemy_effects {
+            if x_offset >= 5 {
+                break; // Max 5 effects to avoid overflow
+            }
+
+            let x = enemy_effects_x + (x_offset * (effect_size as i32 + effect_spacing));
+
+            // Color based on effect type
+            let color = match effect.effect_type {
+                crate::game::skill::EffectType::Dot => Rgb888::new(200, 80, 80), // Red for DOT
+                crate::game::skill::EffectType::DebuffEnemy => Rgb888::new(180, 100, 200), // Purple for debuff
+                _ => Rgb888::new(150, 150, 150), // Gray for other
+            };
+
+            // Draw effect indicator circle
+            embedded_graphics::primitives::Circle::new(
+                Point::new(x, enemy_effects_y),
+                effect_size,
+            )
+            .into_styled(
+                embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                    .fill_color(color)
+                    .stroke_color(Rgb888::WHITE)
+                    .stroke_width(1)
+                    .build(),
+            )
+            .draw(display)?;
+
+            // Draw turn count
+            let mut turn_str = heapless::String::<4>::new();
+            write!(turn_str, "{}", effect.remaining_turns).ok();
+            Text::new(
+                &turn_str,
+                Point::new(x + 6, enemy_effects_y + 12),
+                text_style,
+            )
+            .draw(display)?;
+
+            x_offset += 1;
+        }
+
+        // RIGHT SIDE - Rustymon effects (buffs)
+        let rustymon_effects_x = 368 - 140; // Same as right_x in draw_top_info_panel
+        let rustymon_effects_y = 72;
+
+        let mut x_offset = 0;
+        for effect in &self.battle_state.rustymon_effects {
+            if x_offset >= 5 {
+                break; // Max 5 effects to avoid overflow
+            }
+
+            let x = rustymon_effects_x + (x_offset * (effect_size as i32 + effect_spacing));
+
+            // Color based on effect type
+            let color = match effect.effect_type {
+                crate::game::skill::EffectType::BuffSelf => Rgb888::new(80, 200, 120), // Green for buff
+                crate::game::skill::EffectType::Dot => Rgb888::new(200, 80, 80), // Red for DOT (rare on self)
+                _ => Rgb888::new(150, 150, 150), // Gray for other
+            };
+
+            // Draw effect indicator circle
+            embedded_graphics::primitives::Circle::new(
+                Point::new(x, rustymon_effects_y),
+                effect_size,
+            )
+            .into_styled(
+                embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                    .fill_color(color)
+                    .stroke_color(Rgb888::WHITE)
+                    .stroke_width(1)
+                    .build(),
+            )
+            .draw(display)?;
+
+            // Draw turn count
+            let mut turn_str = heapless::String::<4>::new();
+            write!(turn_str, "{}", effect.remaining_turns).ok();
+            Text::new(
+                &turn_str,
+                Point::new(x + 6, rustymon_effects_y + 12),
+                text_style,
+            )
+            .draw(display)?;
+
+            x_offset += 1;
+        }
+
+        Ok(())
+    }
+
     /// Draw floating damage numbers
     fn draw_damage_numbers(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
         use core::fmt::Write;
@@ -1069,9 +1283,6 @@ impl BattlePage {
     /// Draw team Rustymon buttons at bottom of screen
     fn draw_team_buttons(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
         use core::fmt::Write;
-
-        // Clear touch areas before redrawing
-        self.touch_areas.clear();
 
         // Get team Rustymon IDs
         let team_rustymon_ids = self.rustymon_team.get_team_ids();
@@ -1195,6 +1406,124 @@ impl BattlePage {
 
         Ok(())
     }
+
+    /// Draw skill buttons for active Rustymon
+    fn draw_skill_buttons(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        use core::fmt::Write;
+
+        // Get active Rustymon ID and copy skill data (release borrow immediately)
+        let active_id = self.rustymon_team.get_active_rustymon_id().cloned();
+        let Some(active_id) = active_id else {
+            return Ok(()); // No active Rustymon, no skills to show
+        };
+
+        // Find rustymon and copy skill/cooldown data
+        let rustymon = self.rustymon_collection.iter().find(|r| r.id == active_id);
+        let Some(rustymon) = rustymon else {
+            return Ok(());
+        };
+
+        // Copy the data we need before releasing the borrow
+        let enabled_skills = rustymon.skills.enabled_skills.clone();
+        let cooldowns = rustymon.skills.cooldowns.clone();
+
+        // Button dimensions and positions - BOTTOM RIGHT corner with margin
+        let button_width = 100u32;
+        let button_height = 28u32;
+        let spacing = 8i32;
+        let right_margin = 15i32;
+        let bottom_margin = 15i32;
+        let x = 368 - button_width as i32 - right_margin; // Fixed X position (bottom right)
+
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+        let cooldown_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 200, 100));
+
+        // Track how many skill buttons we've drawn
+        let mut drawn_count = 0;
+
+        // Draw each enabled skill (up to 3) - VERTICALLY stacked from bottom to top
+        for &skill_id_opt in &enabled_skills {
+            if let Some(skill_id) = skill_id_opt {
+                if let Some(skill) = self.game_data.get_skill(skill_id) {
+                    // Only show active skills (passives don't need buttons)
+                    if skill.is_active() {
+                        // Calculate Y position - stack from bottom up
+                        let y = 450 - bottom_margin - (button_height as i32) - (drawn_count * (button_height as i32 + spacing));
+
+                        // Check if skill is on cooldown
+                        let cooldown_turns = cooldowns.get(&skill_id).copied().unwrap_or(0);
+                        let on_cooldown = cooldown_turns > 0;
+
+                        // Button color based on cooldown state
+                        let (bg_color, border_color) = if on_cooldown {
+                            (Rgb888::new(60, 60, 60), Rgb888::new(100, 100, 100)) // Gray for cooldown
+                        } else {
+                            // Color based on skill type
+                            if skill.effect_type == crate::game::skill::EffectType::Damage ||
+                               skill.effect_type == crate::game::skill::EffectType::Dot {
+                                (Rgb888::new(120, 40, 40), Rgb888::new(200, 80, 80)) // Red for damage
+                            } else {
+                                (Rgb888::new(40, 80, 120), Rgb888::new(80, 160, 255)) // Blue for support
+                            }
+                        };
+
+                        // Draw button background
+                        Rectangle::new(
+                            Point::new(x, y),
+                            Size::new(button_width, button_height),
+                        )
+                        .into_styled(
+                            embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                                .fill_color(bg_color)
+                                .stroke_color(border_color)
+                                .stroke_width(2)
+                                .build(),
+                        )
+                        .draw(display)?;
+
+                        // Draw skill name (truncated)
+                        let mut name_str = heapless::String::<16>::new();
+                        if skill.name.len() > 14 {
+                            write!(name_str, "{}.", &skill.name[..13]).ok();
+                        } else {
+                            write!(name_str, "{}", skill.name).ok();
+                        }
+                        Text::new(&name_str, Point::new(x + 4, y + 12), text_style).draw(display)?;
+
+                        // Draw cooldown number if on cooldown
+                        if on_cooldown {
+                            let mut cd_str = heapless::String::<4>::new();
+                            write!(cd_str, "{}", cooldown_turns).ok();
+                            Text::new(&cd_str, Point::new(x + 75, y + 22), cooldown_style).draw(display)?;
+                        }
+
+                        // Draw skill element indicator (small bar at bottom)
+                        if let Some(element) = skill.get_element() {
+                            let element_color = crate::game::element_system::get_element_color(element);
+                            Rectangle::new(
+                                Point::new(x + 2, y + (button_height as i32) - 4),
+                                Size::new(button_width - 4, 2),
+                            )
+                            .into_styled(PrimitiveStyle::with_fill(element_color))
+                            .draw(display)?;
+                        }
+
+                        // Add touch area (only if not on cooldown)
+                        if !on_cooldown {
+                            self.touch_areas.push(TouchArea {
+                                bounds: (x, y, button_width, button_height),
+                                action: BattleAction::UseSkill(skill_id),
+                            });
+                        }
+
+                        drawn_count += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Page for BattlePage {
@@ -1282,6 +1611,17 @@ impl Page for BattlePage {
                     }
                 };
 
+                // Process turn effects (DOT, buffs/debuffs, cooldowns) if using Rustymon
+                if has_active_rustymon {
+                    let active_id = self.rustymon_team.get_active_rustymon_id().map(|id| id.clone());
+                    if let Some(id) = active_id {
+                        let rustymon = self.rustymon_collection.iter_mut().find(|r| r.id == id);
+                        if let (Some(rustymon), Some(game_enemy)) = (rustymon, &mut self.game_enemy) {
+                            self.battle_state.process_turn_effects(rustymon, game_enemy);
+                        }
+                    }
+                }
+
                 // Create floating damage number near enemy
                 if let Some(bounds) = enemy_bounds {
                     let damage_pos = (
@@ -1320,24 +1660,48 @@ impl Page for BattlePage {
                             let team_ids = self.rustymon_team.get_team_ids();
 
                             // Award 100% EXP to active Rustymon
+                            // Get species_id and learnable skills data first (immutable borrows)
+                            let species_id = self.get_active_rustymon().map(|r| r.species_id);
+                            let learnable_skills_data = species_id.and_then(|sid| {
+                                self.game_data.get_enemy(sid).map(|e| e.learnable_skills.clone())
+                            });
+
                             if let Some(rustymon) = self.get_active_rustymon_mut() {
                                 let leveled_up = rustymon.gain_exp(exp_to_give);
+                                let current_level = rustymon.level;
+                                let rustymon_name = rustymon.name.clone();
+                                let rustymon_exp = rustymon.exp;
+                                let rustymon_exp_to_next = rustymon.exp_to_next;
+
                                 if leveled_up {
-                                    log::info!("🎉 {} leveled up to Lv {}!", rustymon.name, rustymon.level);
+                                    log::info!("🎉 {} leveled up to Lv {}!", rustymon_name, current_level);
+
+                                    // Check and learn new skills for this level
+                                    if let Some(learnable_skills) = &learnable_skills_data {
+                                        let newly_learned = rustymon.check_and_learn_skills(learnable_skills);
+                                        // Store skill IDs to look up names later
+                                        for skill_id in newly_learned {
+                                            // We'll log these after releasing the borrow
+                                            log::info!("✨ {} learned skill ID {}!", rustymon_name, skill_id);
+                                        }
+                                    }
                                 }
                                 log::info!(
                                     "{} defeated! {} gained {} EXP (Lv {} - {}/{})",
                                     enemy_name,
-                                    rustymon.name,
+                                    rustymon_name,
                                     exp_to_give,
-                                    rustymon.level,
-                                    rustymon.exp,
-                                    rustymon.exp_to_next
+                                    current_level,
+                                    rustymon_exp,
+                                    rustymon_exp_to_next
                                 );
                             }
 
                             // Award 50% EXP to other team members
                             if shared_exp > 0 {
+                                // First pass: gain EXP and track who leveled up
+                                let mut leveled_up_rustymon: Vec<(String, u32, String)> = Vec::new(); // (id, species_id, name)
+
                                 for rustymon in &mut self.rustymon_collection {
                                     // Skip the active Rustymon and those not in team
                                     if Some(&rustymon.id) == active_id.as_ref() {
@@ -1351,6 +1715,7 @@ impl Page for BattlePage {
                                     let leveled_up = rustymon.gain_exp(shared_exp);
                                     if leveled_up {
                                         log::info!("🎉 {} leveled up to Lv {} (shared EXP)!", rustymon.name, rustymon.level);
+                                        leveled_up_rustymon.push((rustymon.id.clone(), rustymon.species_id, rustymon.name.clone()));
                                     }
                                     log::info!(
                                         "{} gained {} shared EXP (Lv {} - {}/{})",
@@ -1360,6 +1725,20 @@ impl Page for BattlePage {
                                         rustymon.exp,
                                         rustymon.exp_to_next
                                     );
+                                }
+
+                                // Second pass: learn skills for those who leveled up
+                                for (rustymon_id, species_id, rustymon_name) in leveled_up_rustymon {
+                                    if let Some(enemy_data) = self.game_data.get_enemy(species_id) {
+                                        if let Some(rustymon) = self.rustymon_collection.iter_mut().find(|r| r.id == rustymon_id) {
+                                            let newly_learned = rustymon.check_and_learn_skills(&enemy_data.learnable_skills);
+                                            for skill_id in newly_learned {
+                                                if let Some(skill) = self.game_data.get_skill(skill_id) {
+                                                    log::info!("✨ {} learned {}!", rustymon_name, skill.name);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         } else {
@@ -1636,6 +2015,9 @@ impl Page for BattlePage {
         use embedded_graphics::prelude::*;
         use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
 
+        // Clear touch areas at the start of each draw
+        self.touch_areas.clear();
+
         // Draw background
         if full_redraw {
             if let Some(background) = &self.background {
@@ -1719,8 +2101,14 @@ impl Page for BattlePage {
         // Draw top info panel with monster and hero information
         self.draw_top_info_panel(display)?;
 
+        // Draw active effects (buffs/debuffs/DOTs)
+        self.draw_active_effects(display)?;
+
         // Draw fragment notification (if any)
         self.draw_fragment_notification(display)?;
+
+        // Draw skill buttons (above team buttons)
+        self.draw_skill_buttons(display)?;
 
         // Draw team Rustymon buttons at bottom
         self.draw_team_buttons(display)?;

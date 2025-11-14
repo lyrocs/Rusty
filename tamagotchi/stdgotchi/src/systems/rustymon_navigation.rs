@@ -126,6 +126,21 @@ pub fn rustymon_detail_system(
                                 }
                             }
                         }
+                        RustymonDetailAction::ToggleSkill(skill_index) => {
+                            // Toggle skill on/off
+                            if let Some(index) = game_manager.selected_rustymon_index {
+                                if index < game_manager.rustymon_collection.len() {
+                                    let rustymon = &mut game_manager.rustymon_collection[index];
+                                    use crate::ui::pages::rustymon_detail::RustymonDetailPage;
+                                    if RustymonDetailPage::toggle_skill(rustymon, skill_index) {
+                                        log::info!("Toggled skill at index {}", skill_index);
+                                        app_state.needs_redraw = true;
+                                    } else {
+                                        log::warn!("Failed to toggle skill (all slots full or invalid index)");
+                                    }
+                                }
+                            }
+                        }
                         RustymonDetailAction::Close => {
                             log::info!("Closing Rustymon detail - returning to list");
                             app_state.current_mode = AppMode::RustymonList;
@@ -186,8 +201,9 @@ pub fn fragment_collection_system(
 
                                 if fragment_count >= required_fragments {
                                     // Can summon! Create pending summon and switch to summon preview
-                                    // Create the Rustymon from enemy data (using RustymonFactory)
-                                    let rustymon = crate::game::RustymonFactory::create_from_enemy(
+                                    // Create the Rustymon from enemy data with skills (using RustymonFactory)
+                                    let game_data = &game_manager.map_page.world_map().game_data();
+                                    let rustymon = crate::game::RustymonFactory::create_from_enemy_with_skills(
                                         enemy_data.id,
                                         enemy_data.name.clone(),
                                         enemy_data.level,
@@ -197,6 +213,7 @@ pub fn fragment_collection_system(
                                         enemy_data.vit,
                                         enemy_data.int,
                                         enemy_data.luk,
+                                        game_data,
                                     );
                                     game_manager.pending_summon_rustymon = Some(rustymon);
 

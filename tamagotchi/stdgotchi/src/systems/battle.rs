@@ -41,6 +41,13 @@ pub fn battle_system(
                                 }
                                 app_state.needs_redraw = true;
                             }
+                            BattleAction::UseSkill(skill_id) => {
+                                log::info!("Using skill {}", skill_id);
+                                if let Err(e) = battle_page.use_skill(skill_id) {
+                                    log::error!("Failed to use skill: {:?}", e);
+                                }
+                                app_state.needs_redraw = true;
+                            }
                         }
                     }
                 }

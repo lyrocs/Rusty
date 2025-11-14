@@ -19,6 +19,7 @@ pub mod rustymon_team;
 pub mod rustymon_factory;
 pub mod fragment_collection;
 pub mod element_system;
+pub mod skill;
 
 pub use stats::*;
 pub use hero::*;
@@ -36,6 +37,7 @@ pub use rustymon_team::*;
 pub use rustymon_factory::*;
 pub use fragment_collection::*;
 pub use element_system::*;
+pub use skill::*;
 
 use bevy_ecs::prelude::*;
 
