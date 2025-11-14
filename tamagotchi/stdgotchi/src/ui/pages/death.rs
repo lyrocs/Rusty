@@ -23,6 +23,7 @@ pub struct DeathPage {
     respawn_duration: Duration,
     needs_full_redraw: bool,
     can_respawn: bool,
+    last_remaining_seconds: Option<u64>, // Track last displayed time for refresh detection
 }
 
 impl DeathPage {
@@ -40,6 +41,7 @@ impl DeathPage {
             respawn_duration: Duration::from_secs(120), // 2 minutes
             needs_full_redraw: true,
             can_respawn: false,
+            last_remaining_seconds: None,
         })
     }
 
@@ -95,7 +97,18 @@ impl DeathPage {
 
         // Draw timer
         let remaining = self.remaining_seconds();
+
+        // Check if timer value changed - if so, clear the text area
+        let timer_changed = self.last_remaining_seconds != Some(remaining);
+
         if remaining > 0 {
+            // Clear timer text area if it changed
+            if timer_changed {
+                Rectangle::new(Point::new(70, 320), Size::new(230, 30))
+                    .into_styled(PrimitiveStyle::with_fill(self.background_color))
+                    .draw(display)?;
+            }
+
             let minutes = remaining / 60;
             let seconds = remaining % 60;
 
@@ -107,13 +120,22 @@ impl DeathPage {
             // Draw progress bar
             self.draw_progress_bar(display)?;
         } else {
-            // Ready to respawn
+            // Ready to respawn - clear timer area if transitioning from countdown
+            if timer_changed {
+                Rectangle::new(Point::new(70, 320), Size::new(230, 30))
+                    .into_styled(PrimitiveStyle::with_fill(self.background_color))
+                    .draw(display)?;
+            }
+
             self.can_respawn = true;
             Text::new("Ready to respawn!", Point::new(70, 340), text_style_info).draw(display)?;
 
             // Draw respawn button
             self.draw_respawn_button(display)?;
         }
+
+        // Update tracked remaining seconds
+        self.last_remaining_seconds = Some(remaining);
 
         display.flush()?;
         Ok(())
@@ -125,6 +147,11 @@ impl DeathPage {
         let bar_y = 360;
         let bar_width = 300u32;
         let bar_height = 20u32;
+
+        // Clear the entire progress bar area first
+        Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_width, bar_height))
+            .into_styled(PrimitiveStyle::with_fill(self.background_color))
+            .draw(display)?;
 
         // Background
         Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_width, bar_height))
@@ -150,6 +177,11 @@ impl DeathPage {
         let button_y = 390;
         let button_width = 190;
         let button_height = 60;
+
+        // Clear the button area first
+        Rectangle::new(Point::new(button_x, button_y), Size::new(button_width, button_height))
+            .into_styled(PrimitiveStyle::with_fill(self.background_color))
+            .draw(display)?;
 
         Rectangle::new(Point::new(button_x, button_y), Size::new(button_width, button_height))
             .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 120, 60)))
