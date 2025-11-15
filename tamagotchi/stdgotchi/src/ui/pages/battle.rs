@@ -556,6 +556,8 @@ impl BattlePage {
                 enemy.start_death();
             }
             log::info!("💀 Enemy defeated by {}!", skill_name);
+            // Force full screen refresh on death to clear old graphics
+            self.first_draw = true;
         }
 
         Ok(())
@@ -858,6 +860,9 @@ impl BattlePage {
         // Initialize battle state with team passives
         self.initialize_battle_state();
 
+        // Force full screen refresh on respawn to clear old graphics
+        self.first_draw = true;
+
         Ok(())
     }
 
@@ -1094,6 +1099,15 @@ impl BattlePage {
         let enemy_effects_x = 25;
         let enemy_effects_y = 72;
 
+        // Clear the enemy effects area first (5 effects max)
+        let clear_width = (effect_size + effect_spacing as u32) * 5;
+        Rectangle::new(
+            Point::new(enemy_effects_x, enemy_effects_y),
+            Size::new(clear_width, effect_size + 5),
+        )
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 20, 30)))
+        .draw(display)?;
+
         let mut x_offset = 0;
         for effect in &self.battle_state.enemy_effects {
             if x_offset >= 5 {
@@ -1139,6 +1153,14 @@ impl BattlePage {
         // RIGHT SIDE - Rustymon effects (buffs)
         let rustymon_effects_x = 368 - 140; // Same as right_x in draw_top_info_panel
         let rustymon_effects_y = 72;
+
+        // Clear the Rustymon effects area first (5 effects max)
+        Rectangle::new(
+            Point::new(rustymon_effects_x, rustymon_effects_y),
+            Size::new(clear_width, effect_size + 5),
+        )
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(20, 20, 30)))
+        .draw(display)?;
 
         let mut x_offset = 0;
         for effect in &self.battle_state.rustymon_effects {
@@ -1293,11 +1315,11 @@ impl BattlePage {
         }
 
         // Button dimensions and positions
-        let button_width = 55u32;
-        let button_height = 50u32;
+        let button_width = 83u32; // Increased by 1.5x (55 * 1.5 = 82.5, rounded to 83)
+        let button_height = 75u32; // Increased by 1.5x (50 * 1.5 = 75)
         let spacing = 5i32;
         let start_x = 30i32; // 20px from left edge to avoid rounded corners
-        let y = 390i32; // 10px up from previous position to avoid bottom rounded corners
+        let y = 365i32; // Adjusted up to accommodate larger buttons (was 390)
 
         // Draw up to 6 team buttons
         for (slot_index, rustymon_id) in team_rustymon_ids.iter().enumerate().take(6) {
@@ -1339,13 +1361,13 @@ impl BattlePage {
                 let level_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
                 let mut level_str = heapless::String::<8>::new();
                 write!(level_str, "Lv{}", rustymon.level).ok();
-                Text::new(&level_str, Point::new(x + 2, y + 10), level_style).draw(display)?;
+                Text::new(&level_str, Point::new(x + 2, y + 12), level_style).draw(display)?;
 
                 // Draw HP bar
                 let hp_bar_width = button_width - 4;
-                let hp_bar_height = 4u32;
+                let hp_bar_height = 6u32; // Increased from 4 to 6 for larger button
                 let hp_bar_x = x + 2;
-                let hp_bar_y = y + 15;
+                let hp_bar_y = y + 25;
 
                 // HP bar background
                 Rectangle::new(
@@ -1383,13 +1405,13 @@ impl BattlePage {
                 } else {
                     write!(name_str, "{}", rustymon.name).ok();
                 }
-                Text::new(&name_str, Point::new(x + 2, y + 30), name_style).draw(display)?;
+                Text::new(&name_str, Point::new(x + 2, y + 42), name_style).draw(display)?;
 
                 // Draw element indicator (small colored box)
                 let element_color = crate::game::element_system::get_element_color(rustymon.element);
                 Rectangle::new(
-                    Point::new(x + 2, y + 35),
-                    Size::new(button_width - 4, 10),
+                    Point::new(x + 2, y + 60),
+                    Size::new(button_width - 4, 12),
                 )
                 .into_styled(PrimitiveStyle::with_fill(element_color))
                 .draw(display)?;
@@ -1429,7 +1451,7 @@ impl BattlePage {
 
         // Button dimensions and positions - BOTTOM RIGHT corner with margin
         let button_width = 100u32;
-        let button_height = 28u32;
+        let button_height = 42u32; // Increased by 1.5x (28 * 1.5 = 42)
         let spacing = 8i32;
         let right_margin = 15i32;
         let bottom_margin = 15i32;
@@ -1644,6 +1666,8 @@ impl Page for BattlePage {
                         if let Some(enemy) = &mut self.enemy {
                             enemy.start_death();
                         }
+                        // Force full screen refresh on death to clear old graphics
+                        self.first_draw = true;
 
                         // Award EXP and record kill
                         let exp_reward = game_enemy.exp_reward;
@@ -2105,7 +2129,7 @@ impl Page for BattlePage {
         self.draw_active_effects(display)?;
 
         // Draw fragment notification (if any)
-        self.draw_fragment_notification(display)?;
+        // self.draw_fragment_notification(display)?; // Disabled - fragment notifications removed
 
         // Draw skill buttons (above team buttons)
         self.draw_skill_buttons(display)?;
