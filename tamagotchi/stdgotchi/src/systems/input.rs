@@ -4,37 +4,50 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, ButtonResource, GpioResource};
+use crate::ecs::resources::{AppMode, AppState, ButtonResource, InputEventChannel, PendingInputEvents};
+use crate::input_thread::InputEvent;
 
-/// Debounce threshold
-const DEBOUNCE_THRESHOLD: u8 = 3;
-
-/// System to handle button input
-pub fn button_system<'d, T>(
-    gpio_res: NonSendMut<GpioResource<'d, T>>,
+/// System to handle button input from input thread
+/// This system runs FIRST and collects all events from the channel.
+/// It processes power button events and boot button events globally,
+/// and forwards touch events to PendingInputEvents for mode-specific handling.
+pub fn button_system(
+    input_channel: Res<InputEventChannel>,
     mut button_res: NonSendMut<ButtonResource>,
     mut app_state: ResMut<AppState>,
-) where
-    T: esp_idf_svc::hal::gpio::Pin + esp_idf_svc::hal::gpio::InputPin,
-{
-    // Poll BOOT button (GPIO0, active low)
-    let boot_pressed = gpio_res.boot_pin.is_low();
+    mut pending_events: ResMut<PendingInputEvents>,
+) {
+    // Clear any leftover events from previous frame
+    pending_events.events.clear();
 
-    if boot_pressed != button_res.boot_last_state {
-        button_res.boot_debounce = button_res.boot_debounce.saturating_add(1);
-
-        if button_res.boot_debounce >= DEBOUNCE_THRESHOLD {
-            button_res.boot_last_state = boot_pressed;
-            button_res.boot_debounce = 0;
-
-            if boot_pressed {
-                log::info!("BOOT button pressed - Opening Menu");
-                app_state.current_mode = AppMode::Menu;
-                app_state.needs_redraw = true;
+    // Collect all input events from the channel
+    while let Ok(event) = input_channel.receiver.try_recv() {
+        match event {
+            InputEvent::PowerPressed => {
+                button_res.pwr_last_state = true;
+            }
+            InputEvent::PowerReleased => {
+                // PWR button toggles screen on/off on release (rising edge)
+                if button_res.pwr_last_state {
+                    app_state.screen_on = !app_state.screen_on;
+                    if app_state.screen_on {
+                        app_state.needs_redraw = true;
+                    }
+                }
+                button_res.pwr_last_state = false;
+            }
+            InputEvent::BootPressed => {
+                // Handle boot button globally - opens Menu (if screen is on)
+                if app_state.screen_on {
+                    log::info!("BOOT button pressed - Opening Menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
+                }
+            }
+            // Forward touch events for mode-specific handling
+            other_event => {
+                pending_events.events.push(other_event);
             }
         }
-    } else {
-        button_res.boot_debounce = 0;
     }
-
 }

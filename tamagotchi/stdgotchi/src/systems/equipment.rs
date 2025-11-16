@@ -4,13 +4,13 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::input_thread::InputEvent;
 
 /// System to handle equipment interactions
 pub fn equipment_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in Equipment mode
@@ -18,12 +18,17 @@ pub fn equipment_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
                 log::info!("Equipment touch at ({}, {})", x, y);
@@ -31,10 +36,10 @@ pub fn equipment_system(
                 // Check if dialog is open
                 if game_manager.equipment_page.is_dialog_open() {
                     // Handle touch on dialog
-                    handle_dialog_touch(x as i32, y as i32, game_manager, &mut app_state);
+                    handle_dialog_touch(*x as i32, *y as i32, game_manager, &mut app_state);
                 } else {
                     // Handle touch on equipment page
-                    if let Some(action) = game_manager.equipment_page.handle_touch(x as i32, y as i32) {
+                    if let Some(action) = game_manager.equipment_page.handle_touch(*x as i32, *y as i32) {
                         use crate::ui::pages::EquipmentAction;
                         match action {
                             EquipmentAction::SelectSlot(slot) => {
@@ -82,18 +87,6 @@ pub fn equipment_system(
                             }
                         }
                     }
-                }
-            }
-            InputEvent::BootPressed => {
-                // Boot button closes dialog or returns to menu
-                if game_manager.equipment_page.is_dialog_open() {
-                    log::info!("Boot button pressed - closing dialog");
-                    game_manager.equipment_page.close_dialog();
-                    app_state.needs_redraw = true;
-                } else {
-                    log::info!("Boot button pressed - returning to Menu");
-                    app_state.current_mode = AppMode::Menu;
-                    app_state.needs_redraw = true;
                 }
             }
             _ => {

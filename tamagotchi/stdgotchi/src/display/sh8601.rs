@@ -43,7 +43,9 @@ use std::ptr;
 /// SH8601 Command Set
 pub mod commands {
     pub const SWRESET: u8 = 0x01;
+    pub const SLPIN: u8 = 0x10;
     pub const SLPOUT: u8 = 0x11;
+    pub const DISPOFF: u8 = 0x28;
     pub const DISPON: u8 = 0x29;
     pub const CASET: u8 = 0x2A;
     pub const PASET: u8 = 0x2B;
@@ -270,6 +272,38 @@ impl Sh8601Driver {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Turn display on
+    pub fn display_on(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        use std::thread;
+        use std::time::Duration;
+
+        // Exit sleep mode
+        self.send_command(commands::SLPOUT)?;
+        thread::sleep(Duration::from_millis(120));
+
+        // Turn display on
+        self.send_command(commands::DISPON)?;
+        thread::sleep(Duration::from_millis(10));
+
+        Ok(())
+    }
+
+    /// Turn display off
+    pub fn display_off(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        use std::thread;
+        use std::time::Duration;
+
+        // Turn display off
+        self.send_command(commands::DISPOFF)?;
+        thread::sleep(Duration::from_millis(10));
+
+        // Enter sleep mode
+        self.send_command(commands::SLPIN)?;
+        thread::sleep(Duration::from_millis(120));
 
         Ok(())
     }

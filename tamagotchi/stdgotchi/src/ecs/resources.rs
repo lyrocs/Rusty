@@ -446,6 +446,13 @@ pub struct InputEventChannel {
     pub receiver: Receiver<InputEvent>,
 }
 
+/// Pending input events resource - stores events that button_system didn't consume
+/// This allows touch events to be passed through to other systems
+#[derive(Resource, Default)]
+pub struct PendingInputEvents {
+    pub events: Vec<InputEvent>,
+}
+
 /// App state resource
 #[derive(Resource)]
 pub struct AppState {
@@ -454,6 +461,7 @@ pub struct AppState {
     pub fps: f32,
     pub frame_count: u32,
     pub last_fps_update: Instant,
+    pub screen_on: bool, // Screen power state (controlled by PWR button)
 }
 
 /// Application modes
@@ -497,6 +505,7 @@ impl Default for AppState {
             fps: 0.0,
             frame_count: 0,
             last_fps_update: Instant::now(),
+            screen_on: true, // Screen starts on
         }
     }
 }

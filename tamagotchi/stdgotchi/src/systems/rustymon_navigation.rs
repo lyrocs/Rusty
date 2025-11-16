@@ -4,13 +4,13 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::input_thread::InputEvent;
 
 /// System to handle Rustymon list navigation
 pub fn rustymon_list_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in RustymonList mode
@@ -18,16 +18,21 @@ pub fn rustymon_list_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
-                let x = x as i32;
-                let y = y as i32;
+                let x = *x as i32;
+                let y = *y as i32;
 
                 // Handle touch on rustymon list page
                 if let Some(action) = game_manager.rustymon_list_page.handle_touch(x, y) {
@@ -61,12 +66,6 @@ pub fn rustymon_list_system(
                     }
                 }
             }
-            InputEvent::BootPressed => {
-                // Boot button returns to menu
-                log::info!("Boot button pressed - returning to Menu");
-                app_state.current_mode = AppMode::Menu;
-                app_state.needs_redraw = true;
-            }
             _ => {
                 // Ignore other events
             }
@@ -77,7 +76,7 @@ pub fn rustymon_list_system(
 /// System to handle Rustymon detail navigation
 pub fn rustymon_detail_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in RustymonDetail mode
@@ -85,16 +84,21 @@ pub fn rustymon_detail_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
-                let x = x as i32;
-                let y = y as i32;
+                let x = *x as i32;
+                let y = *y as i32;
 
                 // Handle touch on rustymon detail page
                 if let Some(action) = game_manager.rustymon_detail_page.handle_touch(x, y) {
@@ -149,12 +153,6 @@ pub fn rustymon_detail_system(
                     }
                 }
             }
-            InputEvent::BootPressed => {
-                // Boot button returns to list
-                log::info!("Boot button pressed - returning to Rustymon list");
-                app_state.current_mode = AppMode::RustymonList;
-                app_state.needs_redraw = true;
-            }
             _ => {
                 // Ignore other events
             }
@@ -165,7 +163,7 @@ pub fn rustymon_detail_system(
 /// System to handle Fragment Collection navigation
 pub fn fragment_collection_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in FragmentCollection mode
@@ -173,16 +171,21 @@ pub fn fragment_collection_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
-                let x = x as i32;
-                let y = y as i32;
+                let x = *x as i32;
+                let y = *y as i32;
 
                 // Handle touch on fragment collection page
                 if let Some(action) = game_manager.fragment_collection_page.handle_touch(x, y) {
@@ -246,12 +249,6 @@ pub fn fragment_collection_system(
                     }
                 }
             }
-            InputEvent::BootPressed => {
-                // Boot button returns to menu
-                log::info!("Boot button pressed - returning to Menu");
-                app_state.current_mode = AppMode::Menu;
-                app_state.needs_redraw = true;
-            }
             _ => {
                 // Ignore other events
             }
@@ -262,7 +259,7 @@ pub fn fragment_collection_system(
 /// System to handle Rustymon Summon preview navigation
 pub fn rustymon_summon_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in RustymonSummon mode
@@ -270,16 +267,21 @@ pub fn rustymon_summon_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
-                let x = x as i32;
-                let y = y as i32;
+                let x = *x as i32;
+                let y = *y as i32;
 
                 // Handle touch on rustymon summon page
                 if let Some(action) = game_manager.rustymon_summon_page.handle_touch(x, y) {
@@ -318,13 +320,6 @@ pub fn rustymon_summon_system(
                         }
                     }
                 }
-            }
-            InputEvent::BootPressed => {
-                // Boot button cancels summon
-                log::info!("Boot button pressed - cancelling summon");
-                game_manager.pending_summon_rustymon = None;
-                app_state.current_mode = AppMode::FragmentCollection;
-                app_state.needs_redraw = true;
             }
             _ => {
                 // Ignore other events

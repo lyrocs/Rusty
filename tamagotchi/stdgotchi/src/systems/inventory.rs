@@ -4,13 +4,13 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::input_thread::InputEvent;
 
 /// System to handle inventory interactions
 pub fn inventory_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in Inventory mode
@@ -18,18 +18,23 @@ pub fn inventory_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
                 log::info!("Inventory touch at ({}, {})", x, y);
 
                 // Handle touch on inventory page
-                if let Some(action) = game_manager.inventory_page.handle_touch(x as i32, y as i32) {
+                if let Some(action) = game_manager.inventory_page.handle_touch(*x as i32, *y as i32) {
                     use crate::ui::pages::InventoryAction;
                     match action {
                         InventoryAction::SwitchToEquipment => {
@@ -44,12 +49,6 @@ pub fn inventory_system(
                         }
                     }
                 }
-            }
-            InputEvent::BootPressed => {
-                // Boot button closes inventory
-                log::info!("Boot button pressed - returning to Menu");
-                app_state.current_mode = AppMode::Menu;
-                app_state.needs_redraw = true;
             }
             _ => {
                 // Ignore other events

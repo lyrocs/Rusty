@@ -4,7 +4,7 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::input_thread::InputEvent;
 
 /// Stat type for allocation
@@ -21,7 +21,7 @@ pub enum StatType {
 /// System to handle stats allocation interactions
 pub fn stats_allocation_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in StatsAllocation mode
@@ -29,16 +29,21 @@ pub fn stats_allocation_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
-                let x = x as i32;
-                let y = y as i32;
+                let x = *x as i32;
+                let y = *y as i32;
 
                 // Handle touch on stats allocation page
                 if let Some(action) = game_manager.handle_stats_allocation_touch(x, y) {
@@ -65,12 +70,6 @@ pub fn stats_allocation_system(
                     }
                     app_state.needs_redraw = true;
                 }
-            }
-            InputEvent::BootPressed => {
-                // Boot button closes stats allocation
-                log::info!("Boot button pressed - returning to overview");
-                app_state.current_mode = AppMode::HeroOverview;
-                app_state.needs_redraw = true;
             }
             _ => {
                 // Ignore other events

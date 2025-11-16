@@ -40,7 +40,7 @@ mod ui;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::unbounded;
 use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
-use ecs::resources::{AppState, DisplayResource, GameManager, InputEventChannel, SharedI2cResource};
+use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, InputEventChannel, SharedI2cResource};
 use game::WorldMap;
 use esp_idf_svc::hal::gpio::PinDriver;
 use esp_idf_svc::hal::{
@@ -52,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, crafting_system, death_detection_system, death_system, equipment_system, fps_system, hero_overview_system, inventory_system, map_navigation_system, menu_system, render_system, rustymon_list_system, rustymon_detail_system, fragment_collection_system, rustymon_summon_system, stats_allocation_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, button_system, crafting_system, death_detection_system, death_system, equipment_system, fps_system, hero_overview_system, inventory_system, map_navigation_system, menu_system, render_system, rustymon_list_system, rustymon_detail_system, fragment_collection_system, rustymon_summon_system, stats_allocation_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -308,10 +308,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         receiver: input_receiver,
     });
 
+    // Insert pending input events resource (for forwarding events from button_system)
+    world.insert_resource(ecs::resources::PendingInputEvents::default());
+
     // Insert non-send resources (hardware peripherals)
     world.insert_non_send_resource(DisplayResource { display });
     // Note: TouchResource and GpioResource are now owned by the input thread
     // Input events come through the InputEventChannel instead
+
+    // Insert button resource for PWR button state tracking
+    world.insert_non_send_resource(ButtonResource {
+        boot_last_state: false,
+        pwr_last_state: false,
+        boot_debounce: 0,
+        pwr_debounce: 0,
+    });
 
     // Insert shared I2C resource - provides access to the static I2C driver
     // Used by SD card CS pin operations
@@ -326,9 +337,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     world.insert_non_send_resource(game_manager);
 
     // Create schedule and add systems
-    // Order: FPS tracking → Input handlers (Menu/Map/Battle/Hero) → Battle Loading → Animation init → Render → Animation cleanup → Auto-save
+    // Order: FPS tracking → Button handler (MUST run first to consume PWR events) → Input handlers → Render → Auto-save
     // Note: Input now comes from the input thread via channel, consumed by mode-specific systems
     let mut schedule = Schedule::default();
+
+    // Button system MUST run first (sequentially) to consume PWR button events
+    schedule.add_systems(button_system);
+
+    // All other systems run after button_system
+    // Add systems in groups (max 16 per tuple)
     schedule.add_systems((
         fps_system,
         menu_system,
@@ -344,6 +361,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         crafting_system,
         rustymon_list_system, // Rustymon list navigation
         rustymon_detail_system, // Rustymon detail navigation
+    ));
+    schedule.add_systems((
         fragment_collection_system, // Fragment collection navigation
         rustymon_summon_system, // Rustymon summon preview
         animation_init_system,

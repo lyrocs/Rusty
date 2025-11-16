@@ -24,6 +24,51 @@ pub fn render_system(
 ) {
     let display = &mut display_res.display;
 
+    // Handle screen on/off state changes
+    static mut LAST_SCREEN_STATE: bool = true;
+    let screen_state_changed = unsafe {
+        let changed = LAST_SCREEN_STATE != app_state.screen_on;
+        LAST_SCREEN_STATE = app_state.screen_on;
+        changed
+    };
+
+    if screen_state_changed {
+        if app_state.screen_on {
+            // Turn display on
+            if let Err(e) = display.display_on() {
+                log::error!("Failed to turn display on: {:?}", e);
+            }
+        } else {
+            // Turn display off
+            if let Err(e) = display.display_off() {
+                log::error!("Failed to turn display off: {:?}", e);
+            }
+            app_state.needs_redraw = false;
+            return; // Skip rendering
+        }
+    }
+
+    // Skip rendering if screen is off (but still update battle logic if in battle)
+    if !app_state.screen_on {
+        // Battle mode needs to continue updating even when screen is off
+        if app_state.current_mode == AppMode::Battle {
+            if let Some(mut game_manager) = game_manager {
+                if let Some(page) = game_manager.get_current_page(AppMode::Battle) {
+                    // Update battle logic (enemy AI, attacks, status effects)
+                    let page_active = page.update();
+
+                    // Check if battle is done
+                    if !page_active {
+                        info!("Battle completed while screen off, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     match app_state.current_mode {
         AppMode::BattleLoading => {
             // Draw loading screen

@@ -4,7 +4,7 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::input_thread::InputEvent;
 
 /// System to detect hero death in battle and switch to death screen
@@ -57,7 +57,7 @@ pub fn death_detection_system(
 /// System to handle death screen interactions
 pub fn death_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
 ) {
     // Only process in Death mode
@@ -65,16 +65,21 @@ pub fn death_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
-                let x = x as i32;
-                let y = y as i32;
+                let x = *x as i32;
+                let y = *y as i32;
 
                 // Check if we can respawn
                 if let Some(ref death_page) = game_manager.death_page {
@@ -101,10 +106,6 @@ pub fn death_system(
                         app_state.needs_redraw = true;
                     }
                 }
-            }
-            InputEvent::BootPressed => {
-                // Boot button does nothing on death screen (must wait for respawn)
-                log::info!("Cannot use menu while dead - wait for respawn timer");
             }
             _ => {
                 // Ignore other events

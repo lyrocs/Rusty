@@ -4,13 +4,13 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, InputEventChannel, SdCardWrapper};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents, SdCardWrapper};
 use crate::input_thread::InputEvent;
 
 /// System to handle crafting interactions
 pub fn crafting_system(
     mut app_state: ResMut<AppState>,
-    input_channel: Res<InputEventChannel>,
+    pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
     mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
@@ -19,12 +19,17 @@ pub fn crafting_system(
         return;
     }
 
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
 
-    // Process all input events from the channel
-    while let Ok(event) = input_channel.receiver.try_recv() {
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
         match event {
             InputEvent::Touch { x, y } => {
                 log::info!("Crafting touch at ({}, {})", x, y);
@@ -35,7 +40,7 @@ pub fn crafting_system(
                     log::info!("Closing craft success dialog");
                     game_manager.crafting_page.clear_craft_success();
                     app_state.needs_redraw = true;
-                } else if let Some(action) = game_manager.crafting_page.handle_touch(x as i32, y as i32) {
+                } else if let Some(action) = game_manager.crafting_page.handle_touch(*x as i32, *y as i32) {
                     use crate::ui::pages::CraftingAction;
                     match action {
                         CraftingAction::SelectRecipe(index) => {
@@ -92,12 +97,6 @@ pub fn crafting_system(
                         }
                     }
                 }
-            }
-            InputEvent::BootPressed => {
-                // Boot button closes crafting
-                log::info!("Boot button pressed - returning to Map");
-                app_state.current_mode = AppMode::Map;
-                app_state.needs_redraw = true;
             }
             _ => {
                 // Ignore other events
