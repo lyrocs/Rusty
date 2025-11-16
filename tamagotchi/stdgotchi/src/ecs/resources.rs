@@ -8,10 +8,10 @@ use esp_idf_svc::hal::gpio::PinDriver;
 use std::time::Instant;
 
 use crate::display::{Ft3x68Driver, Sh8601Driver};
-use crate::game::{FragmentCollection, Hero, KillTracker, Rustymon, RustymonTeam, WorldMap};
+use crate::game::{FragmentCollection, KillTracker, Rustymon, RustymonTeam, WorldMap};
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, HeroOverviewPage, MapPage, RustymonListPage, RustymonDetailPage, FragmentCollectionPage, RustymonSummonPage};
+use crate::ui::pages::{BattlePage, MapPage, RustymonListPage, RustymonDetailPage, FragmentCollectionPage, RustymonSummonPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource {
@@ -137,16 +137,10 @@ pub struct GameManager {
     pub map_page: MapPage,
     pub battle_page: Option<BattlePage>,
     pub death_page: Option<crate::ui::pages::DeathPage>,
-    pub hero_overview_page: HeroOverviewPage,
-    pub stats_allocation_page: crate::ui::pages::StatsAllocationPage,
-    pub inventory_page: crate::ui::pages::InventoryPage,
-    pub equipment_page: crate::ui::pages::EquipmentPage,
-    pub crafting_page: crate::ui::pages::CraftingPage,
     pub rustymon_list_page: RustymonListPage,
     pub rustymon_detail_page: RustymonDetailPage,
     pub fragment_collection_page: FragmentCollectionPage,
     pub rustymon_summon_page: RustymonSummonPage,
-    pub hero: Hero,
     pub kill_tracker: KillTracker,
     pub game_data: crate::game::GameData, // Game data for items, recipes, etc.
     pub selected_map_id: Option<u32>, // Map selected for battle
@@ -195,16 +189,10 @@ impl GameManager {
             map_page: MapPage::new(world_map, None), // Use embedded map backgrounds
             battle_page: None,
             death_page: None,
-            hero_overview_page: HeroOverviewPage::new(),
-            stats_allocation_page: crate::ui::pages::StatsAllocationPage::new(),
-            inventory_page: crate::ui::pages::InventoryPage::new(),
-            equipment_page: crate::ui::pages::EquipmentPage::new(),
-            crafting_page: crate::ui::pages::CraftingPage::new(),
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
             fragment_collection_page: FragmentCollectionPage::new(),
             rustymon_summon_page: RustymonSummonPage::new(),
-            hero: Hero::new(),
             kill_tracker: KillTracker::new(),
             game_data,
             selected_map_id: None,
@@ -237,16 +225,10 @@ impl GameManager {
             map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
             battle_page: None,
             death_page: None,
-            hero_overview_page: HeroOverviewPage::new(),
-            stats_allocation_page: crate::ui::pages::StatsAllocationPage::new(),
-            inventory_page: crate::ui::pages::InventoryPage::new(),
-            equipment_page: crate::ui::pages::EquipmentPage::new(),
-            crafting_page: crate::ui::pages::CraftingPage::new(),
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
             fragment_collection_page: FragmentCollectionPage::new(),
             rustymon_summon_page: RustymonSummonPage::new(),
-            hero: save_data.hero,
             kill_tracker: save_data.kill_tracker,
             game_data,
             selected_map_id: None,
@@ -281,54 +263,11 @@ impl GameManager {
                     None
                 }
             }
-            AppMode::HeroOverview => Some(&mut self.hero_overview_page as &mut dyn Page),
-            AppMode::StatsAllocation => Some(&mut self.stats_allocation_page as &mut dyn Page),
-            AppMode::Inventory => Some(&mut self.inventory_page as &mut dyn Page),
-            AppMode::Equipment => Some(&mut self.equipment_page as &mut dyn Page),
-            AppMode::Crafting => Some(&mut self.crafting_page as &mut dyn Page),
             AppMode::RustymonList => Some(&mut self.rustymon_list_page as &mut dyn Page),
             AppMode::RustymonDetail => Some(&mut self.rustymon_detail_page as &mut dyn Page),
             AppMode::FragmentCollection => Some(&mut self.fragment_collection_page as &mut dyn Page),
             AppMode::RustymonSummon => Some(&mut self.rustymon_summon_page as &mut dyn Page),
         }
-    }
-
-    /// Handle hero overview page touch input
-    /// Returns the action button that was pressed (if any)
-    pub fn handle_hero_overview_touch(&mut self, x: i32, y: i32) -> Option<crate::ui::pages::hero_overview::ButtonAction> {
-        self.hero_overview_page.handle_touch(x, y)
-    }
-
-    /// Draw hero overview page
-    /// This method borrows both page and hero internally to satisfy the borrow checker
-    pub fn draw_hero_overview(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.hero_overview_page.draw_with_hero(display, &self.hero, full_redraw)
-    }
-
-    /// Draw inventory page with hero and game data
-    pub fn draw_inventory(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.inventory_page.draw_inventory(display, &self.hero, &self.game_data, full_redraw)
-    }
-
-    /// Draw equipment page with hero and game data
-    pub fn draw_equipment(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.equipment_page.draw_equipment(display, &self.hero, &self.game_data, full_redraw)
-    }
-
-    /// Draw crafting page with hero and game data
-    pub fn draw_crafting(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.crafting_page.draw_crafting(display, &self.hero, &self.game_data, full_redraw)
-    }
-
-    /// Handle stats allocation page touch input
-    /// Returns the action button that was pressed (if any)
-    pub fn handle_stats_allocation_touch(&mut self, x: i32, y: i32) -> Option<crate::ui::pages::stats_allocation::ButtonAction> {
-        self.stats_allocation_page.handle_touch(x, y)
-    }
-
-    /// Draw stats allocation page with hero data
-    pub fn draw_stats_allocation(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.stats_allocation_page.draw_with_hero(display, &self.hero, full_redraw)
     }
 
     /// Draw rustymon list page with collection and team data
@@ -373,7 +312,6 @@ impl GameManager {
         // Create save data
         let current_location_id = self.map_page.world_map().current_location_id();
         let save_data = crate::game::SaveData::new(
-            self.hero.clone(),
             self.kill_tracker.clone(),
             current_location_id,
             self.play_time_seconds,
@@ -409,11 +347,10 @@ impl GameManager {
         }
     }
 
-    /// Sync hero, kill tracker, fragments, and Rustymon from battle page back to GameManager
+    /// Sync kill tracker, fragments, and Rustymon from battle page back to GameManager
     /// This ensures battle progress is saved
     pub fn sync_battle_state(&mut self) {
         if let Some(ref mut battle_page) = self.battle_page {
-            self.hero = battle_page.get_hero().clone();
             self.kill_tracker = battle_page.get_kill_tracker().clone();
 
             // Sync Rustymon collection (EXP, levels, HP changes)
@@ -425,8 +362,6 @@ impl GameManager {
             for (enemy_id, _enemy_name) in fragment_drops {
                 self.fragment_collection.add_fragment(enemy_id, 1);
             }
-
-            log::debug!("Synced battle state: Hero Lv{}, {} EXP", self.hero.level, self.hero.exp);
 
             // Log Rustymon sync for debugging
             if let Some(rustymon_id) = self.rustymon_team.get_active_rustymon_id() {
@@ -477,16 +412,6 @@ pub enum AppMode {
     Battle,
     /// Death screen (hero died)
     Death,
-    /// Hero overview and stats
-    HeroOverview,
-    /// Stats allocation screen
-    StatsAllocation,
-    /// Inventory screen
-    Inventory,
-    /// Equipment screen
-    Equipment,
-    /// Crafting screen
-    Crafting,
     /// Rustymon list screen
     RustymonList,
     /// Rustymon detail screen

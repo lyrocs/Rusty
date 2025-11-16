@@ -7,7 +7,7 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-use super::{Hero, KillTracker};
+use super::KillTracker;
 use super::fragment_collection::FragmentCollection;
 use super::rustymon::Rustymon;
 use super::rustymon_team::RustymonTeam;
@@ -17,9 +17,6 @@ use super::rustymon_team::RustymonTeam;
 pub struct SaveData {
     /// Current game version (for migration support)
     pub version: u32,
-
-    /// Hero data (stats, level, job, etc.)
-    pub hero: Hero,
 
     /// Monster kill tracking
     pub kill_tracker: KillTracker,
@@ -48,14 +45,13 @@ pub struct SaveData {
 
 impl SaveData {
     /// Current save data version
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2; // Bumped version for Rustymon-only save format
 
     /// Default save file name
     pub const SAVE_FILE_NAME: &'static str = "stdgotchi_save.json";
 
     /// Create new save data from game state
     pub fn new(
-        hero: Hero,
         kill_tracker: KillTracker,
         current_location_id: u32,
         play_time_seconds: u64,
@@ -65,7 +61,6 @@ impl SaveData {
     ) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
-            hero,
             kill_tracker,
             current_location_id,
             play_time_seconds,
@@ -132,13 +127,11 @@ mod tests {
 
     #[test]
     fn test_save_data_serialization() {
-        let hero = Hero::new();
         let kill_tracker = KillTracker::new();
         let rustymon_collection = Vec::new();
         let rustymon_team = RustymonTeam::new();
         let fragment_collection = FragmentCollection::new();
         let save_data = SaveData::new(
-            hero,
             kill_tracker,
             1,
             3600,
@@ -150,7 +143,7 @@ mod tests {
         // Serialize
         let json = save_data.to_json().unwrap();
         assert!(json.contains("version"));
-        assert!(json.contains("hero"));
+        assert!(json.contains("rustymon_collection"));
 
         // Deserialize
         let loaded = SaveData::from_json(&json).unwrap();

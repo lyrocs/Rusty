@@ -2,7 +2,7 @@
 //!
 //! Handles damage calculations, hit/miss, critical hits, and fragment drops
 
-use super::{Enemy, Hero, Rustymon};
+use super::{Enemy, Rustymon};
 use super::fragment_collection::FragmentCollection;
 use super::element_system::get_element_advantage;
 use super::skill::{Skill, ActiveEffect, TeamPassives, EffectType};
@@ -265,56 +265,6 @@ fn calculate_hit_chance(attacker_hit: u32, defender_flee: u32) -> u32 {
     final_hit as u32
 }
 
-/// Hero attacks enemy
-pub fn hero_attack(hero: &Hero, enemy: &mut Enemy) -> DamageResult {
-    let result = calculate_damage(
-        hero.atk,
-        hero.hit,
-        hero.crit_rate,
-        enemy.def,
-        enemy.flee,
-    );
-    
-    if !result.is_miss {
-        enemy.take_damage(result.damage);
-        log::info!("Hero attacks for {} damage{}", 
-                   result.damage, 
-                   if result.is_critical { " (CRITICAL!)" } else { "" });
-    } else {
-        log::info!("Hero's attack missed!");
-    }
-    
-    result
-}
-
-/// Enemy attacks hero
-pub fn enemy_attack(enemy: &Enemy, hero: &mut Hero) -> DamageResult {
-    let result = calculate_damage(
-        enemy.atk,
-        enemy.hit,
-        5.0,  // Enemies have 5% base crit rate
-        hero.def,
-        hero.flee,
-    );
-
-    if !result.is_miss {
-        hero.take_damage(result.damage);
-        log::info!(
-            "{} attacks for {} damage{}",
-            enemy.name,
-            result.damage,
-            if result.is_critical {
-                " (CRITICAL!)"
-            } else {
-                ""
-            }
-        );
-    } else {
-        log::info!("{}'s attack missed!", enemy.name);
-    }
-
-    result
-}
 
 /// Check for fragment drop when enemy is defeated
 /// Returns FragmentDropResult indicating if a fragment was dropped

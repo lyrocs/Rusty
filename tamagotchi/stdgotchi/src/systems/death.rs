@@ -21,10 +21,10 @@ pub fn death_detection_system(
         return;
     };
 
-    // Check if hero died in battle
+    // Check if Rustymon died in battle
     if let Some(ref battle_page) = game_manager.battle_page {
         if battle_page.hero_died() {
-            log::info!("💀 Hero died! Switching to death screen...");
+            log::info!("💀 Rustymon fainted! Switching to death screen...");
 
             // Sync battle state before switching
             game_manager.sync_battle_state();
@@ -39,8 +39,10 @@ pub fn death_detection_system(
                     }
                     Err(e) => {
                         log::error!("Failed to create death page: {:?}", e);
-                        // Fallback: just reset HP and continue
-                        game_manager.hero.current_hp = game_manager.hero.max_hp / 2;
+                        // Fallback: just reset Rustymon HP and continue
+                        for rustymon in &mut game_manager.rustymon_collection {
+                            rustymon.current_hp = rustymon.max_hp / 2;
+                        }
                     }
                 }
             } else {
@@ -84,10 +86,7 @@ pub fn death_system(
                 // Check if we can respawn
                 if let Some(ref death_page) = game_manager.death_page {
                     if death_page.handle_touch(x, y) {
-                        log::info!("✨ Respawning hero!");
-
-                        // Restore hero HP to full
-                        game_manager.hero.current_hp = game_manager.hero.max_hp;
+                        log::info!("✨ Respawning Rustymon team!");
 
                         // Restore all Rustymon HP to full
                         for rustymon in &mut game_manager.rustymon_collection {

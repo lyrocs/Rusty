@@ -41,12 +41,24 @@ pub fn battle_loading_system(
     // Get game data from world map
     let game_data = game_manager.map_page.world_map().game_data().clone();
 
+    // Check if we have an active Rustymon (required for battle)
+    let active_rustymon_id = game_manager.rustymon_team.get_active_rustymon_id();
+    let active_rustymon = active_rustymon_id.and_then(|id| {
+        game_manager.rustymon_collection.iter().find(|r| &r.id == id)
+    });
+
+    let Some(rustymon) = active_rustymon else {
+        log::error!("No active Rustymon available for battle!");
+        app_state.current_mode = AppMode::Map;
+        app_state.needs_redraw = true;
+        return;
+    };
+
     // Create battle page with background
     let battle_background = include_bytes!("../../assets/images/ui/battle.gif");
     let mut battle_page = match BattlePage::new_with_background(
         battle_background,
         (0, 0),
-        game_manager.hero.clone(),
         game_manager.kill_tracker.clone(),
         game_data,
         game_manager.rustymon_collection.clone(),
@@ -61,7 +73,6 @@ pub fn battle_loading_system(
             let game_data = game_manager.map_page.world_map().game_data().clone();
             BattlePage::new(
                 Rgb888::new(20, 60, 20),
-                game_manager.hero.clone(),
                 game_manager.kill_tracker.clone(),
                 game_data,
                 game_manager.rustymon_collection.clone(),
@@ -72,100 +83,35 @@ pub fn battle_loading_system(
         }
     };
 
-    // Check if we have an active Rustymon to use instead of hero
-    let active_rustymon_id = game_manager.rustymon_team.get_active_rustymon_id();
-    let active_rustymon = active_rustymon_id.and_then(|id| {
-        game_manager.rustymon_collection.iter().find(|r| &r.id == id)
-    });
+    // Load Rustymon sprites
+    log::info!("Loading Rustymon sprites for: {} (species {})", rustymon.name, rustymon.species_id);
 
-    if let Some(rustymon) = active_rustymon {
-        // Use Rustymon sprites
-        log::info!("Loading Rustymon sprites for: {} (species {})", rustymon.name, rustymon.species_id);
-
-        // Load sprites based on species_id (use embedded sprites)
-        use crate::assets::battle::load_enemy_sprites_embedded;
-        if let Some((idle, attack, attacked, death)) = load_enemy_sprites_embedded(rustymon.species_id) {
+    // Load sprites based on species_id (use embedded sprites)
+    use crate::assets::battle::load_enemy_sprites_embedded;
+    if let Some((idle, attack, attacked, _death)) = load_enemy_sprites_embedded(rustymon.species_id) {
+        battle_page
+            .add_hero(
+                &idle,
+                &attack,
+                &attacked,
+                (175, 170),
+                (0, 0), // Center attack position for Rustymon
+            )
+            .ok();
+    } else {
+        log::error!("Failed to load Rustymon sprites for species {}, using poring fallback", rustymon.species_id);
+        // Fallback to poring sprites (always available)
+        if let Some((idle, attack, attacked, _death)) = load_enemy_sprites_embedded(1002) {
             battle_page
                 .add_hero(
                     &idle,
                     &attack,
                     &attacked,
                     (175, 170),
-                    (0, 0), // Center attack position for Rustymon
-                )
-                .ok();
-        } else {
-            log::warn!("Failed to load Rustymon sprites for species {}, using hero sprites", rustymon.species_id);
-            // Fallback to hero sprites
-            let hero_job = game_manager.hero.job;
-            let (hero_idle, hero_attack, hero_attacked, attack_offset): (&[u8], &[u8], &[u8], (i32, i32)) =
-                match hero_job {
-                    crate::game::Job::Novice => (
-                        include_bytes!("../../assets/images/novice/32.gif"),
-                        include_bytes!("../../assets/images/novice/80.gif"),
-                        include_bytes!("../../assets/images/novice/48.gif"),
-                        (-40, 10),
-                    ),
-                    crate::game::Job::Swordsman => (
-                        include_bytes!("../../assets/images/swordman/32.gif"),
-                        include_bytes!("../../assets/images/swordman/80.gif"),
-                        include_bytes!("../../assets/images/swordman/48.gif"),
-                        (-20, -35),
-                    ),
-                    crate::game::Job::Knight => (
-                        include_bytes!("../../assets/images/knight/32.gif"),
-                        include_bytes!("../../assets/images/knight/80.gif"),
-                        include_bytes!("../../assets/images/knight/48.gif"),
-                        (10, 20),
-                    ),
-                };
-
-            battle_page
-                .add_hero(
-                    hero_idle,
-                    hero_attack,
-                    hero_attacked,
-                    (175, 170),
-                    attack_offset,
+                    (0, 0),
                 )
                 .ok();
         }
-    } else {
-        // No active Rustymon, use hero sprites
-        let hero_job = game_manager.hero.job;
-        log::info!("Loading hero sprites for job: {}", hero_job.name());
-
-        let (hero_idle, hero_attack, hero_attacked, attack_offset): (&[u8], &[u8], &[u8], (i32, i32)) =
-            match hero_job {
-                crate::game::Job::Novice => (
-                    include_bytes!("../../assets/images/novice/32.gif"),
-                    include_bytes!("../../assets/images/novice/80.gif"),
-                    include_bytes!("../../assets/images/novice/48.gif"),
-                    (-40, 10),
-                ),
-                crate::game::Job::Swordsman => (
-                    include_bytes!("../../assets/images/swordman/32.gif"),
-                    include_bytes!("../../assets/images/swordman/80.gif"),
-                    include_bytes!("../../assets/images/swordman/48.gif"),
-                    (-20, -35),
-                ),
-                crate::game::Job::Knight => (
-                    include_bytes!("../../assets/images/knight/32.gif"),
-                    include_bytes!("../../assets/images/knight/80.gif"),
-                    include_bytes!("../../assets/images/knight/48.gif"),
-                    (10, 20),
-                ),
-            };
-
-        battle_page
-            .add_hero(
-                hero_idle,
-                hero_attack,
-                hero_attacked,
-                (175, 170),
-                attack_offset,
-            )
-            .ok();
     }
 
     // Add enemy by ID

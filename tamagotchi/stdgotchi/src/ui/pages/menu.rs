@@ -19,9 +19,6 @@ use crate::ui::page::Page;
 pub enum MenuAction {
     Map,
     Battle,
-    Overview,
-    Inventory,
-    Equipment,
     Rustymon,
     Fragments,
 }
@@ -81,12 +78,12 @@ impl MenuPage {
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         Text::new("MENU", Point::new(150, 40), title_style).draw(display)?;
 
-        // Button dimensions (adjusted for 7 buttons)
+        // Button dimensions (adjusted for 4 buttons)
         let button_width = 280u32;
-        let button_height = 45u32;
+        let button_height = 55u32;
         let button_x = (368 - button_width) as i32 / 2; // Center horizontally
-        let start_y = 60i32;
-        let spacing = 53i32;
+        let start_y = 80i32;
+        let spacing = 80i32;
 
         // Draw Map button
         self.draw_button(
@@ -114,50 +111,11 @@ impl MenuPage {
             MenuAction::Battle,
         )?;
 
-        // Draw Overview button
-        self.draw_button(
-            display,
-            button_x,
-            start_y + spacing * 2,
-            button_width,
-            button_height,
-            "HERO",
-            "View stats & items",
-            Rgb888::new(40, 120, 60),
-            MenuAction::Overview,
-        )?;
-
-        // Draw Inventory button
-        self.draw_button(
-            display,
-            button_x,
-            start_y + spacing * 3,
-            button_width,
-            button_height,
-            "INVENTORY",
-            "Items & materials",
-            Rgb888::new(80, 60, 100),
-            MenuAction::Inventory,
-        )?;
-
-        // Draw Equipment button
-        self.draw_button(
-            display,
-            button_x,
-            start_y + spacing * 4,
-            button_width,
-            button_height,
-            "EQUIPMENT",
-            "Manage gear",
-            Rgb888::new(100, 80, 40),
-            MenuAction::Equipment,
-        )?;
-
         // Draw Rustymon button
         self.draw_button(
             display,
             button_x,
-            start_y + spacing * 5,
+            start_y + spacing * 2,
             button_width,
             button_height,
             "RUSTYMON",
@@ -170,7 +128,7 @@ impl MenuPage {
         self.draw_button(
             display,
             button_x,
-            start_y + spacing * 6,
+            start_y + spacing * 3,
             button_width,
             button_height,
             "FRAGMENTS",
