@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use super::skill::RustymonSkills;
+use super::data_loader::get_exp_to_next_level;
 
 /// Element types for Rustymon and enemies
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,7 +170,7 @@ impl Rustymon {
 
     /// Calculate experience needed for next level
     fn calculate_exp_to_next(level: u32) -> u32 {
-        level.pow(2) * 100
+        get_exp_to_next_level(level)
     }
 
     /// Recalculate all derived stats based on base stats and level

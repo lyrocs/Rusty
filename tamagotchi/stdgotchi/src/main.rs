@@ -237,6 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load game data (maps, enemies, etc.)
     log::info!("Loading game data...");
+    game::init_exp_table(); // Initialize global exp table for Rustymon
     let game_data = game::GameData::load_from_assets()
         .expect("Failed to load game data");
     log::info!("Game data loaded successfully");

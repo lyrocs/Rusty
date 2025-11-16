@@ -124,12 +124,20 @@ impl Direction {
     }
 }
 
+/// Experience table entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpTableEntry {
+    pub level: u32,
+    pub exp: u32,
+}
+
 /// Centralized game data
 #[derive(Debug, Clone)]
 pub struct GameData {
     pub maps: HashMap<u32, MapData>,
     pub enemies: HashMap<u32, EnemyData>,
     pub skills: HashMap<u32, Skill>,
+    pub exp_table: HashMap<u32, u32>, // level -> exp to next level
 }
 
 impl GameData {
@@ -162,10 +170,20 @@ impl GameData {
         }
         log::info!("Loaded {} skills", skills.len());
 
+        // Load exp table
+        let exp_table_json = include_str!("../../assets/data/exp_table.json");
+        let exp_table_vec: Vec<ExpTableEntry> = serde_json::from_str(exp_table_json)?;
+        let mut exp_table = HashMap::new();
+        for entry in exp_table_vec {
+            exp_table.insert(entry.level, entry.exp);
+        }
+        log::info!("Loaded exp table for {} levels", exp_table.len());
+
         Ok(Self {
             maps,
             enemies,
             skills,
+            exp_table,
         })
     }
 
@@ -214,4 +232,39 @@ impl GameData {
     pub fn get_learnable_skills(&self, species_id: u32) -> Option<&Vec<LearnableSkill>> {
         self.get_enemy(species_id).map(|e| &e.learnable_skills)
     }
+
+    /// Get exp needed for next level from the exp table
+    pub fn get_exp_for_level(&self, level: u32) -> u32 {
+        // Return exp from table, or 0 if at max level (99) or level not found
+        *self.exp_table.get(&level).unwrap_or(&0)
+    }
+}
+
+// Global exp table for use by Rustymon without needing GameData reference
+use std::sync::OnceLock;
+
+static EXP_TABLE: OnceLock<HashMap<u32, u32>> = OnceLock::new();
+
+/// Initialize the global exp table (call once at startup)
+pub fn init_exp_table() {
+    let exp_table_json = include_str!("../../assets/data/exp_table.json");
+    if let Ok(exp_table_vec) = serde_json::from_str::<Vec<ExpTableEntry>>(exp_table_json) {
+        let mut table = HashMap::new();
+        for entry in exp_table_vec {
+            table.insert(entry.level, entry.exp);
+        }
+        let _ = EXP_TABLE.set(table);
+        log::info!("Initialized global exp table");
+    }
+}
+
+/// Get exp needed for next level (global accessor)
+pub fn get_exp_to_next_level(level: u32) -> u32 {
+    EXP_TABLE
+        .get()
+        .and_then(|table| table.get(&level).copied())
+        .unwrap_or_else(|| {
+            // Fallback to formula if table not initialized (shouldn't happen)
+            level.pow(2) * 100
+        })
 }
