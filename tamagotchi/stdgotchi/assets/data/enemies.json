@@ -25,29 +25,6 @@
       {"skill_id": 28, "learn_level": 15},
       {"skill_id": 29, "learn_level": 20},
       {"skill_id": 30, "learn_level": 25}
-    ],
-    "drops": [
-      {
-        "item_id": 901,
-        "name": "Jellopy",
-        "drop_rate": 150,
-        "min_quantity": 1,
-        "max_quantity": 2
-      },
-      {
-        "item_id": 910,
-        "name": "Sticky Mucus",
-        "drop_rate": 80,
-        "min_quantity": 1,
-        "max_quantity": 1
-      },
-      {
-        "item_id": 903,
-        "name": "Oridecon",
-        "drop_rate": 5,
-        "min_quantity": 1,
-        "max_quantity": 1
-      }
     ]
   },
   {
@@ -76,29 +53,6 @@
       {"skill_id": 28, "learn_level": 15},
       {"skill_id": 2, "learn_level": 20},
       {"skill_id": 30, "learn_level": 30}
-    ],
-    "drops": [
-      {
-        "item_id": 905,
-        "name": "Fabric",
-        "drop_rate": 180,
-        "min_quantity": 1,
-        "max_quantity": 2
-      },
-      {
-        "item_id": 909,
-        "name": "Feather",
-        "drop_rate": 120,
-        "min_quantity": 1,
-        "max_quantity": 3
-      },
-      {
-        "item_id": 904,
-        "name": "Elunium",
-        "drop_rate": 10,
-        "min_quantity": 1,
-        "max_quantity": 1
-      }
     ]
   },
   {
@@ -127,29 +81,6 @@
       {"skill_id": 13, "learn_level": 18},
       {"skill_id": 28, "learn_level": 25},
       {"skill_id": 15, "learn_level": 35}
-    ],
-    "drops": [
-      {
-        "item_id": 902,
-        "name": "Iron Ore",
-        "drop_rate": 200,
-        "min_quantity": 1,
-        "max_quantity": 2
-      },
-      {
-        "item_id": 907,
-        "name": "Coal",
-        "drop_rate": 100,
-        "min_quantity": 1,
-        "max_quantity": 1
-      },
-      {
-        "item_id": 903,
-        "name": "Oridecon",
-        "drop_rate": 20,
-        "min_quantity": 1,
-        "max_quantity": 1
-      }
     ]
   },
   {
@@ -178,29 +109,6 @@
       {"skill_id": 21, "learn_level": 22},
       {"skill_id": 29, "learn_level": 30},
       {"skill_id": 30, "learn_level": 40}
-    ],
-    "drops": [
-      {
-        "item_id": 906,
-        "name": "Leather",
-        "drop_rate": 220,
-        "min_quantity": 1,
-        "max_quantity": 2
-      },
-      {
-        "item_id": 908,
-        "name": "Crystal Fragment",
-        "drop_rate": 80,
-        "min_quantity": 1,
-        "max_quantity": 1
-      },
-      {
-        "item_id": 904,
-        "name": "Elunium",
-        "drop_rate": 30,
-        "min_quantity": 1,
-        "max_quantity": 1
-      }
     ]
   }
 ]

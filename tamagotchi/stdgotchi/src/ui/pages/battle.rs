@@ -1729,16 +1729,8 @@ impl Page for BattlePage {
 
                         self.kill_tracker.record_kill(enemy_id, &enemy_name);
 
-                        // Process item drops (fragments only, no inventory)
+                        // Process fragment drops
                         if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
-                            // Log any configured drops (for debugging)
-                            for drop in &enemy_data.drops {
-                                if drop.should_drop() {
-                                    let quantity = drop.random_quantity();
-                                    log::info!("🎁 Drop: {} x{} (not collected - inventory removed)", drop.name, quantity);
-                                }
-                            }
-
                             // Check for fragment drop
                             use rand::Rng;
                             let mut rng = rand::thread_rng();

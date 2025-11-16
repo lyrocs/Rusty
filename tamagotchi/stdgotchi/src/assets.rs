@@ -17,8 +17,6 @@ pub enum AssetType {
     Map,
     /// UI elements (menu, battle background, etc.)
     UI,
-    /// Items
-    Item,
 }
 
 /// Sprite action types
@@ -62,8 +60,6 @@ pub enum AssetId {
     MapBackground(u32),
     /// UI element
     UIElement(&'static str),
-    /// Item
-    ItemSprite(u16),
 }
 
 impl AssetId {
@@ -93,9 +89,6 @@ impl AssetId {
             }
             AssetId::UIElement(name) => {
                 format!("/SPRITES/UI/{}.GIF", name.to_uppercase())
-            }
-            AssetId::ItemSprite(id) => {
-                format!("/SPRITES/ITEM/{}.GIF", id)
             }
         }
     }

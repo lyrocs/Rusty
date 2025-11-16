@@ -620,7 +620,6 @@ impl MapPage {
         let text_style_header = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         let text_style_name = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         let text_style_info = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
-        let text_style_drops = MonoTextStyle::new(&FONT_10X20, Rgb888::new(100, 200, 100));
 
         // Get map data
         let map_data = match self.world_map.get_location(map_id) {
@@ -735,19 +734,7 @@ impl MapPage {
                 let mut hp_text = heapless::String::<24>::new();
                 write!(hp_text, "HP: ~{}", enemy_data.hp).ok();
                 Text::new(&hp_text, Point::new(info_x, current_y), text_style_info).draw(display)?;
-                current_y += 18;
-
-                // Line 4: Drops (show first drop with rate)
-                if !enemy_data.drops.is_empty() {
-                    let drop = &enemy_data.drops[0];
-                    if let Some(item_data) = self.world_map.game_data().get_item(drop.item_id) {
-                        let mut drop_text = heapless::String::<32>::new();
-                        // Convert per-mille (0-1000) to percentage (0-100) by dividing by 10
-                        let drop_rate_percent = drop.drop_rate / 10;
-                        write!(drop_text, "Drops: {} ({}%)", item_data.name, drop_rate_percent).ok();
-                        Text::new(&drop_text, Point::new(info_x, current_y), text_style_drops).draw(display)?;
-                    }
-                }
+                let _ = current_y; // Silence unused variable warning
             }
         }
 

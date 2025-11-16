@@ -1,8 +1,7 @@
 //! Game Data Loader
 //!
-//! Centralized JSON data loading for maps, enemies, items, etc.
+//! Centralized JSON data loading for maps, enemies, etc.
 
-use super::item::{ItemData, ItemDrop, Recipe, UpgradeRecipe};
 use super::rustymon::Element;
 use super::skill::{Skill, LearnableSkill};
 use serde::{Deserialize, Serialize};
@@ -32,7 +31,6 @@ pub struct EnemyData {
     pub element: String, // Will be parsed to Element enum
     pub fragment_drop_rate: f32,
     pub fragments_required: u32,
-    pub drops: Vec<ItemDrop>,
     #[serde(default)]
     pub learnable_skills: Vec<LearnableSkill>,
 }
@@ -126,42 +124,11 @@ impl Direction {
     }
 }
 
-/// Items JSON structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ItemsJson {
-    materials: Vec<ItemData>,
-    equipment: Vec<ItemData>,
-}
-
-/// Recipes JSON structure (by city)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RecipesJson {
-    prontera: Vec<Recipe>,
-    #[serde(default)]
-    payon: Vec<Recipe>,
-    #[serde(default)]
-    geffen: Vec<Recipe>,
-}
-
-/// Upgrade recipes JSON structure (by equipment type)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct UpgradeRecipesJson {
-    weapon_upgrades: Vec<UpgradeRecipe>,
-    armor_upgrades: Vec<UpgradeRecipe>,
-    shoes_upgrades: Vec<UpgradeRecipe>,
-    garment_upgrades: Vec<UpgradeRecipe>,
-    accessory_upgrades: Vec<UpgradeRecipe>,
-    headgear_upgrades: Vec<UpgradeRecipe>,
-}
-
 /// Centralized game data
 #[derive(Debug, Clone)]
 pub struct GameData {
     pub maps: HashMap<u32, MapData>,
     pub enemies: HashMap<u32, EnemyData>,
-    pub items: HashMap<u32, ItemData>,
-    pub recipes_by_city: HashMap<String, Vec<Recipe>>,
-    pub upgrade_recipes: HashMap<String, Vec<UpgradeRecipe>>,
     pub skills: HashMap<u32, Skill>,
 }
 
@@ -186,37 +153,6 @@ impl GameData {
         }
         log::info!("Loaded {} enemies", enemies.len());
 
-        // Load items
-        let items_json = include_str!("../../assets/data/items.json");
-        let items_data: ItemsJson = serde_json::from_str(items_json)?;
-        let mut items = HashMap::new();
-        for item in items_data.materials.into_iter().chain(items_data.equipment.into_iter()) {
-            items.insert(item.id, item);
-        }
-        log::info!("Loaded {} items", items.len());
-
-        // Load recipes
-        let recipes_json = include_str!("../../assets/data/recipes.json");
-        let recipes_data: RecipesJson = serde_json::from_str(recipes_json)?;
-        let mut recipes_by_city = HashMap::new();
-        recipes_by_city.insert("prontera".to_string(), recipes_data.prontera);
-        recipes_by_city.insert("payon".to_string(), recipes_data.payon);
-        recipes_by_city.insert("geffen".to_string(), recipes_data.geffen);
-        let total_recipes: usize = recipes_by_city.values().map(|r| r.len()).sum();
-        log::info!("Loaded {} recipes across {} cities", total_recipes, recipes_by_city.len());
-
-        // Load upgrade recipes
-        let upgrade_json = include_str!("../../assets/data/upgrade_recipes.json");
-        let upgrade_data: UpgradeRecipesJson = serde_json::from_str(upgrade_json)?;
-        let mut upgrade_recipes = HashMap::new();
-        upgrade_recipes.insert("weapon".to_string(), upgrade_data.weapon_upgrades);
-        upgrade_recipes.insert("armor".to_string(), upgrade_data.armor_upgrades);
-        upgrade_recipes.insert("shoes".to_string(), upgrade_data.shoes_upgrades);
-        upgrade_recipes.insert("garment".to_string(), upgrade_data.garment_upgrades);
-        upgrade_recipes.insert("accessory".to_string(), upgrade_data.accessory_upgrades);
-        upgrade_recipes.insert("headgear".to_string(), upgrade_data.headgear_upgrades);
-        log::info!("Loaded upgrade recipes for {} equipment types", upgrade_recipes.len());
-
         // Load skills
         let skills_json = include_str!("../../assets/data/skills.json");
         let skills_vec: Vec<Skill> = serde_json::from_str(skills_json)?;
@@ -229,9 +165,6 @@ impl GameData {
         Ok(Self {
             maps,
             enemies,
-            items,
-            recipes_by_city,
-            upgrade_recipes,
             skills,
         })
     }
@@ -265,35 +198,6 @@ impl GameData {
         } else {
             None
         }
-    }
-
-    /// Get item data by ID
-    pub fn get_item(&self, id: u32) -> Option<&ItemData> {
-        self.items.get(&id)
-    }
-
-    /// Get recipes for a specific city
-    pub fn get_recipes_for_city(&self, city: &str) -> Option<&Vec<Recipe>> {
-        self.recipes_by_city.get(city)
-    }
-
-    /// Get upgrade recipe for equipment type and level
-    pub fn get_upgrade_recipe(&self, equipment_type: &str, from_level: u32) -> Option<&UpgradeRecipe> {
-        if let Some(recipes) = self.upgrade_recipes.get(equipment_type) {
-            recipes.iter().find(|r| r.from_level == from_level)
-        } else {
-            None
-        }
-    }
-
-    /// Get all item data (for inventory display)
-    pub fn get_all_items(&self) -> &HashMap<u32, ItemData> {
-        &self.items
-    }
-
-    /// Get all upgrade recipes
-    pub fn get_upgrade_recipes(&self) -> &HashMap<String, Vec<UpgradeRecipe>> {
-        &self.upgrade_recipes
     }
 
     /// Get skill by ID
