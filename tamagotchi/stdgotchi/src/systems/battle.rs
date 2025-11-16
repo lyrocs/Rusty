@@ -53,6 +53,10 @@ pub fn battle_system(
                                 }
                                 app_state.needs_redraw = true;
                             }
+                            BattleAction::ToggleAuto => {
+                                battle_page.toggle_auto();
+                                app_state.needs_redraw = true;
+                            }
                         }
                     }
                 }

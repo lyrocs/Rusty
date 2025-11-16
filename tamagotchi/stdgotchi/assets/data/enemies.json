@@ -19,12 +19,12 @@
     "vit": 1,
     "luk": 30,
     "learnable_skills": [
-      {"skill_id": 1, "learn_level": 1},
-      {"skill_id": 2, "learn_level": 5},
-      {"skill_id": 3, "learn_level": 10},
-      {"skill_id": 28, "learn_level": 15},
-      {"skill_id": 29, "learn_level": 20},
-      {"skill_id": 30, "learn_level": 25}
+      { "skill_id": 1, "learn_level": 1 },
+      { "skill_id": 2, "learn_level": 5 },
+      { "skill_id": 3, "learn_level": 10 },
+      { "skill_id": 28, "learn_level": 15 },
+      { "skill_id": 29, "learn_level": 20 },
+      { "skill_id": 30, "learn_level": 25 }
     ]
   },
   {
@@ -47,12 +47,12 @@
     "vit": 4,
     "luk": 5,
     "learnable_skills": [
-      {"skill_id": 5, "learn_level": 1},
-      {"skill_id": 4, "learn_level": 5},
-      {"skill_id": 6, "learn_level": 10},
-      {"skill_id": 28, "learn_level": 15},
-      {"skill_id": 2, "learn_level": 20},
-      {"skill_id": 30, "learn_level": 30}
+      { "skill_id": 5, "learn_level": 1 },
+      { "skill_id": 4, "learn_level": 5 },
+      { "skill_id": 6, "learn_level": 10 },
+      { "skill_id": 28, "learn_level": 15 },
+      { "skill_id": 2, "learn_level": 20 },
+      { "skill_id": 30, "learn_level": 30 }
     ]
   },
   {
@@ -66,7 +66,7 @@
     "flee": 100,
     "base_exp": 19,
     "element": "wind",
-    "fragment_drop_rate": 0.03,
+    "fragment_drop_rate": 0.2,
     "fragments_required": 12,
     "str": 6,
     "agi": 20,
@@ -75,12 +75,12 @@
     "vit": 8,
     "luk": 5,
     "learnable_skills": [
-      {"skill_id": 10, "learn_level": 1},
-      {"skill_id": 11, "learn_level": 5},
-      {"skill_id": 12, "learn_level": 12},
-      {"skill_id": 13, "learn_level": 18},
-      {"skill_id": 28, "learn_level": 25},
-      {"skill_id": 15, "learn_level": 35}
+      { "skill_id": 10, "learn_level": 1 },
+      { "skill_id": 11, "learn_level": 5 },
+      { "skill_id": 12, "learn_level": 12 },
+      { "skill_id": 13, "learn_level": 18 },
+      { "skill_id": 28, "learn_level": 25 },
+      { "skill_id": 15, "learn_level": 35 }
     ]
   },
   {
@@ -94,7 +94,7 @@
     "flee": 92,
     "base_exp": 17,
     "element": "neutral",
-    "fragment_drop_rate": 0.02,
+    "fragment_drop_rate": 0.2,
     "fragments_required": 20,
     "str": 1,
     "agi": 6,
@@ -103,12 +103,12 @@
     "vit": 6,
     "luk": 0,
     "learnable_skills": [
-      {"skill_id": 28, "learn_level": 1},
-      {"skill_id": 19, "learn_level": 8},
-      {"skill_id": 20, "learn_level": 15},
-      {"skill_id": 21, "learn_level": 22},
-      {"skill_id": 29, "learn_level": 30},
-      {"skill_id": 30, "learn_level": 40}
+      { "skill_id": 28, "learn_level": 1 },
+      { "skill_id": 19, "learn_level": 8 },
+      { "skill_id": 20, "learn_level": 15 },
+      { "skill_id": 21, "learn_level": 22 },
+      { "skill_id": 29, "learn_level": 30 },
+      { "skill_id": 30, "learn_level": 40 }
     ]
   }
 ]

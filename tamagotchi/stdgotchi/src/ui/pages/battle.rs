@@ -271,6 +271,7 @@ impl DamageNumber {
 pub enum BattleAction {
     SwitchRustymon(usize), // Switch to team slot index
     UseSkill(u32), // Use skill with given ID
+    ToggleAuto, // Toggle auto-skill mode
 }
 
 /// Touch area for battle interactions
@@ -331,6 +332,10 @@ pub struct BattlePage {
 
     // Battle state for skill effects
     battle_state: BattleState,
+
+    // Auto-battle mode
+    auto_mode: bool,
+    last_auto_skill_check: Instant,
 }
 
 impl BattlePage {
@@ -376,6 +381,8 @@ impl BattlePage {
             fragment_notification: None,
             touch_areas: Vec::new(),
             battle_state: BattleState::default(),
+            auto_mode: false,
+            last_auto_skill_check: Instant::now(),
         }
     }
 
@@ -426,6 +433,8 @@ impl BattlePage {
             fragment_notification: None,
             touch_areas: Vec::new(),
             battle_state: BattleState::default(),
+            auto_mode: false,
+            last_auto_skill_check: Instant::now(),
         })
     }
 
@@ -479,6 +488,62 @@ impl BattlePage {
             }
         }
         None
+    }
+
+    /// Toggle auto-battle mode
+    pub fn toggle_auto(&mut self) {
+        self.auto_mode = !self.auto_mode;
+        log::info!("Auto-battle mode: {}", if self.auto_mode { "ON" } else { "OFF" });
+    }
+
+    /// Check if auto mode is enabled
+    pub fn is_auto_mode(&self) -> bool {
+        self.auto_mode
+    }
+
+    /// Auto-use available skills (called during update when auto mode is enabled)
+    fn auto_use_skills(&mut self) {
+        // Only check every 500ms to avoid spam
+        if self.last_auto_skill_check.elapsed().as_millis() < 500 {
+            return;
+        }
+        self.last_auto_skill_check = Instant::now();
+
+        // Get active Rustymon
+        let active_id = self.rustymon_team.get_active_rustymon_id().cloned();
+        let Some(active_id) = active_id else {
+            return;
+        };
+
+        // Find rustymon and check for available skills
+        let rustymon = self.rustymon_collection.iter().find(|r| r.id == active_id);
+        let Some(rustymon) = rustymon else {
+            return;
+        };
+
+        // Find first enabled active skill that's not on cooldown
+        let enabled_skills = rustymon.skills.enabled_skills.clone();
+        let cooldowns = rustymon.skills.cooldowns.clone();
+
+        for &skill_id_opt in &enabled_skills {
+            if let Some(skill_id) = skill_id_opt {
+                // Check if skill is active (not passive)
+                if let Some(skill) = self.game_data.get_skill(skill_id) {
+                    if skill.is_active() {
+                        // Check if not on cooldown
+                        let cooldown_turns = cooldowns.get(&skill_id).copied().unwrap_or(0);
+                        if cooldown_turns == 0 {
+                            // Use this skill
+                            log::info!("Auto-using skill: {}", skill.name);
+                            if let Err(e) = self.use_skill(skill_id) {
+                                log::error!("Auto-skill failed: {:?}", e);
+                            }
+                            return; // Only use one skill per check
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Use a skill with the active Rustymon
@@ -1508,10 +1573,65 @@ impl BattlePage {
 
         Ok(())
     }
+
+    /// Draw auto-battle toggle button
+    fn draw_auto_button(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        // Auto button position - top left corner
+        let button_x = 10;
+        let button_y = 10;
+        let button_width = 80u32;
+        let button_height = 30u32;
+
+        // Button color based on auto mode state
+        let (bg_color, border_color, text_color) = if self.auto_mode {
+            (
+                Rgb888::new(40, 120, 40), // Green background when ON
+                Rgb888::new(80, 200, 80),
+                Rgb888::WHITE,
+            )
+        } else {
+            (
+                Rgb888::new(60, 60, 60), // Gray background when OFF
+                Rgb888::new(100, 100, 100),
+                Rgb888::new(180, 180, 180),
+            )
+        };
+
+        // Draw button background
+        Rectangle::new(
+            Point::new(button_x, button_y),
+            Size::new(button_width, button_height),
+        )
+        .into_styled(
+            embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                .fill_color(bg_color)
+                .stroke_color(border_color)
+                .stroke_width(2)
+                .build(),
+        )
+        .draw(display)?;
+
+        // Draw button text
+        let text_style = MonoTextStyle::new(&FONT_10X20, text_color);
+        let text = if self.auto_mode { "AUTO:ON" } else { "AUTO:OFF" };
+        Text::new(text, Point::new(button_x + 6, button_y + 20), text_style).draw(display)?;
+
+        // Add touch area
+        self.touch_areas.push(TouchArea {
+            bounds: (button_x, button_y, button_width, button_height),
+            action: BattleAction::ToggleAuto,
+        });
+
+        Ok(())
+    }
 }
 
 impl Page for BattlePage {
     fn update(&mut self) -> bool {
+        // Auto-use skills if auto mode is enabled
+        if self.auto_mode {
+            self.auto_use_skills();
+        }
         // Check for attacks and update animations
         // Only allow attacks if target is alive
         let enemy_is_alive = self.enemy.as_ref().map_or(false, |e| !e.is_dead);
@@ -2053,6 +2173,9 @@ impl Page for BattlePage {
 
         // Draw skill buttons (above team buttons)
         self.draw_skill_buttons(display)?;
+
+        // Draw auto-battle toggle button
+        self.draw_auto_button(display)?;
 
         // Draw team Rustymon buttons at bottom
         self.draw_team_buttons(display)?;
