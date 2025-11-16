@@ -27,5 +27,5 @@ pub use menu::menu_system;
 pub use render::render_system;
 pub use rustymon_navigation::{
     fragment_collection_system, rustymon_detail_system, rustymon_list_system,
-    rustymon_summon_system,
+    rustymon_skills_system, rustymon_summon_system,
 };

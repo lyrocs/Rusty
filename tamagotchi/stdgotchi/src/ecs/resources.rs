@@ -11,7 +11,7 @@ use crate::display::{Ft3x68Driver, Sh8601Driver};
 use crate::game::{FragmentCollection, KillTracker, Rustymon, RustymonTeam, WorldMap};
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, MapPage, RustymonListPage, RustymonDetailPage, FragmentCollectionPage, RustymonSummonPage};
+use crate::ui::pages::{BattlePage, MapPage, RustymonListPage, RustymonDetailPage, RustymonSkillsPage, FragmentCollectionPage, RustymonSummonPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource {
@@ -139,6 +139,7 @@ pub struct GameManager {
     pub death_page: Option<crate::ui::pages::DeathPage>,
     pub rustymon_list_page: RustymonListPage,
     pub rustymon_detail_page: RustymonDetailPage,
+    pub rustymon_skills_page: RustymonSkillsPage,
     pub fragment_collection_page: FragmentCollectionPage,
     pub rustymon_summon_page: RustymonSummonPage,
     pub kill_tracker: KillTracker,
@@ -191,6 +192,7 @@ impl GameManager {
             death_page: None,
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
+            rustymon_skills_page: RustymonSkillsPage::new(),
             fragment_collection_page: FragmentCollectionPage::new(),
             rustymon_summon_page: RustymonSummonPage::new(),
             kill_tracker: KillTracker::new(),
@@ -227,6 +229,7 @@ impl GameManager {
             death_page: None,
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
+            rustymon_skills_page: RustymonSkillsPage::new(),
             fragment_collection_page: FragmentCollectionPage::new(),
             rustymon_summon_page: RustymonSummonPage::new(),
             kill_tracker: save_data.kill_tracker,
@@ -265,6 +268,7 @@ impl GameManager {
             }
             AppMode::RustymonList => Some(&mut self.rustymon_list_page as &mut dyn Page),
             AppMode::RustymonDetail => Some(&mut self.rustymon_detail_page as &mut dyn Page),
+            AppMode::RustymonSkills => Some(&mut self.rustymon_skills_page as &mut dyn Page),
             AppMode::FragmentCollection => Some(&mut self.fragment_collection_page as &mut dyn Page),
             AppMode::RustymonSummon => Some(&mut self.rustymon_summon_page as &mut dyn Page),
         }
@@ -281,6 +285,18 @@ impl GameManager {
         if let Some(index) = self.selected_rustymon_index {
             if let Some(rustymon) = self.rustymon_collection.get(index) {
                 return self.rustymon_detail_page.draw_rustymon_detail(display, rustymon, &self.rustymon_team, &self.game_data, full_redraw);
+            }
+        }
+        // If no rustymon selected, just clear the screen
+        Ok(())
+    }
+
+    /// Draw rustymon skills page
+    pub fn draw_rustymon_skills(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        // Get the selected rustymon
+        if let Some(index) = self.selected_rustymon_index {
+            if let Some(rustymon) = self.rustymon_collection.get(index) {
+                return self.rustymon_skills_page.draw_skills(display, rustymon, &self.game_data, full_redraw);
             }
         }
         // If no rustymon selected, just clear the screen
@@ -416,6 +432,8 @@ pub enum AppMode {
     RustymonList,
     /// Rustymon detail screen
     RustymonDetail,
+    /// Rustymon skills screen
+    RustymonSkills,
     /// Fragment collection screen
     FragmentCollection,
     /// Rustymon summon preview screen

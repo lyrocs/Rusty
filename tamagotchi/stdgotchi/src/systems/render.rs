@@ -176,6 +176,28 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::RustymonSkills => {
+            // Rustymon skills rendering - needs specific rustymon and game data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.rustymon_skills_page.update();
+                let full_redraw = game_manager.rustymon_skills_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw rustymon skills
+                if let Err(e) = game_manager.draw_rustymon_skills(display, full_redraw) {
+                    log::error!("Failed to draw rustymon skills: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Rustymon skills closed, returning to detail");
+                    app_state.current_mode = AppMode::RustymonDetail;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
         AppMode::FragmentCollection => {
             // Fragment collection rendering - needs fragment data and game data
             if let Some(mut game_manager) = game_manager {

@@ -130,20 +130,11 @@ pub fn rustymon_detail_system(
                                 }
                             }
                         }
-                        RustymonDetailAction::ToggleSkill(skill_index) => {
-                            // Toggle skill on/off
-                            if let Some(index) = game_manager.selected_rustymon_index {
-                                if index < game_manager.rustymon_collection.len() {
-                                    let rustymon = &mut game_manager.rustymon_collection[index];
-                                    use crate::ui::pages::rustymon_detail::RustymonDetailPage;
-                                    if RustymonDetailPage::toggle_skill(rustymon, skill_index) {
-                                        log::info!("Toggled skill at index {}", skill_index);
-                                        app_state.needs_redraw = true;
-                                    } else {
-                                        log::warn!("Failed to toggle skill (all slots full or invalid index)");
-                                    }
-                                }
-                            }
+                        RustymonDetailAction::OpenSkills => {
+                            // Open skills page
+                            log::info!("Opening Rustymon skills page");
+                            app_state.current_mode = AppMode::RustymonSkills;
+                            app_state.needs_redraw = true;
                         }
                         RustymonDetailAction::Close => {
                             log::info!("Closing Rustymon detail - returning to list");
@@ -316,6 +307,67 @@ pub fn rustymon_summon_system(
                             game_manager.pending_summon_rustymon = None;
                             log::info!("Summon cancelled");
                             app_state.current_mode = AppMode::FragmentCollection;
+                            app_state.needs_redraw = true;
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Ignore other events
+            }
+        }
+    }
+}
+
+/// System to handle Rustymon Skills page navigation
+pub fn rustymon_skills_system(
+    mut app_state: ResMut<AppState>,
+    pending_events: Res<PendingInputEvents>,
+    mut game_manager: Option<NonSendMut<GameManager>>,
+) {
+    // Only process in RustymonSkills mode
+    if app_state.current_mode != AppMode::RustymonSkills {
+        return;
+    }
+
+    // Skip if screen is off
+    if !app_state.screen_on {
+        return;
+    }
+
+    let Some(ref mut game_manager) = game_manager else {
+        return;
+    };
+
+    // Process all input events from pending events
+    for event in pending_events.events.iter() {
+        match event {
+            InputEvent::Touch { x, y } => {
+                let x = *x as i32;
+                let y = *y as i32;
+
+                // Handle touch on rustymon skills page
+                if let Some(action) = game_manager.rustymon_skills_page.handle_touch(x, y) {
+                    use crate::ui::pages::rustymon_skills::RustymonSkillsAction;
+                    match action {
+                        RustymonSkillsAction::ToggleSkill(skill_index) => {
+                            // Toggle skill on/off
+                            if let Some(index) = game_manager.selected_rustymon_index {
+                                if index < game_manager.rustymon_collection.len() {
+                                    let rustymon = &mut game_manager.rustymon_collection[index];
+                                    use crate::ui::pages::rustymon_skills::RustymonSkillsPage;
+                                    if RustymonSkillsPage::toggle_skill(rustymon, skill_index) {
+                                        log::info!("Toggled skill at index {}", skill_index);
+                                        app_state.needs_redraw = true;
+                                    } else {
+                                        log::warn!("Failed to toggle skill (all slots full or invalid index)");
+                                    }
+                                }
+                            }
+                        }
+                        RustymonSkillsAction::Close => {
+                            log::info!("Closing Rustymon skills - returning to detail");
+                            app_state.current_mode = AppMode::RustymonDetail;
                             app_state.needs_redraw = true;
                         }
                     }

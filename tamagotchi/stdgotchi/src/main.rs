@@ -52,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, render_system, rustymon_list_system, rustymon_detail_system, fragment_collection_system, rustymon_summon_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, render_system, rustymon_list_system, rustymon_detail_system, rustymon_skills_system, fragment_collection_system, rustymon_summon_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -358,6 +358,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         death_system, // Handle death screen and respawn
         rustymon_list_system, // Rustymon list navigation
         rustymon_detail_system, // Rustymon detail navigation
+        rustymon_skills_system, // Rustymon skills navigation
         fragment_collection_system, // Fragment collection navigation
         rustymon_summon_system, // Rustymon summon preview
         animation_init_system,

@@ -20,7 +20,7 @@ use std::error::Error;
 pub enum RustymonDetailAction {
     AddToTeam,
     RemoveFromTeam,
-    ToggleSkill(usize), // Toggle skill at given slot (0-5)
+    OpenSkills,
     Close,
 }
 
@@ -68,47 +68,13 @@ impl RustymonDetailPage {
         None
     }
 
-    /// Toggle skill on/off for a Rustymon
-    /// Returns true if successful, false if unable (e.g., max 3 enabled)
-    pub fn toggle_skill(rustymon: &mut Rustymon, skill_index: usize) -> bool {
-        if skill_index >= rustymon.skills.learned_skills.len() {
-            return false;
-        }
-
-        let skill_id = rustymon.skills.learned_skills[skill_index];
-
-        // Check if skill is currently enabled
-        let current_slot = rustymon.skills.enabled_skills
-            .iter()
-            .position(|&s| s == Some(skill_id));
-
-        if let Some(slot) = current_slot {
-            // Skill is enabled, disable it
-            rustymon.skills.disable_skill(slot);
-            log::info!("Disabled skill ID {} from slot {}", skill_id, slot);
-            true
-        } else {
-            // Skill is not enabled, try to enable it
-            // Find first empty slot
-            if let Some(empty_slot) = rustymon.skills.enabled_skills.iter().position(|s| s.is_none()) {
-                rustymon.skills.enable_skill(skill_id, empty_slot);
-                log::info!("Enabled skill ID {} in slot {}", skill_id, empty_slot);
-                true
-            } else {
-                // All 3 slots are full
-                log::warn!("Cannot enable skill: all 3 slots are full");
-                false
-            }
-        }
-    }
-
     /// Draw Rustymon detail screen
     pub fn draw_rustymon_detail(
         &mut self,
         display: &mut Sh8601Driver,
         rustymon: &Rustymon,
         rustymon_team: &RustymonTeam,
-        game_data: &GameData,
+        _game_data: &GameData,
         full_redraw: bool,
     ) -> Result<(), Box<dyn Error>> {
         use core::fmt::Write;
@@ -295,90 +261,29 @@ impl RustymonDetailPage {
         Text::new(&value_str, Point::new(right_value_x, right_y), stat_value_style).draw(display)?;
 
         // Continue from the taller column
-        y = left_y.max(right_y) + 5;
-
-        // Skills Section (full width, where Combat Stats used to be)
-        y += 10;
-        Text::new("Skills", Point::new(left_label_x, y), section_style).draw(display)?;
-        y += line_height;
-
-        // Draw skills (max 6 skills, show learned count)
-        let learned_count = rustymon.skills.learned_skills.len();
-        let mut skills_header = heapless::String::<32>::new();
-        write!(skills_header, "Learned: {}/6", learned_count).ok();
-        Text::new(&skills_header, Point::new(left_label_x, y), stat_label_style).draw(display)?;
-        y += line_height - 3;
-
-        // Draw each learned skill
-        for (idx, &skill_id) in rustymon.skills.learned_skills.iter().enumerate() {
-            if let Some(skill) = game_data.get_skill(skill_id) {
-                let is_enabled = rustymon.skills.enabled_skills.iter().any(|&s| s == Some(skill_id));
-
-                // Determine skill color (passive vs active)
-                let skill_color = if skill.is_passive() {
-                    Rgb888::new(200, 150, 255) // Purple for passive
-                } else {
-                    Rgb888::new(150, 200, 255) // Blue for active
-                };
-
-                // Skill name
-                let mut skill_name = heapless::String::<24>::new();
-                write!(skill_name, "{}", &skill.name[..skill.name.len().min(18)]).ok();
-                let name_style = MonoTextStyle::new(&FONT_10X20, skill_color);
-                Text::new(&skill_name, Point::new(left_label_x, y), name_style).draw(display)?;
-
-                // Enabled indicator / Toggle button
-                let button_x = 250;
-                let button_y = y - 18;
-                let button_w = 80;
-                let button_h = 22;
-
-                if is_enabled {
-                    // Green "ON" button
-                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_w, button_h))
-                        .into_styled(
-                            PrimitiveStyleBuilder::new()
-                                .fill_color(Rgb888::new(40, 100, 40))
-                                .stroke_color(Rgb888::new(80, 200, 80))
-                                .stroke_width(1)
-                                .build(),
-                        )
-                        .draw(display)?;
-                    let btn_text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-                    Text::new("ON", Point::new(button_x + 25, y - 3), btn_text_style).draw(display)?;
-                } else {
-                    // Gray "OFF" button
-                    Rectangle::new(Point::new(button_x, button_y), Size::new(button_w, button_h))
-                        .into_styled(
-                            PrimitiveStyleBuilder::new()
-                                .fill_color(Rgb888::new(60, 60, 60))
-                                .stroke_color(Rgb888::new(120, 120, 120))
-                                .stroke_width(1)
-                                .build(),
-                        )
-                        .draw(display)?;
-                    let btn_text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
-                    Text::new("OFF", Point::new(button_x + 20, y - 3), btn_text_style).draw(display)?;
-                }
-
-                // Add touch area for toggle
-                self.touch_areas.push(TouchArea {
-                    bounds: (button_x, button_y, button_w, button_h),
-                    action: RustymonDetailAction::ToggleSkill(idx),
-                });
-
-                y += line_height - 2;
-            }
-        }
-
-        // If no skills learned, show message
-        if learned_count == 0 {
-            let no_skills_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(120, 120, 120));
-            Text::new("No skills learned yet", Point::new(left_label_x, y), no_skills_style).draw(display)?;
-        }
+        let _ = left_y.max(right_y);
 
         // Draw buttons at bottom
         let in_team = rustymon_team.is_in_team(&rustymon.id);
+
+        // Skills button (new)
+        Rectangle::new(Point::new(270, 420), Size::new(90, 30))
+            .into_styled(
+                PrimitiveStyleBuilder::new()
+                    .fill_color(Rgb888::new(60, 60, 100))
+                    .stroke_color(Rgb888::new(120, 120, 200))
+                    .stroke_width(2)
+                    .build(),
+            )
+            .draw(display)?;
+
+        let skills_btn_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        Text::new("Skills", Point::new(285, 440), skills_btn_style).draw(display)?;
+
+        self.touch_areas.push(TouchArea {
+            bounds: (270, 420, 90, 30),
+            action: RustymonDetailAction::OpenSkills,
+        });
 
         if in_team {
             // Remove from team button
