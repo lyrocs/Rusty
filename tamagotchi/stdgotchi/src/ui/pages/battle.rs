@@ -412,7 +412,7 @@ impl BattlePage {
             fragment_notification: None,
             touch_areas: Vec::new(),
             battle_state: BattleState::default(),
-            auto_mode: false,
+            auto_mode: true,
             last_auto_skill_check: Instant::now(),
         }
     }
@@ -464,7 +464,7 @@ impl BattlePage {
             fragment_notification: None,
             touch_areas: Vec::new(),
             battle_state: BattleState::default(),
-            auto_mode: false,
+            auto_mode: true,
             last_auto_skill_check: Instant::now(),
         })
     }
