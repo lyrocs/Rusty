@@ -58,6 +58,14 @@ pub fn menu_system(
                             app_state.current_mode = AppMode::RustymonList;
                             app_state.needs_redraw = true;
                         }
+                        MenuAction::Quests => {
+                            log::info!("Navigating to Quest List");
+                            // Auto-start daily quests when opening quest page
+                            game_manager.check_quest_resets();
+                            game_manager.auto_start_daily_quests();
+                            app_state.current_mode = AppMode::QuestList;
+                            app_state.needs_redraw = true;
+                        }
                         MenuAction::Fragments => {
                             log::info!("Navigating to Fragment Collection");
                             app_state.current_mode = AppMode::FragmentCollection;

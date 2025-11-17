@@ -13,6 +13,7 @@ pub mod map_navigation;
 pub mod menu;
 pub mod render;
 pub mod rustymon_navigation;
+pub mod quest_navigation;
 
 // Re-export all systems
 pub use animation::{animation_cleanup_system, animation_init_system};
@@ -29,3 +30,4 @@ pub use rustymon_navigation::{
     fragment_collection_system, rustymon_detail_system, rustymon_list_system,
     rustymon_skills_system, rustymon_summon_system,
 };
+pub use quest_navigation::quest_navigation_system;

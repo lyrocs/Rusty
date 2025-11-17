@@ -9,6 +9,7 @@ use std::path::Path;
 
 use super::KillTracker;
 use super::fragment_collection::FragmentCollection;
+use super::quest::QuestManager;
 use super::rustymon::Rustymon;
 use super::rustymon_team::RustymonTeam;
 
@@ -41,11 +42,15 @@ pub struct SaveData {
     /// Fragment collection (monster fragments)
     #[serde(default)]
     pub fragment_collection: FragmentCollection,
+
+    /// Quest progress and state
+    #[serde(default)]
+    pub quest_manager: QuestManager,
 }
 
 impl SaveData {
     /// Current save data version
-    pub const CURRENT_VERSION: u32 = 2; // Bumped version for Rustymon-only save format
+    pub const CURRENT_VERSION: u32 = 3; // Bumped version for quest system
 
     /// Default save file name
     pub const SAVE_FILE_NAME: &'static str = "stdgotchi_save.json";
@@ -58,6 +63,7 @@ impl SaveData {
         rustymon_collection: Vec<Rustymon>,
         rustymon_team: RustymonTeam,
         fragment_collection: FragmentCollection,
+        quest_manager: QuestManager,
     ) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
@@ -68,6 +74,7 @@ impl SaveData {
             rustymon_collection,
             rustymon_team,
             fragment_collection,
+            quest_manager,
         }
     }
 
@@ -131,6 +138,7 @@ mod tests {
         let rustymon_collection = Vec::new();
         let rustymon_team = RustymonTeam::new();
         let fragment_collection = FragmentCollection::new();
+        let quest_manager = QuestManager::new();
         let save_data = SaveData::new(
             kill_tracker,
             1,
@@ -138,12 +146,14 @@ mod tests {
             rustymon_collection,
             rustymon_team,
             fragment_collection,
+            quest_manager,
         );
 
         // Serialize
         let json = save_data.to_json().unwrap();
         assert!(json.contains("version"));
         assert!(json.contains("rustymon_collection"));
+        assert!(json.contains("quest_manager"));
 
         // Deserialize
         let loaded = SaveData::from_json(&json).unwrap();

@@ -8,10 +8,10 @@ use esp_idf_svc::hal::gpio::PinDriver;
 use std::time::Instant;
 
 use crate::display::{Ft3x68Driver, Sh8601Driver};
-use crate::game::{FragmentCollection, KillTracker, Rustymon, RustymonTeam, WorldMap};
+use crate::game::{FragmentCollection, KillTracker, QuestManager, Rustymon, RustymonTeam, WorldMap};
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, MapPage, RustymonListPage, RustymonDetailPage, RustymonSkillsPage, FragmentCollectionPage, RustymonSummonPage};
+use crate::ui::pages::{BattlePage, MapPage, RustymonListPage, RustymonDetailPage, RustymonSkillsPage, FragmentCollectionPage, RustymonSummonPage, QuestListPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource {
@@ -154,6 +154,8 @@ pub struct GameManager {
     pub fragment_collection: FragmentCollection, // Monster fragments
     pub selected_rustymon_index: Option<usize>, // Index of currently selected Rustymon for detail view
     pub pending_summon_rustymon: Option<Rustymon>, // Rustymon pending summon confirmation
+    pub quest_manager: QuestManager,        // Quest system manager
+    pub quest_list_page: QuestListPage,     // Quest list UI page
 }
 
 impl GameManager {
@@ -206,6 +208,8 @@ impl GameManager {
             fragment_collection: FragmentCollection::new(),
             selected_rustymon_index: None,
             pending_summon_rustymon: None,
+            quest_manager: QuestManager::new(),
+            quest_list_page: QuestListPage::new(),
         }
     }
 
@@ -243,6 +247,8 @@ impl GameManager {
             fragment_collection: save_data.fragment_collection,
             selected_rustymon_index: None,
             pending_summon_rustymon: None,
+            quest_manager: save_data.quest_manager,
+            quest_list_page: QuestListPage::new(),
         }
     }
 
@@ -271,6 +277,7 @@ impl GameManager {
             AppMode::RustymonSkills => Some(&mut self.rustymon_skills_page as &mut dyn Page),
             AppMode::FragmentCollection => Some(&mut self.fragment_collection_page as &mut dyn Page),
             AppMode::RustymonSummon => Some(&mut self.rustymon_summon_page as &mut dyn Page),
+            AppMode::QuestList => Some(&mut self.quest_list_page as &mut dyn Page),
         }
     }
 
@@ -318,6 +325,11 @@ impl GameManager {
         Ok(())
     }
 
+    /// Draw quest list page
+    pub fn draw_quest_list(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
+        self.quest_list_page.draw_quest_list(display, &self.quest_manager, &self.game_data, full_redraw)
+    }
+
     /// Save game state to SD card
     pub fn save_to_sd(&mut self, sd_card: &mut SdCardWrapper, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Update total play time
@@ -334,6 +346,7 @@ impl GameManager {
             self.rustymon_collection.clone(),
             self.rustymon_team.clone(),
             self.fragment_collection.clone(),
+            self.quest_manager.clone(),
         );
 
         // Serialize to JSON
@@ -366,27 +379,160 @@ impl GameManager {
     /// Sync kill tracker, fragments, and Rustymon from battle page back to GameManager
     /// This ensures battle progress is saved
     pub fn sync_battle_state(&mut self) {
-        if let Some(ref mut battle_page) = self.battle_page {
-            self.kill_tracker = battle_page.get_kill_tracker().clone();
+        // Extract data from battle page first, then process
+        let battle_data = if let Some(ref mut battle_page) = self.battle_page {
+            let new_kill_tracker = battle_page.get_kill_tracker().clone();
+            let new_rustymon_collection = battle_page.get_rustymon_collection().clone();
+            let new_rustymon_team = battle_page.get_rustymon_team().clone();
+            let fragment_drops = battle_page.take_fragment_drops();
+            Some((
+                new_kill_tracker,
+                new_rustymon_collection,
+                new_rustymon_team,
+                fragment_drops,
+            ))
+        } else {
+            None
+        };
+
+        if let Some((new_kill_tracker, new_rustymon_collection, new_rustymon_team, fragment_drops)) =
+            battle_data
+        {
+            // Get kill diff before syncing (for quest events)
+            let old_kills = self.kill_tracker.clone();
+            self.kill_tracker = new_kill_tracker;
+
+            // Calculate kills made in this sync
+            let new_kills = self.calculate_kill_diff(&old_kills, &self.kill_tracker);
 
             // Sync Rustymon collection (EXP, levels, HP changes)
-            self.rustymon_collection = battle_page.get_rustymon_collection().clone();
-            self.rustymon_team = battle_page.get_rustymon_team().clone();
+            let old_levels: std::collections::HashMap<String, u32> = self
+                .rustymon_collection
+                .iter()
+                .map(|r| (r.id.clone(), r.level))
+                .collect();
+            self.rustymon_collection = new_rustymon_collection;
+            self.rustymon_team = new_rustymon_team;
 
-            // Sync fragment drops
-            let fragment_drops = battle_page.take_fragment_drops();
-            for (enemy_id, _enemy_name) in fragment_drops {
-                self.fragment_collection.add_fragment(enemy_id, 1);
+            // Sync fragment drops and track for quests
+            for (enemy_id, _enemy_name) in &fragment_drops {
+                self.fragment_collection.add_fragment(*enemy_id, 1);
+
+                // Process quest event for fragment collection
+                let event = crate::game::QuestEvent::FragmentCollected {
+                    monster_id: *enemy_id,
+                    amount: 1,
+                };
+                self.quest_manager
+                    .process_event(&event, self.game_data.get_all_quests());
+            }
+
+            // Process quest events for kills
+            for (monster_id, count) in new_kills {
+                for _ in 0..count {
+                    let event = crate::game::QuestEvent::MonsterKilled { monster_id };
+                    self.quest_manager
+                        .process_event(&event, self.game_data.get_all_quests());
+                }
+            }
+
+            // Process quest event for level ups
+            for rustymon in &self.rustymon_collection {
+                if let Some(&old_level) = old_levels.get(&rustymon.id) {
+                    if rustymon.level > old_level {
+                        let event = crate::game::QuestEvent::LevelReached {
+                            level: rustymon.level,
+                        };
+                        self.quest_manager
+                            .process_event(&event, self.game_data.get_all_quests());
+                    }
+                }
             }
 
             // Log Rustymon sync for debugging
             if let Some(rustymon_id) = self.rustymon_team.get_active_rustymon_id() {
-                if let Some(rustymon) = self.rustymon_collection.iter().find(|r| &r.id == rustymon_id) {
-                    log::debug!("Synced Rustymon: {} Lv{}, {}/{} EXP",
-                        rustymon.name, rustymon.level, rustymon.exp, rustymon.exp_to_next);
+                if let Some(rustymon) = self
+                    .rustymon_collection
+                    .iter()
+                    .find(|r| &r.id == rustymon_id)
+                {
+                    log::debug!(
+                        "Synced Rustymon: {} Lv{}, {}/{} EXP",
+                        rustymon.name,
+                        rustymon.level,
+                        rustymon.exp,
+                        rustymon.exp_to_next
+                    );
                 }
             }
         }
+    }
+
+    /// Calculate kill differences between two kill trackers
+    fn calculate_kill_diff(
+        &self,
+        old: &KillTracker,
+        new: &KillTracker,
+    ) -> Vec<(u32, u32)> {
+        let mut diff = Vec::new();
+
+        // For each enemy in new tracker, check if count increased
+        for (enemy_id, new_count) in new.get_all_kills() {
+            let old_count = old.get_kills(*enemy_id);
+            if *new_count > old_count {
+                diff.push((*enemy_id, *new_count - old_count));
+            }
+        }
+
+        diff
+    }
+
+    /// Process battle won event for quests
+    pub fn process_battle_won(&mut self) {
+        let event = crate::game::QuestEvent::BattleWon;
+        self.quest_manager
+            .process_event(&event, self.game_data.get_all_quests());
+        log::debug!("Quest event: BattleWon processed");
+    }
+
+    /// Check and reset daily quests if needed
+    pub fn check_quest_resets(&mut self) {
+        if self.quest_manager.should_reset_daily() {
+            self.quest_manager
+                .reset_daily_quests(self.game_data.get_all_quests());
+            log::info!("Daily quests have been reset");
+        }
+
+        if self.quest_manager.should_reset_weekly() {
+            self.quest_manager
+                .reset_weekly_quests(self.game_data.get_all_quests());
+            log::info!("Weekly quests have been reset");
+        }
+    }
+
+    /// Auto-start available daily quests
+    pub fn auto_start_daily_quests(&mut self) {
+        let player_level = self.get_player_level();
+        let available = self
+            .quest_manager
+            .get_available_quests(self.game_data.get_all_quests(), player_level);
+
+        // Start all available daily quests
+        for quest in available {
+            if quest.is_daily() && !self.quest_manager.is_quest_active(quest.id) {
+                self.quest_manager.start_quest(quest);
+            }
+        }
+    }
+
+    /// Get player level (highest level Rustymon in team)
+    fn get_player_level(&self) -> u32 {
+        self.rustymon_collection
+            .iter()
+            .filter(|r| self.rustymon_team.get_team_ids().contains(&r.id))
+            .map(|r| r.level)
+            .max()
+            .unwrap_or(1)
     }
 }
 
@@ -438,6 +584,8 @@ pub enum AppMode {
     FragmentCollection,
     /// Rustymon summon preview screen
     RustymonSummon,
+    /// Quest list screen
+    QuestList,
 }
 
 impl Default for AppState {

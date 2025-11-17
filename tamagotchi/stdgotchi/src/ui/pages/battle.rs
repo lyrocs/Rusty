@@ -647,15 +647,23 @@ impl BattlePage {
 
     /// Switch to a different Rustymon from the team
     pub fn switch_rustymon(&mut self, team_slot: usize) -> Result<(), Box<dyn Error>> {
-        // Get the team rustymon IDs
+        // Get the team rustymon IDs and filter out the active one
         let team_rustymon_ids = self.rustymon_team.get_team_ids();
+        let active_id = self.rustymon_team.get_active_rustymon_id();
 
-        if team_slot >= team_rustymon_ids.len() {
+        // Filter to only inactive team members (matches the display order)
+        let inactive_team_ids: Vec<String> = team_rustymon_ids
+            .iter()
+            .filter(|id| active_id.map(|aid| aid != *id).unwrap_or(true))
+            .cloned()
+            .collect();
+
+        if team_slot >= inactive_team_ids.len() {
             log::warn!("Invalid team slot: {}", team_slot);
             return Ok(());
         }
 
-        let new_rustymon_id = &team_rustymon_ids[team_slot];
+        let new_rustymon_id = &inactive_team_ids[team_slot];
         let active_id = self.rustymon_team.get_active_rustymon_id();
 
         // Don't switch if already active
@@ -1341,15 +1349,26 @@ impl BattlePage {
             return Ok(());
         }
 
-        // Button dimensions and positions
+        // Filter out the active Rustymon - only show non-active team members
+        let inactive_team_ids: Vec<String> = team_rustymon_ids
+            .iter()
+            .filter(|id| active_id.map(|aid| aid != *id).unwrap_or(true))
+            .cloned()
+            .collect();
+
+        if inactive_team_ids.is_empty() {
+            return Ok(());
+        }
+
+        // Button dimensions and positions - only show 2 buttons max
         let button_width = 83u32; // Increased by 1.5x (55 * 1.5 = 82.5, rounded to 83)
         let button_height = 75u32; // Increased by 1.5x (50 * 1.5 = 75)
         let spacing = 5i32;
         let start_x = 30i32; // 20px from left edge to avoid rounded corners
         let y = 365i32; // Adjusted up to accommodate larger buttons (was 390)
 
-        // Draw up to 6 team buttons
-        for (slot_index, rustymon_id) in team_rustymon_ids.iter().enumerate().take(6) {
+        // Draw up to 2 inactive team buttons (non-active Rustymon only)
+        for (slot_index, rustymon_id) in inactive_team_ids.iter().enumerate().take(2) {
             let x = start_x + (slot_index as i32 * (button_width as i32 + spacing));
 
             // Find the Rustymon in collection
@@ -1358,14 +1377,11 @@ impl BattlePage {
                 .find(|r| r.id == *rustymon_id);
 
             if let Some(rustymon) = rustymon {
-                let is_active = active_id.map(|id| id == rustymon_id).unwrap_or(false);
                 let is_fainted = rustymon.current_hp == 0;
 
-                // Button color based on state
+                // Button color based on state (never active since we filtered those out)
                 let (bg_color, border_color) = if is_fainted {
                     (Rgb888::new(60, 30, 30), Rgb888::new(100, 50, 50)) // Red for fainted
-                } else if is_active {
-                    (Rgb888::new(40, 80, 120), Rgb888::new(80, 160, 255)) // Blue for active
                 } else {
                     (Rgb888::new(40, 60, 40), Rgb888::new(80, 120, 80)) // Green for available
                 };
@@ -1379,7 +1395,7 @@ impl BattlePage {
                     embedded_graphics::primitives::PrimitiveStyleBuilder::new()
                         .fill_color(bg_color)
                         .stroke_color(border_color)
-                        .stroke_width(if is_active { 3 } else { 2 })
+                        .stroke_width(2)
                         .build(),
                 )
                 .draw(display)?;

@@ -2,6 +2,7 @@
 //!
 //! Centralized JSON data loading for maps, enemies, etc.
 
+use super::quest::QuestData;
 use super::rustymon::Element;
 use super::skill::{Skill, LearnableSkill};
 use serde::{Deserialize, Serialize};
@@ -138,6 +139,7 @@ pub struct GameData {
     pub enemies: HashMap<u32, EnemyData>,
     pub skills: HashMap<u32, Skill>,
     pub exp_table: HashMap<u32, u32>, // level -> exp to next level
+    pub quests: HashMap<u32, QuestData>,
 }
 
 impl GameData {
@@ -179,11 +181,21 @@ impl GameData {
         }
         log::info!("Loaded exp table for {} levels", exp_table.len());
 
+        // Load quests
+        let quests_json = include_str!("../../assets/data/quests.json");
+        let quests_vec: Vec<QuestData> = serde_json::from_str(quests_json)?;
+        let mut quests = HashMap::new();
+        for quest in quests_vec {
+            quests.insert(quest.id, quest);
+        }
+        log::info!("Loaded {} quests", quests.len());
+
         Ok(Self {
             maps,
             enemies,
             skills,
             exp_table,
+            quests,
         })
     }
 
@@ -237,6 +249,29 @@ impl GameData {
     pub fn get_exp_for_level(&self, level: u32) -> u32 {
         // Return exp from table, or 0 if at max level (99) or level not found
         *self.exp_table.get(&level).unwrap_or(&0)
+    }
+
+    /// Get quest by ID
+    pub fn get_quest(&self, id: u32) -> Option<&QuestData> {
+        self.quests.get(&id)
+    }
+
+    /// Get all quests
+    pub fn get_all_quests(&self) -> &HashMap<u32, QuestData> {
+        &self.quests
+    }
+
+    /// Get daily quests
+    pub fn get_daily_quests(&self) -> Vec<&QuestData> {
+        self.quests.values().filter(|q| q.is_daily()).collect()
+    }
+
+    /// Get achievement quests
+    pub fn get_achievement_quests(&self) -> Vec<&QuestData> {
+        self.quests
+            .values()
+            .filter(|q| q.get_quest_type() == super::quest::QuestType::Achievement)
+            .collect()
     }
 }
 

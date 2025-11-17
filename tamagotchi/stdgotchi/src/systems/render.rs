@@ -242,6 +242,28 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::QuestList => {
+            // Quest list rendering - needs quest manager and game data
+            if let Some(mut game_manager) = game_manager {
+                let page_active = game_manager.quest_list_page.update();
+                let full_redraw = game_manager.quest_list_page.needs_full_redraw() || app_state.needs_redraw;
+
+                // Draw quest list
+                if let Err(e) = game_manager.draw_quest_list(display, full_redraw) {
+                    log::error!("Failed to draw quest list: {:?}", e);
+                }
+
+                if app_state.needs_redraw {
+                    app_state.needs_redraw = false;
+                }
+
+                if !page_active {
+                    info!("Quest list closed, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
+                }
+            }
+        }
     }
 }
 

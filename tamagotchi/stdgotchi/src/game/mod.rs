@@ -15,6 +15,7 @@ pub mod rustymon_factory;
 pub mod fragment_collection;
 pub mod element_system;
 pub mod skill;
+pub mod quest;
 
 pub use enemy::*;
 pub use battle::*;
@@ -28,3 +29,4 @@ pub use rustymon_factory::*;
 pub use fragment_collection::*;
 pub use element_system::*;
 pub use skill::*;
+pub use quest::*;
