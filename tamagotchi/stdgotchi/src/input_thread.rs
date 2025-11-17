@@ -9,7 +9,7 @@ use esp_idf_svc::hal::gpio::{InputPin, Pin, PinDriver};
 use std::thread;
 use std::time::Duration;
 
-use crate::display::Ft3x68Driver;
+use crate::display::{Ft3x68Driver, ft3x68::Gesture};
 
 /// TCA9554 GPIO expander I2C address (for PWR button on EXIO4)
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -31,6 +31,17 @@ pub enum InputEvent {
     Touch { x: u16, y: u16 },
     /// Touch released
     TouchRelease,
+    /// Swipe gesture detected
+    Swipe { direction: SwipeDirection },
+}
+
+/// Swipe directions
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SwipeDirection {
+    Up,
+    Down,
+    Left,
+    Right,
 }
 
 /// Input polling thread state
@@ -71,6 +82,7 @@ where
             let mut last_boot_pressed = false;
             let mut last_pwr_pressed = false;
             let mut last_touch_active = false;
+            let mut last_gesture = Gesture::None;
 
             // Debounce counters
             let mut boot_debounce = 0u8;
@@ -146,6 +158,30 @@ where
                     // === TOUCH CONTROLLER ===
                     // Get I2C from shared static
                     if let Some(i2c) = unsafe { crate::drivers::sd_cs_pin::get_shared_i2c() } {
+                        // Check for gestures first (only emit on edge: None -> Swipe)
+                        if let Ok(gesture) = touch.read_gesture(i2c) {
+                            // Only send event when gesture changes from None to a swipe
+                            if gesture != last_gesture {
+                                let swipe_direction = match gesture {
+                                    Gesture::SwipeUp => Some(SwipeDirection::Up),
+                                    Gesture::SwipeDown => Some(SwipeDirection::Down),
+                                    Gesture::SwipeLeft => Some(SwipeDirection::Left),
+                                    Gesture::SwipeRight => Some(SwipeDirection::Right),
+                                    _ => None,
+                                };
+
+                                if let Some(direction) = swipe_direction {
+                                    log::info!("[INPUT] Swipe detected: {:?}", direction);
+                                    let event = InputEvent::Swipe { direction };
+                                    if let Err(e) = sender.send(event) {
+                                        log::error!("[INPUT] Failed to send swipe event: {:?}", e);
+                                    }
+                                }
+
+                                last_gesture = gesture;
+                            }
+                        }
+
                         if let Ok(count) = touch.finger_number(i2c) {
                             let touch_active = count > 0;
 
@@ -170,6 +206,8 @@ where
                                     log::error!("[INPUT] Failed to send touch release: {:?}", e);
                                 }
                                 last_touch_active = false;
+                                // Reset gesture state so next swipe in same direction can be detected
+                                last_gesture = Gesture::None;
                             }
                         }
                     }
