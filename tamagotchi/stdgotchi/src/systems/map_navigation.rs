@@ -5,7 +5,7 @@
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::input_thread::InputEvent;
+use crate::input_thread::{InputEvent, SwipeDirection};
 
 /// System to handle map navigation
 pub fn map_navigation_system(
@@ -104,6 +104,14 @@ pub fn map_navigation_system(
                             }
                         }
                     }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Swipe right to go back to menu
+                if *direction == SwipeDirection::Right {
+                    log::info!("Swipe right: closing Map, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
                 }
             }
             _ => {

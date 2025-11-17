@@ -5,7 +5,7 @@
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::input_thread::InputEvent;
+use crate::input_thread::{InputEvent, SwipeDirection};
 use crate::ui::pages::quest_list::QuestListAction;
 
 /// System to handle quest list navigation
@@ -132,6 +132,14 @@ pub fn quest_navigation_system(
                             app_state.needs_redraw = true;
                         }
                     }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Swipe right to go back to menu
+                if *direction == SwipeDirection::Right {
+                    log::info!("Swipe right: closing quest list, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
                 }
             }
             _ => {

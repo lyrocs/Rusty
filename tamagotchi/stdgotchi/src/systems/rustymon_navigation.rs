@@ -5,7 +5,7 @@
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::input_thread::InputEvent;
+use crate::input_thread::{InputEvent, SwipeDirection};
 
 /// System to handle Rustymon list navigation
 pub fn rustymon_list_system(
@@ -64,6 +64,14 @@ pub fn rustymon_list_system(
                             app_state.needs_redraw = true;
                         }
                     }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Swipe right to go back to menu
+                if *direction == SwipeDirection::Right {
+                    log::info!("Swipe right: closing Rustymon list, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
                 }
             }
             _ => {
@@ -142,6 +150,14 @@ pub fn rustymon_detail_system(
                             app_state.needs_redraw = true;
                         }
                     }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Swipe right to go back to list
+                if *direction == SwipeDirection::Right {
+                    log::info!("Swipe right: closing Rustymon detail, returning to list");
+                    app_state.current_mode = AppMode::RustymonList;
+                    app_state.needs_redraw = true;
                 }
             }
             _ => {
@@ -238,6 +254,14 @@ pub fn fragment_collection_system(
                             app_state.needs_redraw = true;
                         }
                     }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Swipe right to go back to menu
+                if *direction == SwipeDirection::Right {
+                    log::info!("Swipe right: closing Fragment Collection, returning to menu");
+                    app_state.current_mode = AppMode::Menu;
+                    app_state.needs_redraw = true;
                 }
             }
             _ => {
@@ -371,6 +395,14 @@ pub fn rustymon_skills_system(
                             app_state.needs_redraw = true;
                         }
                     }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Swipe right to go back to detail
+                if *direction == SwipeDirection::Right {
+                    log::info!("Swipe right: closing Rustymon skills, returning to detail");
+                    app_state.current_mode = AppMode::RustymonDetail;
+                    app_state.needs_redraw = true;
                 }
             }
             _ => {
