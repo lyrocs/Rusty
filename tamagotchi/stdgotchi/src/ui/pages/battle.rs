@@ -86,6 +86,7 @@ impl BattleEntity {
 
         let mut idle_sprite = AnimatedSprite::new(idle_data, position, frame_delay, None)?;
         idle_sprite.set_flip_horizontal(flip_horizontal);
+        idle_sprite.set_center_positioned(true);
 
         // Apply offset to attack animation position (flip offset if sprite is flipped)
         let attack_position = if flip_horizontal {
@@ -96,14 +97,17 @@ impl BattleEntity {
         let mut attack_sprite =
             AnimatedSprite::new(attack_data, attack_position, frame_delay, Some(1))?;
         attack_sprite.set_flip_horizontal(flip_horizontal);
+        attack_sprite.set_center_positioned(true);
 
         let mut attacked_sprite = AnimatedSprite::new(attacked_data, position, frame_delay, Some(1))?;
         attacked_sprite.set_flip_horizontal(flip_horizontal);
+        attacked_sprite.set_center_positioned(true);
 
         let death_sprite = death_data
             .map(|data| {
                 let mut sprite = AnimatedSprite::new(data, position, frame_delay, Some(1))?;
                 sprite.set_flip_horizontal(flip_horizontal);
+                sprite.set_center_positioned(true);
                 Ok::<_, Box<dyn Error>>(sprite)
             })
             .transpose()?;

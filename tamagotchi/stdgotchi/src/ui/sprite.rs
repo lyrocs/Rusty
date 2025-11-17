@@ -53,6 +53,7 @@ pub struct AnimatedSprite {
     loops: Option<u32>, // None = infinite, Some(n) = loop n times
     current_loop: u32,
     flip_horizontal: bool, // Mirror the sprite horizontally
+    center_positioned: bool, // If true, position is center of sprite, not top-left
 }
 
 impl AnimatedSprite {
@@ -82,6 +83,7 @@ impl AnimatedSprite {
             loops,
             current_loop: 0,
             flip_horizontal: false,
+            center_positioned: false,
         })
     }
 
@@ -102,6 +104,11 @@ impl AnimatedSprite {
         self.flip_horizontal = flip;
     }
 
+    /// Set center-based positioning (position represents center of sprite, not top-left)
+    pub fn set_center_positioned(&mut self, centered: bool) {
+        self.center_positioned = centered;
+    }
+
     /// Get dimensions
     pub fn dimensions(&self) -> (u16, u16) {
         self.player.dimensions()
@@ -110,7 +117,14 @@ impl AnimatedSprite {
     /// Get bounding box (x, y, width, height) for this sprite
     pub fn bounds(&self) -> (i32, i32, u32, u32) {
         let (width, height) = self.player.dimensions();
-        (self.position.0, self.position.1, width as u32, height as u32)
+        if self.center_positioned {
+            // Position is center, so top-left is offset by half dimensions
+            let top_left_x = self.position.0 - (width as i32 / 2);
+            let top_left_y = self.position.1 - (height as i32 / 2);
+            (top_left_x, top_left_y, width as u32, height as u32)
+        } else {
+            (self.position.0, self.position.1, width as u32, height as u32)
+        }
     }
 
     /// Update animation (call once per frame)
@@ -144,7 +158,7 @@ impl AnimatedSprite {
 
     /// Draw the current frame
     pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
-        self.player.render_frame_with_flip(display, self.current_frame, Some(self.position), self.flip_horizontal)
+        self.player.render_frame_centered(display, self.current_frame, Some(self.position), self.flip_horizontal, self.center_positioned)
     }
 
     /// Reset animation to beginning

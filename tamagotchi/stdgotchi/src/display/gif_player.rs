@@ -275,6 +275,14 @@ impl GifPlayer {
     ///
     /// The flip is zero-cost - just arithmetic, no memory allocation.
     pub fn render_frame_with_flip(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool) -> Result<(), Box<dyn Error>> {
+        self.render_frame_centered(display, frame_index, position, flip_horizontal, false)
+    }
+
+    /// Render a specific frame with center-based positioning and optional horizontal flip
+    ///
+    /// When `center_positioned` is true, the position represents the center of the image,
+    /// not the top-left corner. This ensures animations with different sizes stay centered.
+    pub fn render_frame_centered(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool, center_positioned: bool) -> Result<(), Box<dyn Error>> {
         if frame_index >= self.frame_metadata.len() {
             return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frame_metadata.len()).into());
         }
@@ -286,8 +294,13 @@ impl GifPlayer {
 
         // Calculate base position for the overall GIF canvas
         let (base_x, base_y) = if let Some((x, y)) = position {
-            // Use explicit position as the GIF canvas origin
-            (x, y)
+            if center_positioned {
+                // Position is the CENTER of the image - calculate top-left from center
+                (x - (self.gif_width as i32 / 2), y - (self.gif_height as i32 / 2))
+            } else {
+                // Use explicit position as the GIF canvas origin (top-left)
+                (x, y)
+            }
         } else {
             // Calculate centered position for the overall GIF canvas
             let center_x = (display_size.width as i32 - self.gif_width as i32) / 2;
