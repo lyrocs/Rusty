@@ -1122,26 +1122,40 @@ impl BattlePage {
             .draw(display)?;
 
         let text_style_name = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 200));
-        let text_style_info = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
+        let text_style_info = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+        let text_style_small = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 200, 200));
 
         // LEFT SIDE - MONSTER INFO
         if let Some(game_enemy) = &self.game_enemy {
-            let left_x = 25;
-            let name_y = 20;
+            let left_x = 25; // Moved 15px to the right
+            let name_y = 18;
 
-            // Monster name
+            // Monster name + element square + level (inline)
             let mut name_str = heapless::String::<32>::new();
             write!(name_str, "{}", game_enemy.name).ok();
             Text::new(&name_str, Point::new(left_x, name_y), text_style_name).draw(display)?;
 
-            // Monster level
-            let mut lvl_str = heapless::String::<16>::new();
-            write!(lvl_str, "Lv {}", game_enemy.level).ok();
-            Text::new(&lvl_str, Point::new(left_x, name_y + 20), text_style_info).draw(display)?;
+            // Element color square (after name) - get element from game_data
+            let name_width = game_enemy.name.len() as i32 * 10; // FONT_10X20 is 10px wide
+            let enemy_element = self.game_data.get_enemy(game_enemy.id)
+                .map(|e| e.get_element())
+                .unwrap_or(crate::game::Element::Neutral);
+            let element_color = crate::game::element_system::get_element_color(enemy_element);
+            Rectangle::new(
+                Point::new(left_x + name_width + 4, name_y - 12),
+                Size::new(14, 14),
+            )
+            .into_styled(PrimitiveStyle::with_fill(element_color))
+            .draw(display)?;
 
-            // Monster HP bar
-            let hp_bar_y = 45;
-            let hp_bar_width = 100;
+            // Level (after element square)
+            let mut lvl_str = heapless::String::<16>::new();
+            write!(lvl_str, "Lv{}", game_enemy.level).ok();
+            Text::new(&lvl_str, Point::new(left_x + name_width + 22, name_y), text_style_name).draw(display)?;
+
+            // Monster HP bar + HP value (same line)
+            let hp_bar_y = 30;
+            let hp_bar_width = 80; // Reduced from 120
             self.draw_hp_bar(
                 display,
                 (left_x, hp_bar_y),
@@ -1150,31 +1164,41 @@ impl BattlePage {
                 hp_bar_width,
             )?;
 
-            // HP text
+            // HP text (after bar on same line)
             let mut hp_str = heapless::String::<32>::new();
             write!(hp_str, "{}/{}", game_enemy.current_hp, game_enemy.max_hp).ok();
-            Text::new(&hp_str, Point::new(left_x, hp_bar_y + 20), text_style_info).draw(display)?;
+            Text::new(&hp_str, Point::new(left_x + hp_bar_width as i32 + 5, hp_bar_y + 10), text_style_small).draw(display)?;
         }
 
-        // RIGHT SIDE - RUSTYMON INFO
-        let right_x = 368 - 140; // Right aligned with some margin
-        let name_y = 20;
+        // RIGHT SIDE - RUSTYMON INFO (moved closer to center)
+        let right_x = 368 - 180; // Moved closer to center
+        let name_y = 18;
 
         // Show Rustymon info (required for battle)
         if let Some(rustymon) = self.get_active_rustymon() {
-            // Rustymon name
+            // Rustymon name + element square + level (inline)
             let mut name_str = heapless::String::<32>::new();
             write!(name_str, "{}", rustymon.name).ok();
             Text::new(&name_str, Point::new(right_x, name_y), text_style_name).draw(display)?;
 
-            // Rustymon level and element
-            let mut lvl_str = heapless::String::<24>::new();
-            write!(lvl_str, "Lv {} {}", rustymon.level, rustymon.element.as_str()).ok();
-            Text::new(&lvl_str, Point::new(right_x, name_y + 20), text_style_info).draw(display)?;
+            // Element color square (after name)
+            let name_width = rustymon.name.len() as i32 * 10; // FONT_10X20 is 10px wide
+            let element_color = crate::game::element_system::get_element_color(rustymon.element);
+            Rectangle::new(
+                Point::new(right_x + name_width + 4, name_y - 12),
+                Size::new(14, 14),
+            )
+            .into_styled(PrimitiveStyle::with_fill(element_color))
+            .draw(display)?;
 
-            // Rustymon HP bar
-            let hp_bar_y = 45;
-            let hp_bar_width = 100;
+            // Level (after element square)
+            let mut lvl_str = heapless::String::<16>::new();
+            write!(lvl_str, "Lv{}", rustymon.level).ok();
+            Text::new(&lvl_str, Point::new(right_x + name_width + 22, name_y), text_style_name).draw(display)?;
+
+            // Rustymon HP bar + HP value (same line)
+            let hp_bar_y = 30;
+            let hp_bar_width = 80; // Reduced from 120
             self.draw_hp_bar(
                 display,
                 (right_x, hp_bar_y),
@@ -1183,15 +1207,40 @@ impl BattlePage {
                 hp_bar_width,
             )?;
 
-            // HP text
+            // HP text (after bar on same line)
             let mut hp_str = heapless::String::<32>::new();
-            write!(
-                hp_str,
-                "HP:{}/{}",
-                rustymon.current_hp, rustymon.max_hp
+            write!(hp_str, "{}/{}", rustymon.current_hp, rustymon.max_hp).ok();
+            Text::new(&hp_str, Point::new(right_x + hp_bar_width as i32 + 5, hp_bar_y + 10), text_style_small).draw(display)?;
+
+            // EXP bar (below HP bar)
+            let exp_bar_y = 50;
+            let exp_bar_width = 80; // Reduced from 120
+            let exp_bar_height = 6u32; // Reduced from 8
+
+            // EXP bar background
+            Rectangle::new(
+                Point::new(right_x, exp_bar_y),
+                Size::new(exp_bar_width, exp_bar_height),
             )
-            .ok();
-            Text::new(&hp_str, Point::new(right_x, hp_bar_y + 20), text_style_info).draw(display)?;
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 50, 30)))
+            .draw(display)?;
+
+            // EXP bar fill
+            let exp_percentage = rustymon.exp as f32 / rustymon.exp_to_next as f32;
+            let exp_fill_width = (exp_bar_width as f32 * exp_percentage.min(1.0)) as u32;
+            if exp_fill_width > 0 {
+                Rectangle::new(
+                    Point::new(right_x, exp_bar_y),
+                    Size::new(exp_fill_width, exp_bar_height),
+                )
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(255, 200, 50))) // Yellow/gold for EXP
+                .draw(display)?;
+            }
+
+            // EXP text (after bar on same line)
+            let mut exp_str = heapless::String::<32>::new();
+            write!(exp_str, "{}/{}", rustymon.exp, rustymon.exp_to_next).ok();
+            Text::new(&exp_str, Point::new(right_x + exp_bar_width as i32 + 5, exp_bar_y + 7), text_style_small).draw(display)?;
         } else {
             // No active Rustymon - shouldn't happen in battle but handle gracefully
             let mut name_str = heapless::String::<32>::new();
@@ -1552,7 +1601,7 @@ impl BattlePage {
         Ok(())
     }
 
-    /// Draw skill buttons for active Rustymon
+    /// Draw skill buttons for active Rustymon (inline at bottom)
     fn draw_skill_buttons(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
         use core::fmt::Write;
 
@@ -1572,111 +1621,118 @@ impl BattlePage {
         let enabled_skills = rustymon.skills.enabled_skills.clone();
         let cooldowns = rustymon.skills.cooldowns.clone();
 
-        // Button dimensions and positions - BOTTOM RIGHT corner with margin
+        // Button dimensions - INLINE HORIZONTAL at bottom
         let button_width = 100u32;
-        let button_height = 42u32; // Increased by 1.5x (28 * 1.5 = 42)
+        let button_height = 42u32;
         let spacing = 8i32;
-        let right_margin = 15i32;
         let bottom_margin = 15i32;
-        let x = 368 - button_width as i32 - right_margin; // Fixed X position (bottom right)
+        let y = 450 - bottom_margin - button_height as i32; // Fixed Y at bottom
 
         let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
         let cooldown_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 200, 100));
 
-        // Track how many skill buttons we've drawn
-        let mut drawn_count = 0;
-
-        // Draw each enabled skill (up to 3) - VERTICALLY stacked from bottom to top
+        // Count active skills first to center them
+        let mut active_skills = Vec::new();
         for &skill_id_opt in &enabled_skills {
             if let Some(skill_id) = skill_id_opt {
                 if let Some(skill) = self.game_data.get_skill(skill_id) {
-                    // Only show active skills (passives don't need buttons)
                     if skill.is_active() {
-                        // Calculate Y position - stack from bottom up
-                        let y = 450 - bottom_margin - (button_height as i32) - (drawn_count * (button_height as i32 + spacing));
-
-                        // Check if skill is on cooldown
-                        let cooldown_turns = cooldowns.get(&skill_id).copied().unwrap_or(0);
-                        let on_cooldown = cooldown_turns > 0;
-
-                        // Button color based on cooldown state
-                        let (bg_color, border_color) = if on_cooldown {
-                            (Rgb888::new(60, 60, 60), Rgb888::new(100, 100, 100)) // Gray for cooldown
-                        } else {
-                            // Color based on skill type
-                            if skill.effect_type == crate::game::skill::EffectType::Damage ||
-                               skill.effect_type == crate::game::skill::EffectType::Dot {
-                                (Rgb888::new(120, 40, 40), Rgb888::new(200, 80, 80)) // Red for damage
-                            } else {
-                                (Rgb888::new(40, 80, 120), Rgb888::new(80, 160, 255)) // Blue for support
-                            }
-                        };
-
-                        // Draw button background
-                        Rectangle::new(
-                            Point::new(x, y),
-                            Size::new(button_width, button_height),
-                        )
-                        .into_styled(
-                            embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-                                .fill_color(bg_color)
-                                .stroke_color(border_color)
-                                .stroke_width(2)
-                                .build(),
-                        )
-                        .draw(display)?;
-
-                        // Draw skill name (truncated)
-                        let mut name_str = heapless::String::<16>::new();
-                        if skill.name.len() > 14 {
-                            write!(name_str, "{}.", &skill.name[..13]).ok();
-                        } else {
-                            write!(name_str, "{}", skill.name).ok();
-                        }
-                        Text::new(&name_str, Point::new(x + 4, y + 12), text_style).draw(display)?;
-
-                        // Draw cooldown number if on cooldown
-                        if on_cooldown {
-                            let mut cd_str = heapless::String::<4>::new();
-                            write!(cd_str, "{}", cooldown_turns).ok();
-                            Text::new(&cd_str, Point::new(x + 75, y + 22), cooldown_style).draw(display)?;
-                        }
-
-                        // Draw skill element indicator (small bar at bottom)
-                        if let Some(element) = skill.get_element() {
-                            let element_color = crate::game::element_system::get_element_color(element);
-                            Rectangle::new(
-                                Point::new(x + 2, y + (button_height as i32) - 4),
-                                Size::new(button_width - 4, 2),
-                            )
-                            .into_styled(PrimitiveStyle::with_fill(element_color))
-                            .draw(display)?;
-                        }
-
-                        // Add touch area (only if not on cooldown)
-                        if !on_cooldown {
-                            self.touch_areas.push(TouchArea {
-                                bounds: (x, y, button_width, button_height),
-                                action: BattleAction::UseSkill(skill_id),
-                            });
-                        }
-
-                        drawn_count += 1;
+                        active_skills.push((skill_id, skill.clone()));
                     }
                 }
+            }
+        }
+
+        let num_skills = active_skills.len().min(3);
+        if num_skills == 0 {
+            return Ok(());
+        }
+
+        // Calculate starting X to center the buttons
+        let total_width = (num_skills as i32 * button_width as i32) + ((num_skills as i32 - 1) * spacing);
+        let start_x = (368 - total_width) / 2;
+
+        // Draw each skill button horizontally
+        for (index, (skill_id, skill)) in active_skills.iter().take(3).enumerate() {
+            let x = start_x + (index as i32 * (button_width as i32 + spacing));
+
+            // Check if skill is on cooldown
+            let cooldown_turns = cooldowns.get(skill_id).copied().unwrap_or(0);
+            let on_cooldown = cooldown_turns > 0;
+
+            // Button color based on cooldown state
+            let (bg_color, border_color) = if on_cooldown {
+                (Rgb888::new(60, 60, 60), Rgb888::new(100, 100, 100)) // Gray for cooldown
+            } else {
+                // Color based on skill type
+                if skill.effect_type == crate::game::skill::EffectType::Damage ||
+                   skill.effect_type == crate::game::skill::EffectType::Dot {
+                    (Rgb888::new(120, 40, 40), Rgb888::new(200, 80, 80)) // Red for damage
+                } else {
+                    (Rgb888::new(40, 80, 120), Rgb888::new(80, 160, 255)) // Blue for support
+                }
+            };
+
+            // Draw button background
+            Rectangle::new(
+                Point::new(x, y),
+                Size::new(button_width, button_height),
+            )
+            .into_styled(
+                embedded_graphics::primitives::PrimitiveStyleBuilder::new()
+                    .fill_color(bg_color)
+                    .stroke_color(border_color)
+                    .stroke_width(2)
+                    .build(),
+            )
+            .draw(display)?;
+
+            // Draw skill name (truncated)
+            let mut name_str = heapless::String::<16>::new();
+            if skill.name.len() > 14 {
+                write!(name_str, "{}.", &skill.name[..13]).ok();
+            } else {
+                write!(name_str, "{}", skill.name).ok();
+            }
+            Text::new(&name_str, Point::new(x + 4, y + 12), text_style).draw(display)?;
+
+            // Draw cooldown number if on cooldown
+            if on_cooldown {
+                let mut cd_str = heapless::String::<4>::new();
+                write!(cd_str, "{}", cooldown_turns).ok();
+                Text::new(&cd_str, Point::new(x + 75, y + 22), cooldown_style).draw(display)?;
+            }
+
+            // Draw skill element indicator (small bar at bottom)
+            if let Some(element) = skill.get_element() {
+                let element_color = crate::game::element_system::get_element_color(element);
+                Rectangle::new(
+                    Point::new(x + 2, y + (button_height as i32) - 4),
+                    Size::new(button_width - 4, 2),
+                )
+                .into_styled(PrimitiveStyle::with_fill(element_color))
+                .draw(display)?;
+            }
+
+            // Add touch area (only if not on cooldown)
+            if !on_cooldown {
+                self.touch_areas.push(TouchArea {
+                    bounds: (x, y, button_width, button_height),
+                    action: BattleAction::UseSkill(*skill_id),
+                });
             }
         }
 
         Ok(())
     }
 
-    /// Draw auto-battle toggle button
+    /// Draw auto-battle toggle button (above skill buttons at bottom)
     fn draw_auto_button(&mut self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
-        // Auto button position - top left corner
-        let button_x = 10;
-        let button_y = 10;
-        let button_width = 80u32;
+        // Auto button position - centered above skill buttons
+        let button_width = 100u32;
         let button_height = 30u32;
+        let button_x = (368 - button_width as i32) / 2; // Center horizontally
+        let button_y = 450 - 15 - 42 - 10 - button_height as i32; // Above skill buttons (bottom_margin + skill_height + spacing)
 
         // Button color based on auto mode state
         let (bg_color, border_color, text_color) = if self.auto_mode {
@@ -2267,14 +2323,11 @@ impl Page for BattlePage {
         // Draw fragment notification (if any)
         // self.draw_fragment_notification(display)?; // Disabled - fragment notifications removed
 
-        // Draw skill buttons (above team buttons)
-        self.draw_skill_buttons(display)?;
-
-        // Draw auto-battle toggle button
+        // Draw auto-battle toggle button (above skills)
         self.draw_auto_button(display)?;
 
-        // Draw team Rustymon buttons at bottom
-        self.draw_team_buttons(display)?;
+        // Draw skill buttons (inline at bottom)
+        self.draw_skill_buttons(display)?;
 
         // Flush to display once at the end
         display.flush()?;
