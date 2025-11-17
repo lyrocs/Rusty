@@ -42,6 +42,7 @@ pub struct MenuPage {
     background_color: Rgb888,
     touch_buttons: Vec<TouchButton>,
     needs_full_redraw: bool,
+    has_active_battle: bool,
 }
 
 impl MenuPage {
@@ -51,6 +52,15 @@ impl MenuPage {
             background_color: Rgb888::new(15, 20, 30),
             touch_buttons: Vec::new(),
             needs_full_redraw: true,
+            has_active_battle: false,
+        }
+    }
+
+    /// Set whether there's an active battle (affects Battle button visibility)
+    pub fn set_has_active_battle(&mut self, has_battle: bool) {
+        if self.has_active_battle != has_battle {
+            self.has_active_battle = has_battle;
+            self.needs_full_redraw = true; // Force redraw when battle state changes
         }
     }
 
@@ -67,6 +77,12 @@ impl MenuPage {
 
     /// Draw the menu
     pub fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        // Default to no active battle - use draw_with_battle_state for conditional battle button
+        self.draw_with_battle_state(display, full_redraw, false)
+    }
+
+    /// Draw the menu with battle state information
+    pub fn draw_with_battle_state(&mut self, display: &mut Sh8601Driver, full_redraw: bool, has_active_battle: bool) -> Result<(), Box<dyn Error>> {
         if full_redraw || self.needs_full_redraw {
             display.clear(self.background_color)?;
             self.needs_full_redraw = false;
@@ -79,74 +95,77 @@ impl MenuPage {
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         Text::new("MENU", Point::new(150, 40), title_style).draw(display)?;
 
-        // Button dimensions (adjusted for 5 buttons)
+        // Button dimensions
         let button_width = 280u32;
         let button_height = 50u32;
         let button_x = (368 - button_width) as i32 / 2; // Center horizontally
         let start_y = 70i32;
         let spacing = 68i32;
 
+        let mut current_slot = 0;
+
         // Draw Map button
         self.draw_button(
             display,
             button_x,
-            start_y,
+            start_y + spacing * current_slot,
             button_width,
             button_height,
             "MAP",
-            "Explore the world",
             Rgb888::new(40, 80, 120),
             MenuAction::Map,
         )?;
+        current_slot += 1;
 
-        // Draw Battle button
-        self.draw_button(
-            display,
-            button_x,
-            start_y + spacing,
-            button_width,
-            button_height,
-            "BATTLE",
-            "Continue fighting",
-            Rgb888::new(120, 40, 40),
-            MenuAction::Battle,
-        )?;
+        // Draw Battle button only if there's an active battle
+        if has_active_battle {
+            self.draw_button(
+                display,
+                button_x,
+                start_y + spacing * current_slot,
+                button_width,
+                button_height,
+                "BATTLE",
+                Rgb888::new(120, 40, 40),
+                MenuAction::Battle,
+            )?;
+            current_slot += 1;
+        }
 
         // Draw Rustymon button
         self.draw_button(
             display,
             button_x,
-            start_y + spacing * 2,
+            start_y + spacing * current_slot,
             button_width,
             button_height,
             "RUSTYMON",
-            "View your team",
             Rgb888::new(100, 40, 120),
             MenuAction::Rustymon,
         )?;
+        current_slot += 1;
 
         // Draw Quests button
         self.draw_button(
             display,
             button_x,
-            start_y + spacing * 3,
+            start_y + spacing * current_slot,
             button_width,
             button_height,
             "QUESTS",
-            "Daily rewards",
             Rgb888::new(40, 120, 80),
             MenuAction::Quests,
         )?;
+        current_slot += 1;
 
         // Draw Fragments button
         self.draw_button(
             display,
             button_x,
-            start_y + spacing * 4,
+            start_y + spacing * current_slot,
             button_width,
             button_height,
             "FRAGMENTS",
-            "Summon Rustymon",
             Rgb888::new(120, 100, 40),
             MenuAction::Fragments,
         )?;
@@ -168,7 +187,6 @@ impl MenuPage {
         width: u32,
         height: u32,
         title: &str,
-        subtitle: &str,
         color: Rgb888,
         action: MenuAction,
     ) -> Result<(), Box<dyn Error>> {
@@ -182,15 +200,14 @@ impl MenuPage {
             .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 2))
             .draw(display)?;
 
-        // Draw title
+        // Draw title centered vertically and horizontally
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
         let title_x = x + (width as i32 - (title.len() as i32 * 10)) / 2;
-        Text::new(title, Point::new(title_x, y + 25), title_style).draw(display)?;
-
-        // Draw subtitle
-        let subtitle_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 200, 200));
-        let subtitle_x = x + (width as i32 - (subtitle.len() as i32 * 6)) / 2;
-        Text::new(subtitle, Point::new(subtitle_x, y + 45), subtitle_style).draw(display)?;
+        // Font height is 20, text baseline is at bottom of glyph
+        // Center vertically: y + (height/2) + (font_height/2 - descent)
+        // For FONT_10X20, approximate vertical center adjustment is +7
+        let title_y = y + (height as i32 / 2) + 7;
+        Text::new(title, Point::new(title_x, title_y), title_style).draw(display)?;
 
         // Register touch button
         self.touch_buttons.push(TouchButton {
@@ -209,7 +226,7 @@ impl Page for MenuPage {
     }
 
     fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
-        self.draw(display, full_redraw)
+        self.draw_with_battle_state(display, full_redraw, self.has_active_battle)
     }
 
     fn mark_dirty(&mut self) {

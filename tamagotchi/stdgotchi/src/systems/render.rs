@@ -82,6 +82,12 @@ pub fn render_system(
         AppMode::Menu | AppMode::Map | AppMode::Battle => {
             // Game-based rendering with GameManager
             if let Some(mut game_manager) = game_manager {
+                // Update menu battle state if in Menu mode
+                if app_state.current_mode == AppMode::Menu {
+                    let has_battle = game_manager.battle_page.is_some();
+                    game_manager.menu_page.set_has_active_battle(has_battle);
+                }
+
                 if let Some(page) = game_manager.get_current_page(app_state.current_mode) {
                     // Update page logic
                     let page_active = page.update();
