@@ -5,7 +5,7 @@
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::input_thread::InputEvent;
+use crate::input_thread::{InputEvent, SwipeDirection};
 
 /// System to handle battle mode input
 pub fn battle_system(
@@ -57,6 +57,30 @@ pub fn battle_system(
                                 battle_page.toggle_auto();
                                 app_state.needs_redraw = true;
                             }
+                        }
+                    }
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                // Handle swipe to switch Rustymon
+                if let Some(ref mut battle_page) = game_manager.battle_page {
+                    match direction {
+                        SwipeDirection::Right => {
+                            log::info!("Swipe right: switching to next Rustymon");
+                            if let Err(e) = battle_page.switch_to_next_rustymon() {
+                                log::error!("Failed to switch to next Rustymon: {:?}", e);
+                            }
+                            app_state.needs_redraw = true;
+                        }
+                        SwipeDirection::Left => {
+                            log::info!("Swipe left: switching to previous Rustymon");
+                            if let Err(e) = battle_page.switch_to_prev_rustymon() {
+                                log::error!("Failed to switch to previous Rustymon: {:?}", e);
+                            }
+                            app_state.needs_redraw = true;
+                        }
+                        _ => {
+                            // Up/Down swipes not used in battle
                         }
                     }
                 }

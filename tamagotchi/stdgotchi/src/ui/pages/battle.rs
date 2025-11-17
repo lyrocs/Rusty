@@ -726,6 +726,86 @@ impl BattlePage {
         Ok(())
     }
 
+    /// Switch to the next Rustymon in team (cycle forward)
+    pub fn switch_to_next_rustymon(&mut self) -> Result<(), Box<dyn Error>> {
+        let team_ids = self.rustymon_team.get_team_ids();
+        if team_ids.len() <= 1 {
+            log::info!("Only one Rustymon in team, cannot switch");
+            return Ok(());
+        }
+
+        let current_id = self.rustymon_team.get_active_rustymon_id().cloned();
+        let Some(current_id) = current_id else {
+            return Ok(());
+        };
+
+        // Find current index in team
+        let current_index = team_ids.iter().position(|id| id == &current_id).unwrap_or(0);
+
+        // Find next alive Rustymon
+        for offset in 1..team_ids.len() {
+            let next_index = (current_index + offset) % team_ids.len();
+            let next_id = &team_ids[next_index];
+
+            // Check if alive
+            if let Some(rustymon) = self.rustymon_collection.iter().find(|r| &r.id == next_id) {
+                if rustymon.current_hp > 0 {
+                    // Switch to this slot in inactive list
+                    let inactive_index = team_ids.iter()
+                        .filter(|id| *id != &current_id)
+                        .position(|id| id == next_id);
+
+                    if let Some(slot) = inactive_index {
+                        return self.switch_rustymon(slot);
+                    }
+                }
+            }
+        }
+
+        log::info!("No other alive Rustymon to switch to");
+        Ok(())
+    }
+
+    /// Switch to the previous Rustymon in team (cycle backward)
+    pub fn switch_to_prev_rustymon(&mut self) -> Result<(), Box<dyn Error>> {
+        let team_ids = self.rustymon_team.get_team_ids();
+        if team_ids.len() <= 1 {
+            log::info!("Only one Rustymon in team, cannot switch");
+            return Ok(());
+        }
+
+        let current_id = self.rustymon_team.get_active_rustymon_id().cloned();
+        let Some(current_id) = current_id else {
+            return Ok(());
+        };
+
+        // Find current index in team
+        let current_index = team_ids.iter().position(|id| id == &current_id).unwrap_or(0);
+
+        // Find previous alive Rustymon
+        for offset in 1..team_ids.len() {
+            let prev_index = (current_index + team_ids.len() - offset) % team_ids.len();
+            let prev_id = &team_ids[prev_index];
+
+            // Check if alive
+            if let Some(rustymon) = self.rustymon_collection.iter().find(|r| &r.id == prev_id) {
+                if rustymon.current_hp > 0 {
+                    // Switch to this slot in inactive list
+                    let inactive_index = team_ids.iter()
+                        .filter(|id| *id != &current_id)
+                        .position(|id| id == prev_id);
+
+                    if let Some(slot) = inactive_index {
+                        return self.switch_rustymon(slot);
+                    }
+                }
+            }
+        }
+
+        log::info!("No other alive Rustymon to switch to");
+        Ok(())
+    }
+
     /// Get enemy sprites with SD card support
     /// Tries to load from SD card first, falls back to embedded assets
     fn get_enemy_sprites_with_sd(
