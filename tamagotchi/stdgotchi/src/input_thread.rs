@@ -7,7 +7,7 @@
 use crossbeam_channel::Sender;
 use esp_idf_svc::hal::gpio::{InputPin, Pin, PinDriver};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::display::{Ft3x68Driver, ft3x68::Gesture};
 
@@ -82,7 +82,10 @@ where
             let mut last_boot_pressed = false;
             let mut last_pwr_pressed = false;
             let mut last_touch_active = false;
-            let mut last_gesture = Gesture::None;
+            let mut swipe_sent_this_touch = false; // Track if we sent a swipe during current touch
+            let mut touch_start_time = Instant::now(); // When current touch started
+            let mut touch_start_pos: (u16, u16) = (0, 0); // Touch start position for swipe detection
+            let mut touch_current_pos: (u16, u16) = (0, 0); // Current touch position
 
             // Debounce counters
             let mut boot_debounce = 0u8;
@@ -158,56 +161,85 @@ where
                     // === TOUCH CONTROLLER ===
                     // Get I2C from shared static
                     if let Some(i2c) = unsafe { crate::drivers::sd_cs_pin::get_shared_i2c() } {
-                        // Check for gestures first (only emit on edge: None -> Swipe)
-                        if let Ok(gesture) = touch.read_gesture(i2c) {
-                            // Only send event when gesture changes from None to a swipe
-                            if gesture != last_gesture {
-                                let swipe_direction = match gesture {
-                                    Gesture::SwipeUp => Some(SwipeDirection::Up),
-                                    Gesture::SwipeDown => Some(SwipeDirection::Down),
-                                    Gesture::SwipeLeft => Some(SwipeDirection::Left),
-                                    Gesture::SwipeRight => Some(SwipeDirection::Right),
-                                    _ => None,
-                                };
-
-                                if let Some(direction) = swipe_direction {
-                                    log::info!("[INPUT] Swipe detected: {:?}", direction);
-                                    let event = InputEvent::Swipe { direction };
-                                    if let Err(e) = sender.send(event) {
-                                        log::error!("[INPUT] Failed to send swipe event: {:?}", e);
-                                    }
-                                }
-
-                                last_gesture = gesture;
-                            }
-                        }
-
                         if let Ok(count) = touch.finger_number(i2c) {
                             let touch_active = count > 0;
 
                             if touch_active && !last_touch_active {
-                                // New touch detected
+                                // New touch detected - reset swipe tracking for this touch session
+                                swipe_sent_this_touch = false;
+                                touch_start_time = Instant::now();
+
                                 if let Ok(touches) = touch.get_touches(i2c) {
                                     if let Some(point) = touches.first() {
-                                        let event = InputEvent::Touch {
-                                            x: point.x,
-                                            y: point.y,
-                                        };
-
-                                        if let Err(e) = sender.send(event) {
-                                            log::error!("[INPUT] Failed to send touch event: {:?}", e);
-                                        }
+                                        touch_start_pos = (point.x, point.y);
+                                        touch_current_pos = touch_start_pos;
+                                        // Don't send touch event yet - wait to see if it's a swipe
                                     }
                                 }
                                 last_touch_active = true;
+                            } else if touch_active && last_touch_active {
+                                // Touch is ongoing - update current position
+                                if let Ok(touches) = touch.get_touches(i2c) {
+                                    if let Some(point) = touches.first() {
+                                        touch_current_pos = (point.x, point.y);
+                                    }
+                                }
+
+                                // Check for swipe based on movement (software detection)
+                                if !swipe_sent_this_touch {
+                                    let dx = touch_current_pos.0 as i32 - touch_start_pos.0 as i32;
+                                    let dy = touch_current_pos.1 as i32 - touch_start_pos.1 as i32;
+                                    let abs_dx = dx.abs();
+                                    let abs_dy = dy.abs();
+
+                                    // Swipe threshold: 50 pixels minimum movement
+                                    const SWIPE_THRESHOLD: i32 = 50;
+
+                                    // Check if movement is large enough and predominantly in one direction
+                                    if abs_dx > SWIPE_THRESHOLD || abs_dy > SWIPE_THRESHOLD {
+                                        let swipe_direction = if abs_dx > abs_dy {
+                                            // Horizontal swipe
+                                            if dx > 0 {
+                                                Some(SwipeDirection::Right)
+                                            } else {
+                                                Some(SwipeDirection::Left)
+                                            }
+                                        } else {
+                                            // Vertical swipe
+                                            if dy > 0 {
+                                                Some(SwipeDirection::Down)
+                                            } else {
+                                                Some(SwipeDirection::Up)
+                                            }
+                                        };
+
+                                        if let Some(direction) = swipe_direction {
+                                            log::info!("[INPUT] Swipe detected: {:?}", direction);
+                                            let event = InputEvent::Swipe { direction };
+                                            if let Err(e) = sender.send(event) {
+                                                log::error!("[INPUT] Failed to send swipe event: {:?}", e);
+                                            }
+                                            swipe_sent_this_touch = true;
+                                        }
+                                    }
+                                }
                             } else if !touch_active && last_touch_active {
-                                // Touch released
+                                // Touch released - only send touch event if no swipe was detected
+                                if !swipe_sent_this_touch {
+                                    // This was a tap, not a swipe - send touch event
+                                    let event = InputEvent::Touch {
+                                        x: touch_start_pos.0,
+                                        y: touch_start_pos.1,
+                                    };
+                                    if let Err(e) = sender.send(event) {
+                                        log::error!("[INPUT] Failed to send touch event: {:?}", e);
+                                    }
+                                }
+
                                 if let Err(e) = sender.send(InputEvent::TouchRelease) {
                                     log::error!("[INPUT] Failed to send touch release: {:?}", e);
                                 }
                                 last_touch_active = false;
-                                // Reset gesture state so next swipe in same direction can be detected
-                                last_gesture = Gesture::None;
                             }
                         }
                     }
