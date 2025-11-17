@@ -268,6 +268,13 @@ impl GifPlayer {
     /// * `frame_index` - Frame index to render
     /// * `position` - Optional (x, y) position for top-left corner. If None, centers the GIF on screen.
     pub fn render_frame(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>) -> Result<(), Box<dyn Error>> {
+        self.render_frame_with_flip(display, frame_index, position, false)
+    }
+
+    /// Render a specific frame with optional horizontal flip
+    ///
+    /// The flip is zero-cost - just arithmetic, no memory allocation.
+    pub fn render_frame_with_flip(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool) -> Result<(), Box<dyn Error>> {
         if frame_index >= self.frame_metadata.len() {
             return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frame_metadata.len()).into());
         }
@@ -307,7 +314,12 @@ impl GifPlayer {
                         continue;
                     }
 
-                    let px = base_x + x as i32;
+                    // Apply horizontal flip if requested (zero-cost: just arithmetic)
+                    let px = if flip_horizontal {
+                        base_x + (self.gif_width - 1 - x) as i32
+                    } else {
+                        base_x + x as i32
+                    };
                     let py = base_y + y as i32;
 
                     if px >= 0 && px < display_size.width as i32 &&

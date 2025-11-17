@@ -52,6 +52,7 @@ pub struct AnimatedSprite {
     frame_delay: Duration,
     loops: Option<u32>, // None = infinite, Some(n) = loop n times
     current_loop: u32,
+    flip_horizontal: bool, // Mirror the sprite horizontally
 }
 
 impl AnimatedSprite {
@@ -80,7 +81,25 @@ impl AnimatedSprite {
             frame_delay,
             loops,
             current_loop: 0,
+            flip_horizontal: false,
         })
+    }
+
+    /// Create a new animated sprite with horizontal flip (for facing opposite direction)
+    pub fn new_flipped(
+        gif_data: &[u8],
+        position: (i32, i32),
+        frame_delay: Duration,
+        loops: Option<u32>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut sprite = Self::new(gif_data, position, frame_delay, loops)?;
+        sprite.flip_horizontal = true;
+        Ok(sprite)
+    }
+
+    /// Set horizontal flip state
+    pub fn set_flip_horizontal(&mut self, flip: bool) {
+        self.flip_horizontal = flip;
     }
 
     /// Get dimensions
@@ -125,7 +144,7 @@ impl AnimatedSprite {
 
     /// Draw the current frame
     pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
-        self.player.render_frame(display, self.current_frame, Some(self.position))
+        self.player.render_frame_with_flip(display, self.current_frame, Some(self.position), self.flip_horizontal)
     }
 
     /// Reset animation to beginning

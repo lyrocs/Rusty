@@ -67,18 +67,45 @@ impl BattleEntity {
         attack_interval: Duration,
         attack_offset: (i32, i32),
     ) -> Result<Self, Box<dyn Error>> {
+        Self::new_with_flip(role, idle_data, attack_data, attacked_data, death_data, position, attack_interval, attack_offset, false)
+    }
+
+    /// Create a new battle entity with optional horizontal flip
+    pub fn new_with_flip(
+        role: EntityRole,
+        idle_data: &[u8],
+        attack_data: &[u8],
+        attacked_data: &[u8],
+        death_data: Option<&[u8]>,
+        position: (i32, i32),
+        attack_interval: Duration,
+        attack_offset: (i32, i32),
+        flip_horizontal: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         let frame_delay = Duration::from_millis(100);
 
-        let idle_sprite = AnimatedSprite::new(idle_data, position, frame_delay, None)?;
+        let mut idle_sprite = AnimatedSprite::new(idle_data, position, frame_delay, None)?;
+        idle_sprite.set_flip_horizontal(flip_horizontal);
 
-        // Apply offset to attack animation position
-        let attack_position = (position.0 + attack_offset.0, position.1 + attack_offset.1);
-        let attack_sprite =
+        // Apply offset to attack animation position (flip offset if sprite is flipped)
+        let attack_position = if flip_horizontal {
+            (position.0 - attack_offset.0, position.1 + attack_offset.1) // Invert X offset when flipped
+        } else {
+            (position.0 + attack_offset.0, position.1 + attack_offset.1)
+        };
+        let mut attack_sprite =
             AnimatedSprite::new(attack_data, attack_position, frame_delay, Some(1))?;
+        attack_sprite.set_flip_horizontal(flip_horizontal);
 
-        let attacked_sprite = AnimatedSprite::new(attacked_data, position, frame_delay, Some(1))?;
+        let mut attacked_sprite = AnimatedSprite::new(attacked_data, position, frame_delay, Some(1))?;
+        attacked_sprite.set_flip_horizontal(flip_horizontal);
+
         let death_sprite = death_data
-            .map(|data| AnimatedSprite::new(data, position, frame_delay, Some(1)))
+            .map(|data| {
+                let mut sprite = AnimatedSprite::new(data, position, frame_delay, Some(1))?;
+                sprite.set_flip_horizontal(flip_horizontal);
+                Ok::<_, Box<dyn Error>>(sprite)
+            })
             .transpose()?;
 
         Ok(Self {
@@ -695,8 +722,8 @@ impl BattlePage {
                 // Remove old hero
                 self.hero = None;
 
-                // Add new Rustymon sprite as hero
-                let hero_result = BattleEntity::new(
+                // Add new Rustymon sprite as hero (flipped to face enemy)
+                let hero_result = BattleEntity::new_with_flip(
                     EntityRole::Hero,
                     &idle,
                     &attack,
@@ -705,6 +732,7 @@ impl BattlePage {
                     (175, 170),
                     Duration::from_secs(2),
                     (0, 0), // Center attack for Rustymon
+                    true,   // Flip horizontally to face left (toward enemy)
                 );
 
                 match hero_result {
@@ -835,7 +863,7 @@ impl BattlePage {
         })
     }
 
-    /// Add hero to the battle
+    /// Add hero to the battle (flipped to face enemy)
     ///
     /// # Arguments
     /// * `idle_data` - GIF for idle/standing animation
@@ -851,7 +879,7 @@ impl BattlePage {
         position: (i32, i32),
         attack_offset: (i32, i32),
     ) -> Result<(), Box<dyn Error>> {
-        let hero = BattleEntity::new(
+        let hero = BattleEntity::new_with_flip(
             EntityRole::Hero,
             idle_data,
             attack_data,
@@ -860,6 +888,7 @@ impl BattlePage {
             position,
             Duration::from_secs(2), // Hero attacks every 2 seconds
             attack_offset,          // Job-specific attack animation offset
+            true,                   // Flip horizontally to face left (toward enemy)
         )?;
 
         self.hero = Some(hero);
