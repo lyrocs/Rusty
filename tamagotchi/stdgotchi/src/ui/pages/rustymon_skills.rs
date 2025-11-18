@@ -9,7 +9,7 @@ use embedded_graphics::{
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle, PrimitiveStyleBuilder},
+    primitives::{PrimitiveStyle, Rectangle},
     text::Text,
 };
 use std::error::Error;
@@ -67,6 +67,33 @@ impl RustymonSkillsPage {
         None
     }
 
+    /// Scroll up by 2 skills
+    pub fn scroll_up(&mut self) {
+        if self.scroll_offset >= 2 {
+            self.scroll_offset -= 2;
+            self.needs_full_redraw = true;
+            log::info!("Scrolled up to offset {}", self.scroll_offset);
+        } else if self.scroll_offset > 0 {
+            self.scroll_offset = 0;
+            self.needs_full_redraw = true;
+            log::info!("Scrolled to top");
+        }
+    }
+
+    /// Scroll down by 2 skills
+    pub fn scroll_down(&mut self, total_skills: usize) {
+        const VISIBLE_SKILLS: usize = 4;
+        if total_skills > VISIBLE_SKILLS && self.scroll_offset + VISIBLE_SKILLS < total_skills {
+            self.scroll_offset += 2;
+            // Don't scroll past the end
+            if self.scroll_offset + VISIBLE_SKILLS > total_skills {
+                self.scroll_offset = total_skills.saturating_sub(VISIBLE_SKILLS);
+            }
+            self.needs_full_redraw = true;
+            log::info!("Scrolled down to offset {}", self.scroll_offset);
+        }
+    }
+
     /// Toggle skill on/off for a Rustymon
     /// Returns true if successful, false if unable (e.g., max 3 enabled)
     pub fn toggle_skill(rustymon: &mut Rustymon, skill_index: usize) -> bool {
@@ -118,23 +145,24 @@ impl RustymonSkillsPage {
 
         self.touch_areas.clear();
 
-        // Draw header
+        // Draw header (moved 10px right for better centering)
         let header_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
         let mut header_str = heapless::String::<48>::new();
         write!(header_str, "{}'s Skills", rustymon.name).ok();
-        Text::new(&header_str, Point::new(10, 25), header_style).draw(display)?;
+        Text::new(&header_str, Point::new(20, 25), header_style).draw(display)?;
 
-        // Draw enabled count
+        // Draw enabled count (moved 20px left for better centering)
         let enabled_count = rustymon.skills.enabled_skills.iter().filter(|s| s.is_some()).count();
         let info_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
         let mut enabled_str = heapless::String::<32>::new();
         write!(enabled_str, "Enabled: {}/3", enabled_count).ok();
-        Text::new(&enabled_str, Point::new(250, 25), info_style).draw(display)?;
+        Text::new(&enabled_str, Point::new(230, 25), info_style).draw(display)?;
 
         // Draw skills list
-        let mut y = 60;
+        let y = 60;
         let card_height = 70;
         let card_spacing = 8;
+        const VISIBLE_SKILLS: usize = 4;
 
         let learned_count = rustymon.skills.learned_skills.len();
 
@@ -142,14 +170,15 @@ impl RustymonSkillsPage {
             let no_skills_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(120, 120, 120));
             Text::new("No skills learned yet", Point::new(20, y + 20), no_skills_style).draw(display)?;
         } else {
-            for (idx, &skill_id) in rustymon.skills.learned_skills.iter().enumerate() {
-                if let Some(skill) = game_data.get_skill(skill_id) {
-                    let card_y = y + (idx as i32 * (card_height + card_spacing));
+            // Calculate visible range based on scroll_offset
+            let start_idx = self.scroll_offset;
+            let end_idx = (self.scroll_offset + VISIBLE_SKILLS).min(learned_count);
 
-                    // Skip if card would go off screen (leaving room for back button)
-                    if card_y + card_height > 410 {
-                        break;
-                    }
+            for (display_idx, idx) in (start_idx..end_idx).enumerate() {
+                let skill_id = rustymon.skills.learned_skills[idx];
+
+                if let Some(skill) = game_data.get_skill(skill_id) {
+                    let card_y = y + (display_idx as i32 * (card_height + card_spacing));
 
                     let is_enabled = rustymon.skills.enabled_skills.iter().any(|&s| s == Some(skill_id));
 
@@ -212,7 +241,7 @@ impl RustymonSkillsPage {
                     let status_style = MonoTextStyle::new(&FONT_10X20, status_color);
                     Text::new(status_text, Point::new(20, card_y + 62), status_style).draw(display)?;
 
-                    // Add touch area for entire card to toggle
+                    // Add touch area for entire card to toggle (using actual skill index, not display index)
                     self.touch_areas.push(TouchArea {
                         bounds: (10, card_y, 348, card_height as u32),
                         action: RustymonSkillsAction::ToggleSkill(idx),
@@ -221,24 +250,11 @@ impl RustymonSkillsPage {
             }
         }
 
-        // Back button at bottom
-        Rectangle::new(Point::new(134, 420), Size::new(100, 30))
-            .into_styled(
-                PrimitiveStyleBuilder::new()
-                    .fill_color(Rgb888::new(60, 60, 80))
-                    .stroke_color(Rgb888::new(120, 120, 160))
-                    .stroke_width(2)
-                    .build(),
-            )
-            .draw(display)?;
-
-        let back_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        Text::new("Back", Point::new(160, 440), back_style).draw(display)?;
-
-        self.touch_areas.push(TouchArea {
-            bounds: (134, 420, 100, 30),
-            action: RustymonSkillsAction::Close,
-        });
+        // Draw 'vvv' indicator if there are more skills below
+        if learned_count > VISIBLE_SKILLS && self.scroll_offset + VISIBLE_SKILLS < learned_count {
+            let indicator_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(180, 180, 180));
+            Text::new("vvv", Point::new(170, 440), indicator_style).draw(display)?;
+        }
 
         display.flush()?;
         Ok(())

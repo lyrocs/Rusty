@@ -291,6 +291,12 @@ impl GameManager {
         // Get the selected rustymon
         if let Some(index) = self.selected_rustymon_index {
             if let Some(rustymon) = self.rustymon_collection.get(index) {
+                // Load idle animation (will always load when entering since we clear on transition)
+                if !self.rustymon_detail_page.has_idle_animation() {
+                    if let Err(e) = self.rustymon_detail_page.load_idle_animation(rustymon.species_id) {
+                        log::warn!("Failed to load idle animation for species {}: {:?}", rustymon.species_id, e);
+                    }
+                }
                 return self.rustymon_detail_page.draw_rustymon_detail(display, rustymon, &self.rustymon_team, &self.game_data, full_redraw);
             }
         }

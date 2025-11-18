@@ -45,6 +45,8 @@ pub fn rustymon_list_system(
                             // Set the selected rustymon index for detail view
                             if index < game_manager.rustymon_collection.len() {
                                 game_manager.selected_rustymon_index = Some(index);
+                                // Clear idle animation so it loads fresh for this rustymon
+                                game_manager.rustymon_detail_page.clear_idle_animation();
                                 app_state.current_mode = AppMode::RustymonDetail;
                                 app_state.needs_redraw = true;
                             }
@@ -398,11 +400,29 @@ pub fn rustymon_skills_system(
                 }
             }
             InputEvent::Swipe { direction } => {
-                // Swipe right to go back to detail
-                if *direction == SwipeDirection::Right {
-                    log::info!("Swipe right: closing Rustymon skills, returning to detail");
-                    app_state.current_mode = AppMode::RustymonDetail;
-                    app_state.needs_redraw = true;
+                match direction {
+                    SwipeDirection::Right => {
+                        // Swipe right to go back to detail
+                        log::info!("Swipe right: closing Rustymon skills, returning to detail");
+                        app_state.current_mode = AppMode::RustymonDetail;
+                        app_state.needs_redraw = true;
+                    }
+                    SwipeDirection::Up => {
+                        // Swipe up to scroll down the skills list
+                        if let Some(index) = game_manager.selected_rustymon_index {
+                            if index < game_manager.rustymon_collection.len() {
+                                let total_skills = game_manager.rustymon_collection[index].skills.learned_skills.len();
+                                game_manager.rustymon_skills_page.scroll_down(total_skills);
+                                app_state.needs_redraw = true;
+                            }
+                        }
+                    }
+                    SwipeDirection::Down => {
+                        // Swipe down to scroll up the skills list
+                        game_manager.rustymon_skills_page.scroll_up();
+                        app_state.needs_redraw = true;
+                    }
+                    _ => {}
                 }
             }
             _ => {
