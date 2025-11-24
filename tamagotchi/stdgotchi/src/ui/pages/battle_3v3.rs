@@ -38,40 +38,52 @@ pub enum EntityRole {
 }
 
 /// Battle entity with animation state
-/// Simplified for 3v3 to use less memory - only one sprite per entity
+/// Memory-optimized: Heap-allocated sprites to avoid stack overflow (12 sprites × 11KB each)
 pub struct BattleEntity {
-    sprite: AnimatedSprite,
+    idle_sprite: Box<AnimatedSprite>,
+    attack_sprite: Box<AnimatedSprite>,
+    current_animation: AnimationType,
     role: EntityRole,
     last_attack_time: Instant,
     attack_interval: Duration,
+    animation_start_time: Instant,
     is_dead: bool,
     death_time: Option<Instant>,
 }
 
 impl BattleEntity {
     /// Create a new battle entity with optional horizontal flip
-    /// For 3v3 battles, we only load idle animation to save memory
+    /// For 3v3: Heap-allocates sprites to avoid stack overflow (Box moves 11KB buffers to heap)
     pub fn new_with_flip(
         role: EntityRole,
         idle_data: &[u8],
-        _attack_data: &[u8],    // Ignored to save memory
-        _attacked_data: &[u8],  // Ignored to save memory
-        _death_data: Option<&[u8]>,  // Ignored to save memory
+        attack_data: &[u8],
+        _attacked_data: &[u8],  // Not used
+        _death_data: Option<&[u8]>,  // Not loaded to save memory
         position: (i32, i32),
         attack_interval: Duration,
         flip_horizontal: bool,
     ) -> Result<Self, Box<dyn Error>> {
         let frame_delay = Duration::from_millis(100);
 
-        let mut sprite = AnimatedSprite::new(idle_data, position, frame_delay, None)?;
-        sprite.set_flip_horizontal(flip_horizontal);
-        sprite.set_center_positioned(true);
+        // Load idle sprite (heap-allocated to avoid stack overflow)
+        let mut idle_sprite = AnimatedSprite::new(idle_data, position, frame_delay, None)?;
+        idle_sprite.set_flip_horizontal(flip_horizontal);
+        idle_sprite.set_center_positioned(true);
+
+        // Load attack sprite (heap-allocated to avoid stack overflow)
+        let mut attack_sprite = AnimatedSprite::new(attack_data, position, frame_delay, None)?;
+        attack_sprite.set_flip_horizontal(flip_horizontal);
+        attack_sprite.set_center_positioned(true);
 
         Ok(Self {
-            sprite,
+            idle_sprite: Box::new(idle_sprite),
+            attack_sprite: Box::new(attack_sprite),
+            current_animation: AnimationType::Idle,
             role,
             last_attack_time: Instant::now(),
             attack_interval,
+            animation_start_time: Instant::now(),
             is_dead: false,
             death_time: None,
         })
@@ -79,35 +91,69 @@ impl BattleEntity {
 
     /// Update entity animation and state
     pub fn update(&mut self, _dt: Duration) {
-        // Update sprite animation
-        self.sprite.update();
+        // Update current sprite animation
+        match self.current_animation {
+            AnimationType::Idle => {
+                self.idle_sprite.update();
+            }
+            AnimationType::Attack => {
+                self.attack_sprite.update();
+                // Return to idle after attack animation completes (500ms)
+                if self.animation_start_time.elapsed() >= Duration::from_millis(500) {
+                    self.current_animation = AnimationType::Idle;
+                }
+            }
+            AnimationType::Death => {
+                // No death animation - just stop updating (stays on last idle frame)
+            }
+            _ => {}
+        }
     }
 
     /// Draw the entity
     pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
-        if !self.is_dead {
-            self.sprite.draw(display)?;
+        // Don't draw if dead
+        if self.is_dead {
+            return Ok(());
+        }
+
+        match self.current_animation {
+            AnimationType::Idle | AnimationType::Death => {
+                self.idle_sprite.draw(display)?;
+            }
+            AnimationType::Attack => {
+                self.attack_sprite.draw(display)?;
+            }
+            _ => {
+                self.idle_sprite.draw(display)?;
+            }
         }
         Ok(())
     }
 
-    /// Trigger attack (just update timer, no animation change)
+    /// Trigger attack animation
     pub fn attack(&mut self) {
         if !self.is_dead {
+            self.current_animation = AnimationType::Attack;
+            self.animation_start_time = Instant::now();
             self.last_attack_time = Instant::now();
+            log::debug!("🗡️ Attack animation triggered");
         }
     }
 
-    /// Trigger hit (no visual change, just for API compatibility)
+    /// Trigger hit (no visual change for now)
     pub fn take_hit(&mut self) {
-        // No animation change in simplified 3v3
+        // Could add Attacked animation here if needed
     }
 
-    /// Mark as dead
+    /// Mark as dead and trigger death animation
     pub fn die(&mut self) {
         if !self.is_dead {
             self.is_dead = true;
             self.death_time = Some(Instant::now());
+            self.current_animation = AnimationType::Death;
+            self.animation_start_time = Instant::now();
+            log::info!("💀 Death animation triggered");
         }
     }
 
@@ -201,6 +247,17 @@ pub enum BattleResult {
 }
 
 impl Battle3v3Page {
+    /// Calculate attack interval from AGI stat
+    /// Formula: 3000ms / (1 + agi/100)
+    /// Example: AGI 50 = 2000ms, AGI 100 = 1500ms, AGI 200 = 1000ms
+    fn calculate_attack_interval(agi: u32) -> Duration {
+        let base_ms = 3000.0;
+        let agi_factor = 1.0 + (agi as f32 / 100.0);
+        let interval_ms = (base_ms / agi_factor) as u64;
+        let interval_ms = interval_ms.clamp(500, 5000); // Min 0.5s, Max 5s
+        Duration::from_millis(interval_ms)
+    }
+
     /// Create a new 3v3 battle
     pub fn new(
         background_color: Rgb888,
@@ -225,7 +282,7 @@ impl Battle3v3Page {
             battle_result: BattleResult::Ongoing,
             last_update: Instant::now(),
             turn_timer: Instant::now(),
-            turn_delay: Duration::from_millis(1500), // 1.5 seconds between attacks
+            turn_delay: Duration::from_millis(1500), // No longer used, kept for compatibility
         }
     }
 
@@ -264,6 +321,9 @@ impl Battle3v3Page {
                         let (idle, attack, attacked, death) = load_enemy_sprites_embedded(rustymon.species_id)
                             .ok_or("Failed to load rustymon sprites")?;
 
+                        // Calculate attack interval based on flee (represents agility)
+                        let attack_interval = Self::calculate_attack_interval(rustymon.flee);
+
                         let entity = BattleEntity::new_with_flip(
                             EntityRole::Hero,
                             &idle,
@@ -271,16 +331,16 @@ impl Battle3v3Page {
                             &attacked,
                             death.as_deref(),
                             positions[loaded],
-                            Duration::from_millis(1500),
+                            attack_interval,
                             true, // Flip to face left
                         )?;
 
                         self.heroes[loaded] = Some(entity);
                         self.hero_rustymon[loaded] = Some(rustymon.clone());
 
-                        log::info!("Loaded hero {} at team slot {} → array index {}: {} [species_id={}] (HP: {}/{}) at position {:?}",
-                            loaded, i, loaded, rustymon.name, rustymon.species_id,
-                            rustymon.current_hp, rustymon.max_hp, positions[loaded]);
+                        log::info!("Loaded hero {} at team slot {} → array index {}: {} [AGI/FLEE={}] (HP: {}/{}) attack_interval={:?}",
+                            loaded, i, loaded, rustymon.name, rustymon.flee,
+                            rustymon.current_hp, rustymon.max_hp, attack_interval);
                         loaded += 1;
                     }
                 }
@@ -311,6 +371,9 @@ impl Battle3v3Page {
             let (idle, attack, attacked, death) = load_enemy_sprites_embedded(enemy_id)
                 .ok_or(format!("No sprites for enemy {}", enemy_id))?;
 
+            // Calculate attack interval based on enemy AGI
+            let attack_interval = Self::calculate_attack_interval(enemy_data.agi);
+
             let entity = BattleEntity::new_with_flip(
                 EntityRole::Enemy,
                 &idle,
@@ -318,7 +381,7 @@ impl Battle3v3Page {
                 &attacked,
                 death.as_deref(),
                 positions[i],
-                Duration::from_millis(2000),
+                attack_interval,
                 false, // Don't flip - face right
             )?;
 
@@ -338,8 +401,8 @@ impl Battle3v3Page {
             self.enemies[i] = Some(entity);
             self.enemy_data[i] = Some(game_enemy);
 
-            log::info!("Loaded enemy {} at position {}: {} (HP: {})",
-                i, i, enemy_data.name, enemy_data.hp);
+            log::info!("Loaded enemy {} at position {}: {} [AGI={}] (HP: {}) attack_interval={:?}",
+                i, i, enemy_data.name, enemy_data.agi, enemy_data.hp, attack_interval);
         }
 
         log::info!("Setup {} enemies for 3v3 battle", count);
@@ -412,28 +475,30 @@ impl Battle3v3Page {
         }
     }
 
-    /// Process one turn of combat
+    /// Process one turn of combat with AGI-based attack speed
     fn process_turn(&mut self) {
         if self.battle_result != BattleResult::Ongoing {
             return;
         }
 
-        if self.turn_timer.elapsed() < self.turn_delay {
-            return;
-        }
-
-        self.turn_timer = Instant::now();
-
-        // Heroes attack first
+        // Process heroes - each attacks independently based on their AGI/attack interval
         for hero_idx in 0..3 {
-            if let Some(hero_rustymon) = &self.hero_rustymon[hero_idx] {
-                if hero_rustymon.current_hp > 0 {
-                    // Find random enemy target
-                    if let Some(target_idx) = self.get_random_alive_enemy() {
-                        // Trigger attack animation
-                        if let Some(hero_entity) = &mut self.heroes[hero_idx] {
-                            hero_entity.attack();
-                        }
+            // Check if hero entity is ready to attack
+            let can_attack = if let Some(hero_entity) = &self.heroes[hero_idx] {
+                hero_entity.can_attack()
+            } else {
+                false
+            };
+
+            if can_attack {
+                if let Some(hero_rustymon) = &self.hero_rustymon[hero_idx] {
+                    if hero_rustymon.current_hp > 0 {
+                        // Find random enemy target
+                        if let Some(target_idx) = self.get_random_alive_enemy() {
+                            // Trigger attack animation
+                            if let Some(hero_entity) = &mut self.heroes[hero_idx] {
+                                hero_entity.attack();
+                            }
 
                         // Calculate damage
                         let attacker_atk = hero_rustymon.atk;
@@ -475,16 +540,24 @@ impl Battle3v3Page {
             }
         }
 
-        // Enemies counter-attack
+        // Process enemies - each attacks independently based on their AGI/attack interval
         for enemy_idx in 0..3 {
-            if let Some(enemy) = &self.enemy_data[enemy_idx] {
-                if enemy.is_alive() {
-                    // Find random hero target
-                    if let Some(target_idx) = self.get_random_alive_hero() {
-                        // Trigger attack animation
-                        if let Some(enemy_entity) = &mut self.enemies[enemy_idx] {
-                            enemy_entity.attack();
-                        }
+            // Check if enemy entity is ready to attack
+            let can_attack = if let Some(enemy_entity) = &self.enemies[enemy_idx] {
+                enemy_entity.can_attack()
+            } else {
+                false
+            };
+
+            if can_attack {
+                if let Some(enemy) = &self.enemy_data[enemy_idx] {
+                    if enemy.is_alive() {
+                        // Find random hero target
+                        if let Some(target_idx) = self.get_random_alive_hero() {
+                            // Trigger attack animation
+                            if let Some(enemy_entity) = &mut self.enemies[enemy_idx] {
+                                enemy_entity.attack();
+                            }
 
                         // Calculate damage
                         let attacker_atk = enemy.atk;
@@ -525,10 +598,12 @@ impl Battle3v3Page {
                         }
                     }
                 }
+                    }
+                }
             }
         }
 
-        // Check for battle end
+        // Check for battle end after any attacks
         self.check_battle_result();
     }
 
