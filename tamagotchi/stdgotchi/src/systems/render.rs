@@ -70,7 +70,7 @@ pub fn render_system(
     }
 
     match app_state.current_mode {
-        AppMode::BattleLoading => {
+        AppMode::BattleLoading | AppMode::Battle3v3Loading => {
             // Draw loading screen
             if app_state.needs_redraw {
                 if let Err(e) = draw_loading_screen(display) {
@@ -79,7 +79,7 @@ pub fn render_system(
                 app_state.needs_redraw = false;
             }
         }
-        AppMode::Menu | AppMode::Map | AppMode::Battle => {
+        AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::Battle3v3 | AppMode::BattleResult => {
             // Game-based rendering with GameManager
             if let Some(mut game_manager) = game_manager {
                 // Update menu battle state if in Menu mode
@@ -107,7 +107,15 @@ pub fn render_system(
 
                     // Check if page is done
                     if !page_active {
-                        info!("Page completed, returning to map");
+                        log::info!("Page completed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                } else {
+                    // Page not found - log error
+                    if app_state.current_mode == AppMode::Battle3v3 {
+                        log::error!("❌ Render: get_current_page returned None for Battle3v3!");
+                        log::error!("Returning to map...");
                         app_state.current_mode = AppMode::Map;
                         app_state.needs_redraw = true;
                     }

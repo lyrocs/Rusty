@@ -94,8 +94,35 @@ pub fn map_navigation_system(
                                             initial_enemy_id,
                                         });
 
-                                    // Switch to loading screen first
-                                    app_state.current_mode = AppMode::BattleLoading;
+                                    // Count alive rustymon in team
+                                    let alive_count = game_manager.rustymon_team.active_slots
+                                        .iter()
+                                        .filter(|slot| {
+                                            if let Some(id) = slot {
+                                                game_manager.rustymon_collection.iter()
+                                                    .find(|r| &r.id == id)
+                                                    .map(|r| r.current_hp > 0)
+                                                    .unwrap_or(false)
+                                            } else {
+                                                false
+                                            }
+                                        })
+                                        .count();
+
+                                    let has_enough_enemies = location.enemies.len() >= 3;
+
+                                    // ALWAYS use 3v3 for testing - uncomment condition below to make it conditional
+                                    // if has_enough_enemies && alive_count >= 3 {
+                                    if true {
+                                        log::info!("🎮 Starting 3v3 battle! (enemies: {}, alive rustymon: {})",
+                                            location.enemies.len(), alive_count);
+                                        app_state.current_mode = AppMode::Battle3v3Loading;
+                                    } else {
+                                        log::info!("Starting 1v1 battle (enemies: {}, alive: {}, need 3+ each)",
+                                            location.enemies.len(), alive_count);
+                                        app_state.current_mode = AppMode::BattleLoading;
+                                    }
+
                                     app_state.needs_redraw = true;
                                     log::info!(
                                         "Switched to loading screen, battle will be created on next frame"

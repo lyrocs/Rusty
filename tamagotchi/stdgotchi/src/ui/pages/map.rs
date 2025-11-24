@@ -52,6 +52,8 @@ pub struct MapPage {
     world_map: WorldMap,
     touch_areas: Vec<TouchArea>,
     background: Option<Background>,
+    details_background: Option<Background>, // Cache for map details page
+    cached_details_map_id: Option<u32>,     // Track which map is cached
     background_color: Rgb888,
     needs_full_redraw: bool,
     asset_loader: Option<AssetLoader<SdCardWrapper>>,
@@ -131,6 +133,8 @@ impl MapPage {
             world_map,
             touch_areas: Vec::new(),
             background,
+            details_background: None,
+            cached_details_map_id: None,
             background_color: Rgb888::new(20, 30, 40),
             needs_full_redraw: true,
             asset_loader,
@@ -418,10 +422,15 @@ impl MapPage {
         let img_height = 200u32;
         let img_x = (368 - img_width as i32) / 2;
 
-        // Load and draw map background for the selected map
-        let map_background = Self::load_map_background(map_id, &self.asset_loader, (img_x, img_y));
+        // Check if we need to reload the background (if map changed)
+        if self.cached_details_map_id != Some(map_id) {
+            // Load and cache the map background
+            self.details_background = Self::load_map_background(map_id, &self.asset_loader, (img_x, img_y));
+            self.cached_details_map_id = Some(map_id);
+        }
 
-        if let Some(bg) = map_background {
+        // Draw the cached background
+        if let Some(ref bg) = self.details_background {
             // Draw the actual map GIF
             bg.draw(display)?;
         } else {

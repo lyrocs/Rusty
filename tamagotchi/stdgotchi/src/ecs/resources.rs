@@ -136,6 +136,8 @@ pub struct GameManager {
     pub menu_page: crate::ui::pages::MenuPage,
     pub map_page: MapPage,
     pub battle_page: Option<BattlePage>,
+    pub battle_3v3_page: Option<crate::ui::pages::Battle3v3Page>,
+    pub battle_result_page: Option<crate::ui::pages::BattleResultPage>,
     pub death_page: Option<crate::ui::pages::DeathPage>,
     pub rustymon_list_page: RustymonListPage,
     pub rustymon_detail_page: RustymonDetailPage,
@@ -191,6 +193,8 @@ impl GameManager {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::new(world_map, None), // Use embedded map backgrounds
             battle_page: None,
+            battle_3v3_page: None,
+            battle_result_page: None,
             death_page: None,
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
@@ -230,6 +234,8 @@ impl GameManager {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
             battle_page: None,
+            battle_3v3_page: None,
+            battle_result_page: None,
             death_page: None,
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
@@ -261,6 +267,21 @@ impl GameManager {
             AppMode::Battle => {
                 if let Some(ref mut battle_page) = self.battle_page {
                     Some(battle_page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::Battle3v3Loading => None, // Loading screen has no page
+            AppMode::Battle3v3 => {
+                if let Some(ref mut battle_3v3_page) = self.battle_3v3_page {
+                    Some(battle_3v3_page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::BattleResult => {
+                if let Some(ref mut battle_result_page) = self.battle_result_page {
+                    Some(battle_result_page as &mut dyn Page)
                 } else {
                     None
                 }
@@ -576,8 +597,14 @@ pub enum AppMode {
     Map,
     /// Loading screen before battle
     BattleLoading,
-    /// Battle mode
+    /// Battle mode (1v1)
     Battle,
+    /// Loading screen before 3v3 battle
+    Battle3v3Loading,
+    /// 3v3 Battle mode
+    Battle3v3,
+    /// Battle result screen (after victory)
+    BattleResult,
     /// Death screen (hero died)
     Death,
     /// Rustymon list screen

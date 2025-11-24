@@ -1,0 +1,750 @@
+//! 3v3 Battle Page
+//!
+//! Displays 3 heroes vs 3 enemies with HP bars and random targeting
+
+use crate::assets::battle::{load_enemy_sprites_embedded};
+use crate::display::Sh8601Driver;
+use crate::game::{Enemy as GameEnemy, FragmentCollection, GameData, KillTracker, Rustymon, RustymonTeam};
+use crate::ui::page::Page;
+use crate::ui::sprite::AnimatedSprite;
+use embedded_graphics::{
+    mono_font::{
+        MonoTextStyle,
+        ascii::{FONT_6X10},
+    },
+    pixelcolor::Rgb888,
+    prelude::*,
+    primitives::{PrimitiveStyle, Rectangle},
+    text::Text,
+};
+use std::error::Error;
+use std::time::{Duration, Instant};
+use rand::Rng;
+
+/// Animation types for battle entities
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationType {
+    Idle,
+    Attack,
+    Attacked,
+    Death,
+}
+
+/// Entity role in battle
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityRole {
+    Hero,
+    Enemy,
+}
+
+/// Battle entity with animation state
+/// Simplified for 3v3 to use less memory - only one sprite per entity
+pub struct BattleEntity {
+    sprite: AnimatedSprite,
+    role: EntityRole,
+    last_attack_time: Instant,
+    attack_interval: Duration,
+    is_dead: bool,
+    death_time: Option<Instant>,
+}
+
+impl BattleEntity {
+    /// Create a new battle entity with optional horizontal flip
+    /// For 3v3 battles, we only load idle animation to save memory
+    pub fn new_with_flip(
+        role: EntityRole,
+        idle_data: &[u8],
+        _attack_data: &[u8],    // Ignored to save memory
+        _attacked_data: &[u8],  // Ignored to save memory
+        _death_data: Option<&[u8]>,  // Ignored to save memory
+        position: (i32, i32),
+        attack_interval: Duration,
+        flip_horizontal: bool,
+    ) -> Result<Self, Box<dyn Error>> {
+        let frame_delay = Duration::from_millis(100);
+
+        let mut sprite = AnimatedSprite::new(idle_data, position, frame_delay, None)?;
+        sprite.set_flip_horizontal(flip_horizontal);
+        sprite.set_center_positioned(true);
+
+        Ok(Self {
+            sprite,
+            role,
+            last_attack_time: Instant::now(),
+            attack_interval,
+            is_dead: false,
+            death_time: None,
+        })
+    }
+
+    /// Update entity animation and state
+    pub fn update(&mut self, _dt: Duration) {
+        // Update sprite animation
+        self.sprite.update();
+    }
+
+    /// Draw the entity
+    pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        if !self.is_dead {
+            self.sprite.draw(display)?;
+        }
+        Ok(())
+    }
+
+    /// Trigger attack (just update timer, no animation change)
+    pub fn attack(&mut self) {
+        if !self.is_dead {
+            self.last_attack_time = Instant::now();
+        }
+    }
+
+    /// Trigger hit (no visual change, just for API compatibility)
+    pub fn take_hit(&mut self) {
+        // No animation change in simplified 3v3
+    }
+
+    /// Mark as dead
+    pub fn die(&mut self) {
+        if !self.is_dead {
+            self.is_dead = true;
+            self.death_time = Some(Instant::now());
+        }
+    }
+
+    /// Check if ready to attack
+    pub fn can_attack(&self) -> bool {
+        !self.is_dead && self.last_attack_time.elapsed() >= self.attack_interval
+    }
+}
+
+/// Damage number floating animation
+struct DamageNumber {
+    damage: u32,
+    position: (i32, i32),
+    spawn_time: Instant,
+    is_critical: bool,
+}
+
+impl DamageNumber {
+    fn new(damage: u32, position: (i32, i32), is_critical: bool) -> Self {
+        Self {
+            damage,
+            position,
+            spawn_time: Instant::now(),
+            is_critical,
+        }
+    }
+
+    fn is_expired(&self) -> bool {
+        self.spawn_time.elapsed().as_millis() > 800
+    }
+
+    fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+        let elapsed = self.spawn_time.elapsed().as_millis() as i32;
+        let offset_y = -(elapsed / 16); // Float up 50px over 800ms
+        let alpha = ((800 - elapsed) as f32 / 800.0 * 255.0) as u8;
+
+        let color = if self.is_critical {
+            Rgb888::new(255, alpha, 0) // Orange for crits
+        } else {
+            Rgb888::new(255, alpha, alpha) // White fading
+        };
+
+        let text = format!("{}", self.damage);
+        let style = MonoTextStyle::new(&FONT_6X10, color);
+
+        Text::new(
+            &text,
+            Point::new(self.position.0, self.position.1 + offset_y),
+            style,
+        )
+        .draw(display)?;
+
+        Ok(())
+    }
+}
+
+/// 3v3 Battle Page
+pub struct Battle3v3Page {
+    background_color: Rgb888,
+
+    // 3 heroes on the right side
+    heroes: [Option<BattleEntity>; 3],
+    hero_rustymon: [Option<Rustymon>; 3], // Snapshot of rustymon stats at battle start
+
+    // 3 enemies on the left side
+    enemies: [Option<BattleEntity>; 3],
+    enemy_data: [Option<GameEnemy>; 3],
+
+    // Game state
+    rustymon_collection: Vec<Rustymon>,
+    rustymon_team: RustymonTeam,
+    game_data: GameData,
+    kill_tracker: KillTracker,
+    fragment_collection: FragmentCollection,
+
+    // Battle state
+    damage_numbers: Vec<DamageNumber>,
+    battle_result: BattleResult,
+    last_update: Instant,
+
+    // Turn management
+    turn_timer: Instant,
+    turn_delay: Duration, // Delay between attacks
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BattleResult {
+    Ongoing,
+    Victory,
+    Defeat,
+}
+
+impl Battle3v3Page {
+    /// Create a new 3v3 battle
+    pub fn new(
+        background_color: Rgb888,
+        kill_tracker: KillTracker,
+        game_data: GameData,
+        rustymon_collection: Vec<Rustymon>,
+        rustymon_team: RustymonTeam,
+        fragment_collection: FragmentCollection,
+    ) -> Self {
+        Self {
+            background_color,
+            heroes: [None, None, None],
+            hero_rustymon: [None, None, None],
+            enemies: [None, None, None],
+            enemy_data: [None, None, None],
+            rustymon_collection,
+            rustymon_team,
+            game_data,
+            kill_tracker,
+            fragment_collection,
+            damage_numbers: Vec::new(),
+            battle_result: BattleResult::Ongoing,
+            last_update: Instant::now(),
+            turn_timer: Instant::now(),
+            turn_delay: Duration::from_millis(1500), // 1.5 seconds between attacks
+        }
+    }
+
+    /// Get hero positions (right side, facing left)
+    fn get_hero_positions() -> [(i32, i32); 3] {
+        [
+            (200, 80),   // Top
+            (200, 170),  // Middle
+            (200, 260),  // Bottom
+        ]
+    }
+
+    /// Get enemy positions (left side, facing right)
+    fn get_enemy_positions() -> [(i32, i32); 3] {
+        [
+            (60, 80),    // Top
+            (60, 170),   // Middle
+            (60, 260),   // Bottom
+        ]
+    }
+
+    /// Initialize battle with first 3 rustymon from team
+    pub fn setup_heroes(&mut self) -> Result<(), Box<dyn Error>> {
+        let positions = Self::get_hero_positions();
+        let mut loaded = 0;
+
+        for (i, slot) in self.rustymon_team.active_slots.iter().enumerate() {
+            if loaded >= 3 {
+                break;
+            }
+
+            if let Some(rustymon_id) = slot {
+                if let Some(rustymon) = self.rustymon_collection.iter().find(|r| &r.id == rustymon_id) {
+                    if rustymon.current_hp > 0 {
+                        // Load sprites using species_id (which maps to enemy sprites)
+                        let (idle, attack, attacked, death) = load_enemy_sprites_embedded(rustymon.species_id)
+                            .ok_or("Failed to load rustymon sprites")?;
+
+                        let entity = BattleEntity::new_with_flip(
+                            EntityRole::Hero,
+                            &idle,
+                            &attack,
+                            &attacked,
+                            death.as_deref(),
+                            positions[loaded],
+                            Duration::from_millis(1500),
+                            true, // Flip to face left
+                        )?;
+
+                        self.heroes[loaded] = Some(entity);
+                        self.hero_rustymon[loaded] = Some(rustymon.clone());
+
+                        log::info!("Loaded hero {} at team slot {} → array index {}: {} [species_id={}] (HP: {}/{}) at position {:?}",
+                            loaded, i, loaded, rustymon.name, rustymon.species_id,
+                            rustymon.current_hp, rustymon.max_hp, positions[loaded]);
+                        loaded += 1;
+                    }
+                }
+            }
+        }
+
+        if loaded == 0 {
+            return Err("No alive rustymon in team!".into());
+        }
+
+        log::info!("Setup {} heroes for 3v3 battle", loaded);
+        Ok(())
+    }
+
+    /// Add enemies to battle
+    pub fn add_enemies(&mut self, enemy_ids: &[u32]) -> Result<(), Box<dyn Error>> {
+        let positions = Self::get_enemy_positions();
+        let count = enemy_ids.len().min(3);
+
+        for i in 0..count {
+            let enemy_id = enemy_ids[i];
+
+            // Get enemy data
+            let enemy_data = self.game_data.get_enemy(enemy_id)
+                .ok_or(format!("Enemy {} not found", enemy_id))?;
+
+            // Load sprites
+            let (idle, attack, attacked, death) = load_enemy_sprites_embedded(enemy_id)
+                .ok_or(format!("No sprites for enemy {}", enemy_id))?;
+
+            let entity = BattleEntity::new_with_flip(
+                EntityRole::Enemy,
+                &idle,
+                &attack,
+                &attacked,
+                death.as_deref(),
+                positions[i],
+                Duration::from_millis(2000),
+                false, // Don't flip - face right
+            )?;
+
+            let game_enemy = GameEnemy::from_data(
+                enemy_data.id,
+                enemy_data.name.clone(),
+                enemy_data.level,
+                enemy_data.hp,
+                enemy_data.attack,
+                enemy_data.defense,
+                enemy_data.hit,
+                enemy_data.flee,
+                enemy_data.base_exp,
+                enemy_data.get_element(),
+            );
+
+            self.enemies[i] = Some(entity);
+            self.enemy_data[i] = Some(game_enemy);
+
+            log::info!("Loaded enemy {} at position {}: {} (HP: {})",
+                i, i, enemy_data.name, enemy_data.hp);
+        }
+
+        log::info!("Setup {} enemies for 3v3 battle", count);
+        Ok(())
+    }
+
+    /// Get a random alive enemy index
+    fn get_random_alive_enemy(&self) -> Option<usize> {
+        let alive_enemies: Vec<usize> = (0..3)
+            .filter(|&i| {
+                self.enemy_data[i].as_ref()
+                    .map(|e| e.is_alive())
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if alive_enemies.is_empty() {
+            None
+        } else {
+            let mut rng = rand::thread_rng();
+            Some(alive_enemies[rng.gen_range(0..alive_enemies.len())])
+        }
+    }
+
+    /// Get a random alive hero index
+    fn get_random_alive_hero(&self) -> Option<usize> {
+        let alive_heroes: Vec<usize> = (0..3)
+            .filter(|&i| {
+                self.hero_rustymon[i].as_ref()
+                    .map(|h| h.current_hp > 0)
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if alive_heroes.is_empty() {
+            None
+        } else {
+            let mut rng = rand::thread_rng();
+            Some(alive_heroes[rng.gen_range(0..alive_heroes.len())])
+        }
+    }
+
+    /// Check battle result
+    fn check_battle_result(&mut self) {
+        // Check if all heroes dead
+        let all_heroes_dead = self.hero_rustymon.iter()
+            .all(|h| h.as_ref().map(|r| r.current_hp == 0).unwrap_or(true));
+
+        if all_heroes_dead {
+            self.battle_result = BattleResult::Defeat;
+            log::info!("Battle lost - all heroes defeated!");
+            return;
+        }
+
+        // Check if all enemies dead
+        let all_enemies_dead = self.enemy_data.iter()
+            .all(|e| e.as_ref().map(|e| !e.is_alive()).unwrap_or(true));
+
+        if all_enemies_dead {
+            self.battle_result = BattleResult::Victory;
+            log::info!("Battle won - all enemies defeated!");
+
+            // Award experience
+            for enemy in &self.enemy_data {
+                if let Some(e) = enemy {
+                    // TODO: Award exp to surviving heroes
+                    log::info!("Defeated {} - {} exp", e.name, e.exp_reward);
+                }
+            }
+        }
+    }
+
+    /// Process one turn of combat
+    fn process_turn(&mut self) {
+        if self.battle_result != BattleResult::Ongoing {
+            return;
+        }
+
+        if self.turn_timer.elapsed() < self.turn_delay {
+            return;
+        }
+
+        self.turn_timer = Instant::now();
+
+        // Heroes attack first
+        for hero_idx in 0..3 {
+            if let Some(hero_rustymon) = &self.hero_rustymon[hero_idx] {
+                if hero_rustymon.current_hp > 0 {
+                    // Find random enemy target
+                    if let Some(target_idx) = self.get_random_alive_enemy() {
+                        // Trigger attack animation
+                        if let Some(hero_entity) = &mut self.heroes[hero_idx] {
+                            hero_entity.attack();
+                        }
+
+                        // Calculate damage
+                        let attacker_atk = hero_rustymon.atk;
+                        if let Some(enemy) = &mut self.enemy_data[target_idx] {
+                            let mut damage = if attacker_atk > enemy.def {
+                                attacker_atk - enemy.def
+                            } else {
+                                1
+                            };
+
+                            // Random variance 80-120%
+                            let mut rng = rand::thread_rng();
+                            let variance = rng.gen_range(80..=120) as f32 / 100.0;
+                            damage = (damage as f32 * variance) as u32;
+                            damage = damage.max(1);
+
+                            // Apply damage
+                            enemy.take_damage(damage);
+
+                            // Trigger hit animation
+                            if let Some(enemy_entity) = &mut self.enemies[target_idx] {
+                                enemy_entity.take_hit();
+                                if !enemy.is_alive() {
+                                    enemy_entity.die();
+                                }
+                            }
+
+                            // Show damage number
+                            if let Some(enemy_entity) = &self.enemies[target_idx] {
+                                let pos = Self::get_enemy_positions()[target_idx];
+                                self.damage_numbers.push(DamageNumber::new(damage, pos, false));
+                            }
+
+                            log::info!("{} attacks {} for {} damage! (HP: {})",
+                                hero_rustymon.name, enemy.name, damage, enemy.current_hp);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Enemies counter-attack
+        for enemy_idx in 0..3 {
+            if let Some(enemy) = &self.enemy_data[enemy_idx] {
+                if enemy.is_alive() {
+                    // Find random hero target
+                    if let Some(target_idx) = self.get_random_alive_hero() {
+                        // Trigger attack animation
+                        if let Some(enemy_entity) = &mut self.enemies[enemy_idx] {
+                            enemy_entity.attack();
+                        }
+
+                        // Calculate damage
+                        let attacker_atk = enemy.atk;
+                        if let Some(hero_rustymon) = &mut self.hero_rustymon[target_idx] {
+                            let mut damage = if attacker_atk > hero_rustymon.def {
+                                attacker_atk - hero_rustymon.def
+                            } else {
+                                1
+                            };
+
+                            // Random variance
+                            let mut rng = rand::thread_rng();
+                            let variance = rng.gen_range(80..=120) as f32 / 100.0;
+                            damage = (damage as f32 * variance) as u32;
+                            damage = damage.max(1);
+
+                            // Apply damage
+                            if damage >= hero_rustymon.current_hp {
+                                hero_rustymon.current_hp = 0;
+                            } else {
+                                hero_rustymon.current_hp -= damage;
+                            }
+
+                            // Trigger hit animation
+                            if let Some(hero_entity) = &mut self.heroes[target_idx] {
+                                hero_entity.take_hit();
+                                if hero_rustymon.current_hp == 0 {
+                                    hero_entity.die();
+                                }
+                            }
+
+                            // Show damage number
+                            let pos = Self::get_hero_positions()[target_idx];
+                            self.damage_numbers.push(DamageNumber::new(damage, pos, false));
+
+                            log::info!("{} attacks {} for {} damage! (HP: {})",
+                                enemy.name, hero_rustymon.name, damage, hero_rustymon.current_hp);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for battle end
+        self.check_battle_result();
+    }
+
+    /// Draw HP bar above a character
+    fn draw_hp_bar(
+        display: &mut Sh8601Driver,
+        name: &str,
+        current_hp: u32,
+        max_hp: u32,
+        position: (i32, i32),
+    ) -> Result<(), Box<dyn Error>> {
+        let bar_width = 50;
+        let bar_height = 4;
+        let bar_x = position.0 - bar_width / 2;
+        let bar_y = position.1 - 40; // Above the character
+
+        // Background bar (dark)
+        Rectangle::new(
+            Point::new(bar_x, bar_y),
+            Size::new(bar_width as u32, bar_height as u32),
+        )
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(50, 50, 50)))
+        .draw(display)?;
+
+        // HP bar (colored based on percentage)
+        let hp_percentage = (current_hp as f32 / max_hp as f32) * 100.0;
+        let hp_color = if hp_percentage > 60.0 {
+            Rgb888::new(0, 255, 0) // Green
+        } else if hp_percentage > 30.0 {
+            Rgb888::new(255, 255, 0) // Yellow
+        } else {
+            Rgb888::new(255, 0, 0) // Red
+        };
+
+        let filled_width = ((current_hp as f32 / max_hp as f32) * bar_width as f32) as u32;
+        if filled_width > 0 {
+            Rectangle::new(
+                Point::new(bar_x, bar_y),
+                Size::new(filled_width, bar_height as u32),
+            )
+            .into_styled(PrimitiveStyle::with_fill(hp_color))
+            .draw(display)?;
+        }
+
+        // Name text above HP bar
+        let name_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+        let name_x = position.0 - (name.len() as i32 * 3); // Center the name
+        Text::new(name, Point::new(name_x, bar_y - 3), name_style).draw(display)?;
+
+        // HP text
+        let hp_text = format!("{}/{}", current_hp, max_hp);
+        let hp_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+        let hp_x = position.0 - (hp_text.len() as i32 * 3);
+        Text::new(&hp_text, Point::new(hp_x, bar_y + 15), hp_style).draw(display)?;
+
+        Ok(())
+    }
+
+    /// Get battle result
+    pub fn get_result(&self) -> BattleResult {
+        self.battle_result
+    }
+
+    /// Get updated rustymon collection (with HP changes)
+    pub fn get_rustymon_collection(&self) -> Vec<Rustymon> {
+        let mut collection = self.rustymon_collection.clone();
+
+        // Update HP for heroes that were in battle
+        // Iterate over hero_rustymon array (not team slots) to ensure all battle participants get synced
+        for hero_rustymon in &self.hero_rustymon {
+            if let Some(hero) = hero_rustymon {
+                // Find the rustymon in collection by ID and update HP
+                if let Some(rustymon) = collection.iter_mut().find(|r| r.id == hero.id) {
+                    let old_hp = rustymon.current_hp;
+                    rustymon.current_hp = hero.current_hp;
+                    log::debug!("Synced {} HP: {} -> {}", rustymon.name, old_hp, hero.current_hp);
+                }
+            }
+        }
+
+        collection
+    }
+}
+
+impl Page for Battle3v3Page {
+    fn update(&mut self) -> bool {
+        let dt = self.last_update.elapsed();
+        self.last_update = Instant::now();
+
+        // Debug: Log once at start
+        static mut FIRST_UPDATE: bool = true;
+        unsafe {
+            if FIRST_UPDATE {
+                log::info!("🎮 Battle3v3Page::update() - First call");
+                FIRST_UPDATE = false;
+            }
+        }
+
+        // Update all entities
+        for hero in &mut self.heroes {
+            if let Some(entity) = hero {
+                entity.update(dt);
+            }
+        }
+
+        for enemy in &mut self.enemies {
+            if let Some(entity) = enemy {
+                entity.update(dt);
+            }
+        }
+
+        // Remove expired damage numbers
+        self.damage_numbers.retain(|d| !d.is_expired());
+
+        // Process combat
+        self.process_turn();
+
+        // Continue battle unless result is set
+        true
+    }
+
+    fn draw(&mut self, display: &mut Sh8601Driver, _full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        // Debug: Log first draw with hero info
+        static mut FIRST_DRAW: bool = true;
+        unsafe {
+            if FIRST_DRAW {
+                log::info!("🎨 Battle3v3Page::draw() - First call");
+                // Log all heroes being drawn
+                for i in 0..3 {
+                    if let Some(ref hero_rustymon) = self.hero_rustymon[i] {
+                        let pos = Self::get_hero_positions()[i];
+                        log::info!("  Hero {}: {} at position {:?} (HP: {}/{})",
+                            i, hero_rustymon.name, pos, hero_rustymon.current_hp, hero_rustymon.max_hp);
+                    } else {
+                        log::info!("  Hero {}: None", i);
+                    }
+                }
+                FIRST_DRAW = false;
+            }
+        }
+
+        // Clear background
+        display.clear(self.background_color)?;
+
+        // Draw all enemies
+        for i in 0..3 {
+            if let Some(enemy_entity) = &self.enemies[i] {
+                enemy_entity.draw(display)?;
+
+                // Draw HP bar
+                if let Some(enemy) = &self.enemy_data[i] {
+                    let pos = Self::get_enemy_positions()[i];
+                    Self::draw_hp_bar(
+                        display,
+                        &enemy.name,
+                        enemy.current_hp,
+                        enemy.max_hp,
+                        pos,
+                    )?;
+                }
+            }
+        }
+
+        // Draw all heroes
+        for i in 0..3 {
+            if let Some(hero_entity) = &self.heroes[i] {
+                hero_entity.draw(display)?;
+
+                // Draw HP bar
+                if let Some(hero) = &self.hero_rustymon[i] {
+                    let pos = Self::get_hero_positions()[i];
+                    Self::draw_hp_bar(
+                        display,
+                        &hero.name,
+                        hero.current_hp,
+                        hero.max_hp,
+                        pos,
+                    )?;
+                }
+            }
+        }
+
+        // Draw damage numbers
+        for damage in &self.damage_numbers {
+            damage.draw(display)?;
+        }
+
+        // Draw battle result if ended
+        if self.battle_result != BattleResult::Ongoing {
+            let result_text = match self.battle_result {
+                BattleResult::Victory => "VICTORY!",
+                BattleResult::Defeat => "DEFEAT!",
+                BattleResult::Ongoing => "",
+            };
+
+            if !result_text.is_empty() {
+                let style = MonoTextStyle::new(&FONT_6X10, Rgb888::YELLOW);
+                Text::new(result_text, Point::new(100, 20), style).draw(display)?;
+            }
+        }
+
+        // Flush to display
+        display.flush()?;
+
+        Ok(())
+    }
+
+    fn mark_dirty(&mut self) {
+        // No-op for now
+    }
+
+    fn needs_full_redraw(&self) -> bool {
+        true // Always redraw for animations
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}

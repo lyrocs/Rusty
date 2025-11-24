@@ -52,7 +52,7 @@ use esp_idf_svc::hal::{
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, render_system, rustymon_list_system, rustymon_detail_system, rustymon_skills_system, fragment_collection_system, rustymon_summon_system, quest_navigation_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_3v3_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, render_system, rustymon_list_system, rustymon_detail_system, rustymon_skills_system, fragment_collection_system, rustymon_summon_system, quest_navigation_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -353,7 +353,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         menu_system,
         map_navigation_system,
         battle_loading_system, // Creates battle page after loading screen shown
+        battle_3v3_loading_system, // Creates 3v3 battle page after loading screen shown
         battle_system,
+        battle_result_system, // Handle battle result screen
         death_detection_system, // Check for death in battle
         death_system, // Handle death screen and respawn
         rustymon_list_system, // Rustymon list navigation
