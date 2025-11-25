@@ -1,9 +1,9 @@
 //! Fragment Collection Page
 //!
-//! Displays monster fragments and allows summoning when enough are collected
+//! Displays monster fragments and allows summoning or evolving when enough are collected
 
 use crate::display::Sh8601Driver;
-use crate::game::{EnemyData, FragmentCollection, GameData};
+use crate::game::{EnemyData, FragmentCollection, GameData, Rustymon};
 use crate::game::element_system::get_element_color;
 use crate::ui::page::Page;
 use embedded_graphics::{
@@ -93,6 +93,7 @@ impl FragmentCollectionPage {
         &mut self,
         display: &mut Sh8601Driver,
         fragment_collection: &FragmentCollection,
+        rustymon_collection: &[Rustymon],
         game_data: &GameData,
         full_redraw: bool,
     ) -> Result<(), Box<dyn Error>> {
@@ -182,8 +183,30 @@ impl FragmentCollectionPage {
                     .into_styled(PrimitiveStyle::with_fill(bg_color))
                     .draw(display)?;
 
-                // Check if can summon
-                let can_summon = fragment_collection.can_summon(*monster_id, enemy_data.fragments_required);
+                // Check if player already has this species (for evolution vs summon)
+                let existing_rustymon = rustymon_collection.iter()
+                    .find(|r| r.species_id == *monster_id);
+
+                // Calculate fragment requirement (base for summon, Fibonacci for evolution)
+                let (required_fragments, button_text, is_evolution) = if let Some(existing) = existing_rustymon {
+                    // Evolution: Calculate next evolution requirement
+                    let next_evolution = existing.evolution_level + 1;
+                    let required = crate::game::fragment_collection::calculate_evolution_fragments(
+                        enemy_data.fragments_required,
+                        next_evolution
+                    );
+                    let mut text = heapless::String::<16>::new();
+                    write!(text, "Evo +{}", next_evolution).ok();
+                    (required, text, true)
+                } else {
+                    // Summon: Use base fragment requirement
+                    let mut text = heapless::String::<16>::new();
+                    write!(text, "Summon").ok();
+                    (enemy_data.fragments_required, text, false)
+                };
+
+                // Check if can summon/evolve
+                let can_action = *fragment_count >= required_fragments;
 
                 // Draw element indicator
                 let element = enemy_data.get_element();
@@ -192,13 +215,23 @@ impl FragmentCollectionPage {
                     .into_styled(PrimitiveStyle::with_fill(element_color))
                     .draw(display)?;
 
-                // Draw monster name
+                // Draw monster name with evolution level if owned
                 let name_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-                let mut name_str = heapless::String::<20>::new();
-                if enemy_data.name.len() > 12 {
-                    write!(name_str, "{}...", &enemy_data.name[..9]).ok();
+                let mut name_str = heapless::String::<24>::new();
+                if let Some(existing) = existing_rustymon {
+                    // Show evolution level for owned monsters
+                    if enemy_data.name.len() > 8 {
+                        write!(name_str, "{}..+{}", &enemy_data.name[..7], existing.evolution_level).ok();
+                    } else {
+                        write!(name_str, "{} +{}", enemy_data.name, existing.evolution_level).ok();
+                    }
                 } else {
-                    write!(name_str, "{}", enemy_data.name).ok();
+                    // Regular name for unowned
+                    if enemy_data.name.len() > 12 {
+                        write!(name_str, "{}...", &enemy_data.name[..9]).ok();
+                    } else {
+                        write!(name_str, "{}", enemy_data.name).ok();
+                    }
                 }
                 Text::new(&name_str, Point::new(60, y + 20), name_style).draw(display)?;
 
@@ -208,7 +241,7 @@ impl FragmentCollectionPage {
                 Text::new(elem_str, Point::new(60, y + 40), elem_style).draw(display)?;
 
                 // Draw fragment count
-                let count_style = if can_summon {
+                let count_style = if can_action {
                     MonoTextStyle::new(&FONT_10X20, Rgb888::new(100, 255, 100))
                 } else {
                     MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 100))
@@ -219,7 +252,7 @@ impl FragmentCollectionPage {
                     frag_str,
                     "{}/{}",
                     fragment_count,
-                    enemy_data.fragments_required
+                    required_fragments
                 )
                 .ok();
                 Text::new(&frag_str, Point::new(200, y + 30), count_style).draw(display)?;
@@ -229,25 +262,31 @@ impl FragmentCollectionPage {
                     display,
                     (60, y + 50),
                     *fragment_count,
-                    enemy_data.fragments_required,
+                    required_fragments,
                     200,
-                    can_summon,
+                    can_action,
                 )?;
 
-                // Draw summon button if ready
-                if can_summon {
+                // Draw summon/evolve button if ready
+                if can_action {
+                    let button_color = if is_evolution {
+                        Rgb888::new(40, 80, 120) // Blue for evolution
+                    } else {
+                        Rgb888::new(80, 40, 120) // Purple for summon
+                    };
+
                     Rectangle::new(Point::new(280, y + 20), Size::new(70, 30))
                         .into_styled(
                             PrimitiveStyleBuilder::new()
-                                .fill_color(Rgb888::new(80, 40, 120))
-                                .stroke_color(Rgb888::new(160, 80, 255))
+                                .fill_color(button_color)
+                                .stroke_color(Rgb888::new(160, 200, 255))
                                 .stroke_width(2)
                                 .build(),
                         )
                         .draw(display)?;
 
                     let btn_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 100));
-                    Text::new("Summon", Point::new(285, y + 40), btn_style).draw(display)?;
+                    Text::new(&button_text, Point::new(285, y + 40), btn_style).draw(display)?;
 
                     self.touch_areas.push(TouchArea {
                         bounds: (280, y + 20, 70, 30),

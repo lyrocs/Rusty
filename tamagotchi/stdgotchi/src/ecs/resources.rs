@@ -11,7 +11,7 @@ use crate::display::{Ft3x68Driver, Sh8601Driver};
 use crate::game::{FragmentCollection, KillTracker, QuestManager, Rustymon, RustymonTeam, WorldMap};
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, MapPage, RustymonListPage, RustymonDetailPage, RustymonSkillsPage, FragmentCollectionPage, RustymonSummonPage, QuestListPage};
+use crate::ui::pages::{AfkFarmPage, BattlePage, MapPage, RustymonListPage, RustymonDetailPage, RustymonSkillsPage, FragmentCollectionPage, RustymonSummonPage, QuestListPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource {
@@ -139,6 +139,8 @@ pub struct GameManager {
     pub battle_3v3_page: Option<crate::ui::pages::Battle3v3Page>,
     pub battle_result_page: Option<crate::ui::pages::BattleResultPage>,
     pub death_page: Option<crate::ui::pages::DeathPage>,
+    pub rest_page: Option<crate::ui::pages::RestPage>,
+    pub afk_farm_page: Option<crate::ui::pages::AfkFarmPage>,
     pub rustymon_list_page: RustymonListPage,
     pub rustymon_detail_page: RustymonDetailPage,
     pub rustymon_skills_page: RustymonSkillsPage,
@@ -196,6 +198,8 @@ impl GameManager {
             battle_3v3_page: None,
             battle_result_page: None,
             death_page: None,
+            rest_page: None,
+            afk_farm_page: None,
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
             rustymon_skills_page: RustymonSkillsPage::new(),
@@ -237,6 +241,8 @@ impl GameManager {
             battle_3v3_page: None,
             battle_result_page: None,
             death_page: None,
+            rest_page: None,
+            afk_farm_page: None,
             rustymon_list_page: RustymonListPage::new(),
             rustymon_detail_page: RustymonDetailPage::new(),
             rustymon_skills_page: RustymonSkillsPage::new(),
@@ -293,6 +299,20 @@ impl GameManager {
                     None
                 }
             }
+            AppMode::Rest => {
+                if let Some(ref mut rest_page) = self.rest_page {
+                    Some(rest_page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::AfkFarm => {
+                if let Some(ref mut afk_farm_page) = self.afk_farm_page {
+                    Some(afk_farm_page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
             AppMode::RustymonList => Some(&mut self.rustymon_list_page as &mut dyn Page),
             AppMode::RustymonDetail => Some(&mut self.rustymon_detail_page as &mut dyn Page),
             AppMode::RustymonSkills => Some(&mut self.rustymon_skills_page as &mut dyn Page),
@@ -339,7 +359,7 @@ impl GameManager {
 
     /// Draw fragment collection page
     pub fn draw_fragment_collection(&mut self, display: &mut crate::display::Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn std::error::Error>> {
-        self.fragment_collection_page.draw_fragment_collection(display, &self.fragment_collection, &self.game_data, full_redraw)
+        self.fragment_collection_page.draw_fragment_collection(display, &self.fragment_collection, &self.rustymon_collection, &self.game_data, full_redraw)
     }
 
     /// Draw rustymon summon preview page
@@ -607,6 +627,10 @@ pub enum AppMode {
     BattleResult,
     /// Death screen (hero died)
     Death,
+    /// Rest screen (team HP regeneration)
+    Rest,
+    /// AFK Farm mode (passive EXP farming)
+    AfkFarm,
     /// Rustymon list screen
     RustymonList,
     /// Rustymon detail screen

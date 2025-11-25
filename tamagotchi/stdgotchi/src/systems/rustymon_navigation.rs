@@ -201,40 +201,65 @@ pub fn fragment_collection_system(
                     use crate::ui::pages::FragmentCollectionAction;
                     match action {
                         FragmentCollectionAction::Summon(enemy_id) => {
-                            // Check if we can summon this Rustymon
-                            log::info!("Selected enemy {} for summon", enemy_id);
+                            // Check if we can summon/evolve this Rustymon
+                            log::info!("Selected enemy {} for summon/evolve", enemy_id);
                             let fragment_count = game_manager.fragment_collection.get_fragment_count(enemy_id);
 
                             // Get enemy data to check fragments_required
                             let enemy_data_opt = game_manager.map_page.world_map().game_data().get_enemy(enemy_id).cloned();
 
                             if let Some(enemy_data) = enemy_data_opt {
-                                let required_fragments = enemy_data.fragments_required;
+                                // Check if player already has this species
+                                let existing_rustymon = game_manager.rustymon_collection.iter()
+                                    .find(|r| r.species_id == enemy_id)
+                                    .cloned();
 
-                                if fragment_count >= required_fragments {
-                                    // Can summon! Create pending summon and switch to summon preview
-                                    // Create the Rustymon from enemy data with skills (using RustymonFactory)
-                                    let game_data = &game_manager.map_page.world_map().game_data();
-                                    let rustymon = crate::game::RustymonFactory::create_from_enemy_with_skills(
-                                        enemy_data.id,
-                                        enemy_data.name.clone(),
-                                        enemy_data.level,
-                                        enemy_data.get_element(),
-                                        enemy_data.str,
-                                        enemy_data.dex,
-                                        enemy_data.vit,
-                                        enemy_data.int,
-                                        enemy_data.luk,
-                                        game_data,
+                                let base_fragments = enemy_data.fragments_required;
+
+                                if let Some(existing) = existing_rustymon {
+                                    // Player already has this species - check for evolution
+                                    let next_evolution_level = existing.evolution_level + 1;
+                                    let required_fragments = crate::game::fragment_collection::calculate_evolution_fragments(
+                                        base_fragments,
+                                        next_evolution_level
                                     );
-                                    game_manager.pending_summon_rustymon = Some(rustymon);
 
-                                    // Switch to summon preview mode
-                                    app_state.current_mode = AppMode::RustymonSummon;
-                                    app_state.needs_redraw = true;
-                                    log::info!("Opening summon preview for {}", enemy_data.name);
+                                    if fragment_count >= required_fragments {
+                                        // Can evolve! Show evolution preview
+                                        log::info!("Opening evolution preview for {} (Evolution {} → {})",
+                                            existing.name, existing.evolution_level, next_evolution_level);
+                                        game_manager.pending_summon_rustymon = Some(existing);
+                                        app_state.current_mode = AppMode::RustymonSummon;
+                                        app_state.needs_redraw = true;
+                                    } else {
+                                        log::info!("Not enough fragments for evolution: {}/{}", fragment_count, required_fragments);
+                                    }
                                 } else {
-                                    log::info!("Not enough fragments: {}/{}", fragment_count, required_fragments);
+                                    // Player doesn't have this species - check for initial summon
+                                    let required_fragments = base_fragments;
+
+                                    if fragment_count >= required_fragments {
+                                        // Can summon! Create pending summon and switch to summon preview
+                                        let game_data = &game_manager.map_page.world_map().game_data();
+                                        let rustymon = crate::game::RustymonFactory::create_from_enemy_with_skills(
+                                            enemy_data.id,
+                                            enemy_data.name.clone(),
+                                            enemy_data.level,
+                                            enemy_data.get_element(),
+                                            enemy_data.str,
+                                            enemy_data.dex,
+                                            enemy_data.vit,
+                                            enemy_data.int,
+                                            enemy_data.luk,
+                                            game_data,
+                                        );
+                                        game_manager.pending_summon_rustymon = Some(rustymon);
+                                        app_state.current_mode = AppMode::RustymonSummon;
+                                        app_state.needs_redraw = true;
+                                        log::info!("Opening summon preview for {}", enemy_data.name);
+                                    } else {
+                                        log::info!("Not enough fragments for summon: {}/{}", fragment_count, required_fragments);
+                                    }
                                 }
                             } else {
                                 log::warn!("Enemy data not found for ID {}", enemy_id);
@@ -305,23 +330,52 @@ pub fn rustymon_summon_system(
                     use crate::ui::pages::rustymon_summon::RustymonSummonAction;
                     match action {
                         RustymonSummonAction::Confirm => {
-                            // Confirm summon - add to collection and deduct fragments
+                            // Confirm summon/evolution - add to collection or evolve existing
                             if let Some(rustymon) = game_manager.pending_summon_rustymon.take() {
                                 let species_id = rustymon.species_id;
 
-                                // Get enemy data to know how many fragments to deduct
+                                // Get enemy data to calculate fragments
                                 let enemy_data_opt = game_manager.map_page.world_map().game_data().get_enemy(species_id).cloned();
-                                let fragments_to_deduct = enemy_data_opt
+                                let base_fragments = enemy_data_opt
                                     .map(|data| data.fragments_required)
-                                    .unwrap_or(50); // Fallback to 50 if enemy data not found
+                                    .unwrap_or(50);
 
-                                // Add to collection
-                                game_manager.rustymon_collection.push(rustymon.clone());
-                                log::info!("✨ Summoned {}! Added to collection", rustymon.name);
+                                // Check if this is an evolution (already exists in collection) or new summon
+                                let existing_index = game_manager.rustymon_collection.iter()
+                                    .position(|r| r.species_id == species_id);
 
-                                // Deduct fragments based on enemy's fragments_required
-                                game_manager.fragment_collection.remove_fragments(species_id, fragments_to_deduct);
-                                log::info!("Deducted {} fragments for {}", fragments_to_deduct, rustymon.name);
+                                if let Some(index) = existing_index {
+                                    // Evolution: Update existing rustymon
+                                    let old_evolution = game_manager.rustymon_collection[index].evolution_level;
+                                    let new_evolution = old_evolution + 1;
+
+                                    // Calculate fragments needed for this evolution
+                                    let fragments_to_deduct = crate::game::fragment_collection::calculate_evolution_fragments(
+                                        base_fragments,
+                                        new_evolution
+                                    );
+
+                                    // Evolve the rustymon
+                                    game_manager.rustymon_collection[index].evolve();
+
+                                    // Deduct fragments
+                                    game_manager.fragment_collection.remove_fragments(species_id, fragments_to_deduct);
+
+                                    log::info!("✨ Evolved {} to evolution level {}! Deducted {} fragments",
+                                        game_manager.rustymon_collection[index].name,
+                                        new_evolution,
+                                        fragments_to_deduct);
+                                } else {
+                                    // New summon: Add to collection
+                                    let fragments_to_deduct = base_fragments;
+
+                                    game_manager.rustymon_collection.push(rustymon.clone());
+                                    log::info!("✨ Summoned {}! Added to collection", rustymon.name);
+
+                                    // Deduct fragments
+                                    game_manager.fragment_collection.remove_fragments(species_id, fragments_to_deduct);
+                                    log::info!("Deducted {} fragments for {}", fragments_to_deduct, rustymon.name);
+                                }
 
                                 // Return to fragment collection
                                 app_state.current_mode = AppMode::FragmentCollection;

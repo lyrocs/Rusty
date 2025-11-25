@@ -19,6 +19,7 @@ use crate::ui::page::Page;
 pub enum MenuAction {
     Map,
     Battle,
+    Rest,
     Rustymon,
     Fragments,
     Quests,
@@ -131,6 +132,19 @@ impl MenuPage {
             )?;
             current_slot += 1;
         }
+
+        // Draw Rest button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * current_slot,
+            button_width,
+            button_height,
+            "REST",
+            Rgb888::new(60, 120, 140),
+            MenuAction::Rest,
+        )?;
+        current_slot += 1;
 
         // Draw Rustymon button
         self.draw_button(

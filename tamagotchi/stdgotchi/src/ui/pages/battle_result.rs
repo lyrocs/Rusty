@@ -330,7 +330,18 @@ impl BattleResultPage {
 
         // Continue button area at bottom center
         let button_x = 100;
-        let button_y = 420;
+        let button_y = 410;
+        let button_w = 168;
+        let button_h = 40;
+
+        x >= button_x && x <= button_x + button_w && y >= button_y && y <= button_y + button_h
+    }
+
+    /// Check if user touched the "Battle Again" button (always active, skips regen)
+    pub fn handle_battle_again_touch(&self, x: i32, y: i32) -> bool {
+        // Battle Again button (always active)
+        let button_x = 100;
+        let button_y = 365;
         let button_w = 168;
         let button_h = 40;
 
@@ -394,34 +405,52 @@ impl Page for BattleResultPage {
             )?;
         }
 
-        // Draw continue button at bottom
+        // Draw buttons at bottom
         let button_x = 100;
-        let button_y = 420;
         let button_w = 168;
         let button_h = 40;
+        let button_spacing = 5;
 
+        // "Battle Again" button (always active, skips regen)
+        let battle_again_y = 365;
+        Rectangle::new(
+            Point::new(button_x, battle_again_y),
+            Size::new(button_w, button_h),
+        )
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 200)))
+        .draw(display)?;
+
+        let battle_again_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        Text::new("Battle (No HP)", Point::new(button_x + 5, battle_again_y + 25), battle_again_style).draw(display)?;
+
+        // "Continue" button (only active when HP is full)
+        let continue_y = battle_again_y + button_h as i32 + button_spacing;
         let hp_full = self.is_hp_full();
-        let button_color = if hp_full {
+        let continue_color = if hp_full {
             Rgb888::new(0, 150, 0) // Green when ready
         } else {
             Rgb888::new(100, 100, 100) // Gray while regenerating
         };
 
         Rectangle::new(
-            Point::new(button_x, button_y),
+            Point::new(button_x, continue_y),
             Size::new(button_w, button_h),
         )
-        .into_styled(PrimitiveStyle::with_fill(button_color))
+        .into_styled(PrimitiveStyle::with_fill(continue_color))
         .draw(display)?;
 
-        let button_text = if hp_full {
-            "Continue"
+        let continue_text = if hp_full {
+            "Battle (Full HP)"
         } else {
             "Regenerating..."
         };
-        let button_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_x = button_x + (button_w as i32 / 2) - (button_text.len() as i32 * 5);
-        Text::new(button_text, Point::new(text_x, button_y + 25), button_style).draw(display)?;
+        let continue_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
+        let text_x = if hp_full {
+            button_x + 5  // "Battle (Full HP)" needs less centering
+        } else {
+            button_x + (button_w as i32 / 2) - (continue_text.len() as i32 * 5)
+        };
+        Text::new(continue_text, Point::new(text_x, continue_y + 25), continue_style).draw(display)?;
 
         display.flush()?;
         Ok(())

@@ -1,29 +1,30 @@
 //! Rustymon Factory
 //!
-//! Handles creation of Rustymon instances from enemy data with random stats.
+//! Handles creation of Rustymon instances from enemy data with FIXED stats.
+//! Stats are copied directly from enemy data - no randomization.
 
-use rand::Rng;
 use uuid::Uuid;
 
 use super::rustymon::{Element, Rustymon};
 use super::data_loader::GameData;
 
-/// Factory for creating Rustymon instances
+/// Factory for creating Rustymon instances with fixed stats
 pub struct RustymonFactory;
 
 impl RustymonFactory {
-    /// Create a new Rustymon from enemy data with base stats from the enemy
+    /// Create a new Rustymon from enemy data with FIXED base stats
+    /// Stats are copied exactly from the enemy - no randomization
     ///
     /// # Arguments
     /// * `species_id` - The monster ID (e.g., 1002 for Poring)
     /// * `name` - The species name
-    /// * `base_level` - The enemy's base level
+    /// * `base_level` - The enemy's base level (not used, Rustymon always starts at level 1)
     /// * `element` - The element type
-    /// * `str` - Base STR stat from enemy
-    /// * `dex` - Base DEX stat from enemy
-    /// * `vit` - Base VIT stat from enemy
-    /// * `int` - Base INT stat from enemy
-    /// * `luk` - Base LUK stat from enemy
+    /// * `str` - FIXED STR stat from enemy
+    /// * `dex` - FIXED DEX stat from enemy
+    /// * `vit` - FIXED VIT stat from enemy
+    /// * `int` - FIXED INT stat from enemy
+    /// * `luk` - FIXED LUK stat from enemy
     pub fn create_from_enemy(
         species_id: u32,
         name: String,
@@ -36,11 +37,11 @@ impl RustymonFactory {
         luk: u32,
     ) -> Rustymon {
         log::info!(
-            "Creating {} with stats - STR:{} DEX:{} VIT:{} INT:{} LUK:{}",
+            "Creating {} with FIXED stats from enemy data - STR:{} DEX:{} VIT:{} INT:{} LUK:{}",
             name, str, dex, vit, int, luk
         );
 
-        // Create the Rustymon at level 1
+        // Create the Rustymon at level 1 (always starts at level 1)
         Rustymon::new(
             Uuid::new_v4().to_string(),
             species_id,
@@ -55,18 +56,19 @@ impl RustymonFactory {
         )
     }
 
-    /// Create a new Rustymon from enemy data and learn skills based on level
+    /// Create a new Rustymon from enemy data with FIXED stats and learn skills
+    /// Stats are copied exactly from enemy - no randomization
     ///
     /// # Arguments
     /// * `species_id` - The monster ID (e.g., 1002 for Poring)
     /// * `name` - The species name
-    /// * `base_level` - The enemy's base level
+    /// * `base_level` - The enemy's base level (not used, Rustymon always starts at level 1)
     /// * `element` - The element type
-    /// * `str` - Base STR stat from enemy
-    /// * `dex` - Base DEX stat from enemy
-    /// * `vit` - Base VIT stat from enemy
-    /// * `int` - Base INT stat from enemy
-    /// * `luk` - Base LUK stat from enemy
+    /// * `str` - FIXED STR stat from enemy
+    /// * `dex` - FIXED DEX stat from enemy
+    /// * `vit` - FIXED VIT stat from enemy
+    /// * `int` - FIXED INT stat from enemy
+    /// * `luk` - FIXED LUK stat from enemy
     /// * `game_data` - Game data for skill learning
     pub fn create_from_enemy_with_skills(
         species_id: u32,

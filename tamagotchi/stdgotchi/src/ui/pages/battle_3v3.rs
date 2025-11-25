@@ -233,6 +233,14 @@ pub struct Battle3v3Page {
     damage_numbers: Vec<DamageNumber>,
     battle_result: BattleResult,
     last_update: Instant,
+    fragment_drops: Vec<(u32, String)>, // (enemy_id, enemy_name) - track all fragment drops
+
+    // Wave system
+    current_wave: u32,
+    total_waves: u32,
+    wave_cleared: bool, // Track if current wave is cleared and waiting for next spawn
+    wave_clear_time: Option<Instant>, // When wave was cleared (for delay before next wave)
+    enemy_ids_pool: Vec<u32>, // Pool of enemy IDs to spawn from
 
     // Turn management
     turn_timer: Instant,
@@ -281,6 +289,12 @@ impl Battle3v3Page {
             damage_numbers: Vec::new(),
             battle_result: BattleResult::Ongoing,
             last_update: Instant::now(),
+            fragment_drops: Vec::new(),
+            current_wave: 1,
+            total_waves: 5,
+            wave_cleared: false,
+            wave_clear_time: None,
+            enemy_ids_pool: Vec::new(),
             turn_timer: Instant::now(),
             turn_delay: Duration::from_millis(1500), // No longer used, kept for compatibility
         }
@@ -305,7 +319,8 @@ impl Battle3v3Page {
     }
 
     /// Initialize battle with first 3 rustymon from team
-    pub fn setup_heroes(&mut self) -> Result<(), Box<dyn Error>> {
+    /// Returns the number of heroes successfully loaded
+    pub fn setup_heroes(&mut self) -> Result<usize, Box<dyn Error>> {
         let positions = Self::get_hero_positions();
         let mut loaded = 0;
 
@@ -352,11 +367,16 @@ impl Battle3v3Page {
         }
 
         log::info!("Setup {} heroes for 3v3 battle", loaded);
-        Ok(())
+        Ok(loaded)
     }
 
     /// Add enemies to battle
     pub fn add_enemies(&mut self, enemy_ids: &[u32]) -> Result<(), Box<dyn Error>> {
+        // Store enemy pool for wave spawning
+        if self.enemy_ids_pool.is_empty() {
+            self.enemy_ids_pool = enemy_ids.to_vec();
+        }
+
         let positions = Self::get_enemy_positions();
         let count = enemy_ids.len().min(3);
 
@@ -405,7 +425,64 @@ impl Battle3v3Page {
                 i, i, enemy_data.name, enemy_data.agi, enemy_data.hp, attack_interval);
         }
 
-        log::info!("Setup {} enemies for 3v3 battle", count);
+        log::info!("Setup {} enemies for 3v3 battle (Wave {}/{})", count, self.current_wave, self.total_waves);
+        Ok(())
+    }
+
+    /// Check if all enemies in current wave are dead (and death animations complete)
+    fn is_wave_cleared(&self) -> bool {
+        // All enemies must be dead
+        let all_dead = (0..3).all(|i| {
+            self.enemy_data[i].as_ref()
+                .map(|e| !e.is_alive())
+                .unwrap_or(true) // No enemy data = cleared
+        });
+
+        if !all_dead {
+            return false;
+        }
+
+        // Wait for death animations to complete (1.5 seconds after last death)
+        const DEATH_ANIMATION_DURATION: Duration = Duration::from_millis(1500);
+
+        if let Some(wave_clear_time) = self.wave_clear_time {
+            wave_clear_time.elapsed() >= DEATH_ANIMATION_DURATION
+        } else {
+            false
+        }
+    }
+
+    /// Spawn next wave of enemies
+    fn spawn_next_wave(&mut self) -> Result<(), Box<dyn Error>> {
+        if self.enemy_ids_pool.is_empty() {
+            return Err("No enemy pool available for next wave".into());
+        }
+
+        self.current_wave += 1;
+        self.wave_cleared = false;
+        self.wave_clear_time = None;
+
+        log::info!("🌊 Spawning wave {}/{}", self.current_wave, self.total_waves);
+
+        // Clear old enemies
+        for i in 0..3 {
+            self.enemies[i] = None;
+            self.enemy_data[i] = None;
+        }
+
+        // Spawn new enemies from pool (randomly pick)
+        let mut enemy_ids = Vec::new();
+        let count = self.enemy_ids_pool.len().min(3);
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        for _ in 0..count {
+            let enemy_id = self.enemy_ids_pool[rng.gen_range(0..self.enemy_ids_pool.len())];
+            enemy_ids.push(enemy_id);
+        }
+
+        self.add_enemies(&enemy_ids)?;
+
         Ok(())
     }
 
@@ -445,7 +522,7 @@ impl Battle3v3Page {
         }
     }
 
-    /// Check battle result
+    /// Check battle result and handle waves
     fn check_battle_result(&mut self) {
         // Check if all heroes dead
         let all_heroes_dead = self.hero_rustymon.iter()
@@ -457,19 +534,35 @@ impl Battle3v3Page {
             return;
         }
 
-        // Check if all enemies dead
+        // Check if all enemies in current wave are dead
         let all_enemies_dead = self.enemy_data.iter()
             .all(|e| e.as_ref().map(|e| !e.is_alive()).unwrap_or(true));
 
-        if all_enemies_dead {
-            self.battle_result = BattleResult::Victory;
-            log::info!("Battle won - all enemies defeated!");
+        if all_enemies_dead && !self.wave_cleared {
+            // Mark wave as cleared and start timer for death animation
+            self.wave_cleared = true;
+            self.wave_clear_time = Some(Instant::now());
+            log::info!("🌊 Wave {}/{} cleared! Waiting for death animations...", self.current_wave, self.total_waves);
+        }
 
-            // Award experience
-            for enemy in &self.enemy_data {
-                if let Some(e) = enemy {
-                    // TODO: Award exp to surviving heroes
-                    log::info!("Defeated {} - {} exp", e.name, e.exp_reward);
+        // Check if we should spawn next wave
+        if self.wave_cleared && self.is_wave_cleared() {
+            if self.current_wave < self.total_waves {
+                // Spawn next wave
+                if let Err(e) = self.spawn_next_wave() {
+                    log::error!("Failed to spawn next wave: {:?}", e);
+                    self.battle_result = BattleResult::Victory; // End battle if spawn fails
+                }
+            } else {
+                // All waves completed - Victory!
+                self.battle_result = BattleResult::Victory;
+                log::info!("🎉 Battle won - all {} waves defeated!", self.total_waves);
+
+                // Award experience
+                for enemy in &self.enemy_data {
+                    if let Some(e) = enemy {
+                        log::info!("Defeated {} - {} exp", e.name, e.exp_reward);
+                    }
                 }
             }
         }
@@ -518,11 +611,43 @@ impl Battle3v3Page {
                             // Apply damage
                             enemy.take_damage(damage);
 
+                            // Check if enemy died from this attack
+                            let enemy_died = !enemy.is_alive();
+                            let enemy_id = enemy.id;
+                            let enemy_name = enemy.name.clone();
+
                             // Trigger hit animation
                             if let Some(enemy_entity) = &mut self.enemies[target_idx] {
                                 enemy_entity.take_hit();
-                                if !enemy.is_alive() {
+                                if enemy_died {
                                     enemy_entity.die();
+
+                                    // Roll for fragment drop
+                                    if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
+                                        use rand::Rng;
+                                        let mut rng = rand::thread_rng();
+                                        let roll: f32 = rng.gen();
+
+                                        if roll < enemy_data.fragment_drop_rate {
+                                            // Check if we can still collect fragments (not at cap)
+                                            let current_count = self.fragment_collection.get_fragment_count(enemy_id);
+                                            let required_count = enemy_data.fragments_required;
+
+                                            if current_count < required_count {
+                                                // Fragment dropped!
+                                                self.fragment_drops.push((enemy_id, enemy_name.clone()));
+
+                                                // Update local fragment_collection to enforce cap in same battle
+                                                self.fragment_collection.add_fragment(enemy_id, 1);
+
+                                                log::info!("✨ Fragment obtained: {}! ({}/{})",
+                                                    enemy_name, current_count + 1, required_count);
+                                            } else {
+                                                log::debug!("Fragment cap reached for {} ({}/{}), no drop",
+                                                    enemy_name, current_count, required_count);
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -686,6 +811,11 @@ impl Battle3v3Page {
 
         collection
     }
+
+    /// Get fragment drops from this battle
+    pub fn get_fragment_drops(&self) -> Vec<(u32, String)> {
+        self.fragment_drops.clone()
+    }
 }
 
 impl Page for Battle3v3Page {
@@ -747,6 +877,13 @@ impl Page for Battle3v3Page {
 
         // Clear background
         display.clear(self.background_color)?;
+
+        // Draw wave counter at top center
+        let wave_style = MonoTextStyle::new(&FONT_6X10, Rgb888::YELLOW);
+        let mut wave_text = heapless::String::<32>::new();
+        use core::fmt::Write;
+        let _ = write!(wave_text, "Wave {}/{}", self.current_wave, self.total_waves);
+        Text::new(&wave_text, Point::new(105, 10), wave_style).draw(display)?;
 
         // Draw all enemies
         for i in 0..3 {

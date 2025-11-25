@@ -146,6 +146,54 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::Rest => {
+            // Rest screen rendering
+            if let Some(mut game_manager) = game_manager {
+                if let Some(ref mut rest_page) = game_manager.rest_page {
+                    let page_active = rest_page.update();
+                    let full_redraw = rest_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw rest page
+                    if let Err(e) = rest_page.draw(display, full_redraw) {
+                        log::error!("Failed to draw rest page: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        log::info!("Rest page completed, returning to menu");
+                        app_state.current_mode = AppMode::Menu;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
+        AppMode::AfkFarm => {
+            // AFK Farm screen rendering
+            if let Some(mut game_manager) = game_manager {
+                if let Some(ref mut afk_farm_page) = game_manager.afk_farm_page {
+                    let page_active = afk_farm_page.update();
+                    let full_redraw = afk_farm_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw AFK farm page
+                    if let Err(e) = afk_farm_page.draw(display, full_redraw) {
+                        log::error!("Failed to draw AFK farm page: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        log::info!("AFK farming completed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
         AppMode::RustymonList => {
             // Rustymon list rendering - needs rustymon collection and team data
             if let Some(mut game_manager) = game_manager {

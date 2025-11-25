@@ -78,10 +78,16 @@ pub struct Rustymon {
     /// Experience needed for next level
     pub exp_to_next: u32,
 
+    /// Evolution level (0 = base, 1+ = evolved)
+    /// Each evolution costs fragments based on Fibonacci sequence
+    #[serde(default)]
+    pub evolution_level: u32,
+
     /// Element type
     pub element: Element,
 
-    // Base stats (randomly generated on capture)
+    // Base stats (FIXED from enemy data - same for all instances of this species)
+    // Stats increase randomly by +1 per level (one random stat chosen each level)
     /// Strength - affects ATK
     pub str: u32,
 
@@ -145,6 +151,7 @@ impl Rustymon {
             level,
             exp: 0,
             exp_to_next: Self::calculate_exp_to_next(level),
+            evolution_level: 0,
             element,
             str,
             dex,
@@ -174,24 +181,34 @@ impl Rustymon {
     }
 
     /// Recalculate all derived stats based on base stats and level
+    /// Evolution bonus: +5% to all stats per evolution level
     pub fn recalculate_stats(&mut self) {
+        // Calculate evolution multiplier (1.0 for level 0, 1.05 for level 1, 1.10 for level 2, etc.)
+        let evolution_multiplier = 1.0 + (self.evolution_level as f32 * 0.05);
+
         // HP calculation: Base + (VIT * 10) + (Level * 5)
-        self.max_hp = 40 + (self.vit * 10) + (self.level * 5);
+        let base_hp = 40 + (self.vit * 10) + (self.level * 5);
+        self.max_hp = (base_hp as f32 * evolution_multiplier) as u32;
 
         // ATK calculation: Base + (STR * 2) + Level
-        self.atk = 5 + (self.str * 2) + self.level;
+        let base_atk = 5 + (self.str * 2) + self.level;
+        self.atk = (base_atk as f32 * evolution_multiplier) as u32;
 
         // DEF calculation: Base + VIT + (Level / 2)
-        self.def = 2 + self.vit + (self.level / 2);
+        let base_def = 2 + self.vit + (self.level / 2);
+        self.def = (base_def as f32 * evolution_multiplier) as u32;
 
         // HIT calculation: Base + DEX + Level
-        self.hit = 175 + self.dex + self.level;
+        let base_hit = 175 + self.dex + self.level;
+        self.hit = (base_hit as f32 * evolution_multiplier) as u32;
 
         // FLEE calculation: Base + (DEX / 2) + Level
-        self.flee = 100 + (self.dex / 2) + self.level;
+        let base_flee = 100 + (self.dex / 2) + self.level;
+        self.flee = (base_flee as f32 * evolution_multiplier) as u32;
 
         // CRIT calculation: Base + (LUK * 0.3)
-        self.crit_rate = 5.0 + (self.luk as f32 * 0.3);
+        let base_crit = 5.0 + (self.luk as f32 * 0.3);
+        self.crit_rate = base_crit * evolution_multiplier;
 
         // Update exp to next level
         self.exp_to_next = Self::calculate_exp_to_next(self.level);
@@ -241,6 +258,26 @@ impl Rustymon {
         self.current_hp += hp_gained;
 
         log::info!("{} leveled up to {}! {} +1", self.name, self.level, stat_name);
+    }
+
+    /// Evolve the Rustymon to next evolution level
+    /// Increases evolution_level by 1 and applies +5% stat bonus
+    pub fn evolve(&mut self) {
+        let old_evolution = self.evolution_level;
+        self.evolution_level += 1;
+
+        // Recalculate stats with new evolution multiplier
+        let old_max_hp = self.max_hp;
+        self.recalculate_stats();
+
+        // Heal HP gained from evolution
+        let hp_gained = self.max_hp.saturating_sub(old_max_hp);
+        self.current_hp = self.current_hp.saturating_add(hp_gained).min(self.max_hp);
+
+        log::info!("✨ {} evolved from level {} → {}! All stats +5%",
+            self.name, old_evolution, self.evolution_level);
+        log::info!("  New stats: HP={}, ATK={}, DEF={}, HIT={}, FLEE={}, CRIT={:.1}%",
+            self.max_hp, self.atk, self.def, self.hit, self.flee, self.crit_rate);
     }
 
     /// Take damage in battle

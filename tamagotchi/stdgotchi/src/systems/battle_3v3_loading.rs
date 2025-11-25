@@ -46,9 +46,10 @@ pub fn battle_3v3_loading_system(
     );
 
     // Setup heroes (first 3 rustymon from team, or as many as available)
-    match battle_page.setup_heroes() {
-        Ok(_) => {
-            log::info!("✅ Heroes loaded successfully for 3v3 battle");
+    let hero_count = match battle_page.setup_heroes() {
+        Ok(count) => {
+            log::info!("✅ {} heroes loaded successfully for battle", count);
+            count
         }
         Err(e) => {
             log::error!("❌ Failed to setup heroes for 3v3 battle: {:?}", e);
@@ -57,16 +58,16 @@ pub fn battle_3v3_loading_system(
             app_state.needs_redraw = true;
             return;
         }
-    }
+    };
 
-    // Add up to 3 enemies (repeat if needed to fill 3 slots)
+    // Add same number of enemies as heroes for fair battle
     let mut enemy_ids_to_load = Vec::new();
-    for i in 0..3 {
+    for i in 0..hero_count {
         let enemy_id = loading_data.enemy_ids[i % loading_data.enemy_ids.len()];
         enemy_ids_to_load.push(enemy_id);
     }
 
-    log::info!("Loading 3 enemies: {:?}", enemy_ids_to_load);
+    log::info!("Loading {} enemies to match {} heroes: {:?}", enemy_ids_to_load.len(), hero_count, enemy_ids_to_load);
     match battle_page.add_enemies(&enemy_ids_to_load) {
         Ok(_) => {
             log::info!("✅ Enemies loaded successfully for 3v3 battle");
@@ -82,11 +83,11 @@ pub fn battle_3v3_loading_system(
 
     game_manager.battle_3v3_page = Some(battle_page);
 
-    log::info!("🎮 3v3 Battle page created successfully, switching to Battle3v3 mode");
+    log::info!("🎮 {}v{} Battle page created successfully, switching to Battle3v3 mode", hero_count, hero_count);
 
     // Switch to battle mode
     app_state.current_mode = AppMode::Battle3v3;
     app_state.needs_redraw = true;
 
-    log::info!("✅ Switched to Battle3v3 mode, needs_redraw = true");
+    log::info!("✅ Switched to Battle3v3 mode ({}v{} balanced), needs_redraw = true", hero_count, hero_count);
 }

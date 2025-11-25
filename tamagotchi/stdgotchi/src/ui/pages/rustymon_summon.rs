@@ -84,17 +84,34 @@ impl RustymonSummonPage {
 
         let element_color = get_element_color(rustymon.element);
 
-        // Draw animated header
+        // Determine if this is summon or evolution (evolution_level > 0 means existing monster)
+        let is_evolution = rustymon.evolution_level > 0;
+
+        // Draw animated header with different color for evolution
+        let header_color = if is_evolution {
+            Rgb888::new(40, 80, 120) // Blue for evolution
+        } else {
+            Rgb888::new(80, 40, 120) // Purple for summon
+        };
         Rectangle::new(Point::new(0, 0), Size::new(368, 70))
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(80, 40, 120)))
+            .into_styled(PrimitiveStyle::with_fill(header_color))
             .draw(display)?;
 
-        // Draw title
+        // Draw title based on action type
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 100));
-        Text::new("✨ New Rustymon! ✨", Point::new(60, 25), title_style).draw(display)?;
+        if is_evolution {
+            let mut title = heapless::String::<32>::new();
+            write!(title, "Evolution +{}", rustymon.evolution_level + 1).ok();
+            Text::new(&title, Point::new(80, 25), title_style).draw(display)?;
 
-        let subtitle_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 200));
-        Text::new("Summoning Preview", Point::new(70, 50), subtitle_style).draw(display)?;
+            let subtitle_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 200));
+            Text::new("All Stats +5%", Point::new(100, 50), subtitle_style).draw(display)?;
+        } else {
+            Text::new("✨ New Rustymon! ✨", Point::new(60, 25), title_style).draw(display)?;
+
+            let subtitle_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 200, 200));
+            Text::new("Summoning Preview", Point::new(70, 50), subtitle_style).draw(display)?;
+        }
 
         // Draw element-colored name panel
         Rectangle::new(Point::new(10, 80), Size::new(348, 50))

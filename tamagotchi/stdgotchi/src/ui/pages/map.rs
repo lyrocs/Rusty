@@ -33,6 +33,7 @@ struct TouchArea {
     location_id: Option<u32>,     // None for FIGHT buttons
     direction: Option<Direction>,  // None for FIGHT buttons
     is_fight_button: bool,
+    is_afk_farm_button: bool,
     is_back_button: bool,
     is_view_world_map_button: bool,
     is_view_monsters_button: bool,
@@ -65,6 +66,7 @@ pub struct MapPage {
 pub enum TouchAction {
     Travel(u32),         // Travel to location ID
     Fight,               // Enter battle on current map
+    AfkFarm,             // Enter AFK farming mode
     ViewMapDetails(u32), // View details for a specific map (Page 1 → Page 2)
     ViewMonsterList(u32), // View monster list for a map (Page 2 → Page 3)
     BackToWorldMap,      // Return to world map grid (Page 2 → Page 1)
@@ -364,6 +366,7 @@ impl MapPage {
                     location_id: Some(map_id),
                     direction: None,
                     is_fight_button: false,
+                    is_afk_farm_button: false,
                     is_back_button: false,
                     is_view_world_map_button: false,
                     is_view_monsters_button: false,
@@ -527,6 +530,7 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: false,
+                is_afk_farm_button: false,
                 is_back_button: false,
                 is_view_world_map_button: true,
                 is_view_monsters_button: false,
@@ -553,6 +557,7 @@ impl MapPage {
                 location_id: Some(map_id), // Store map_id so we know which map to fight on
                 direction: None,
                 is_fight_button: true,
+                is_afk_farm_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,
@@ -579,6 +584,7 @@ impl MapPage {
                 location_id: Some(map_id),
                 direction: None,
                 is_fight_button: false,
+                is_afk_farm_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: true,
@@ -605,8 +611,38 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: false,
+                is_afk_farm_button: false,
                 is_back_button: false,
                 is_view_world_map_button: true,
+                is_view_monsters_button: false,
+            });
+
+            // AFK FARM button (second row, centered)
+            let afk_button_y = button_y + button_height as i32 + 8;
+            let afk_button_width = 230u32; // Wider button for "AFK FARM" text
+            let afk_button_x = (368 - afk_button_width as i32) / 2; // Center horizontally
+            Rectangle::new(
+                Point::new(afk_button_x, afk_button_y),
+                Size::new(afk_button_width, button_height),
+            )
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 200)))
+            .draw(display)?;
+
+            Text::new(
+                "AFK FARM",
+                Point::new(afk_button_x + 70, afk_button_y + 32),
+                text_style_button,
+            )
+            .draw(display)?;
+
+            self.touch_areas.push(TouchArea {
+                bounds: (afk_button_x, afk_button_y, afk_button_width, button_height),
+                location_id: None,
+                direction: None,
+                is_fight_button: false,
+                is_afk_farm_button: true,
+                is_back_button: false,
+                is_view_world_map_button: false,
                 is_view_monsters_button: false,
             });
         }
@@ -661,6 +697,7 @@ impl MapPage {
             location_id: Some(map_id), // Remember which map we came from
             direction: None,
             is_fight_button: false,
+            is_afk_farm_button: false,
             is_back_button: true,
             is_view_world_map_button: false,
             is_view_monsters_button: false,
@@ -773,6 +810,7 @@ impl MapPage {
                 location_id: Some(map_id),
                 direction: None,
                 is_fight_button: true,
+                is_afk_farm_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,
@@ -843,6 +881,11 @@ impl MapPage {
                     return Some(TouchAction::Fight);
                 }
 
+                // Handle AFK farm button
+                if area.is_afk_farm_button {
+                    log::info!("🌾 AFK Farm button pressed!");
+                    return Some(TouchAction::AfkFarm);
+                }
 
                 // Handle location selection
                 if let Some(location_id) = area.location_id {
@@ -1077,6 +1120,7 @@ impl MapPage {
             location_id: Some(location.id),
             direction: Some(*direction),
             is_fight_button: false,
+            is_afk_farm_button: false,
             is_back_button: false,
             is_view_world_map_button: false,
             is_view_monsters_button: false,
@@ -1162,6 +1206,26 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: true,
+                is_afk_farm_button: false,
+                is_back_button: false,
+                is_view_world_map_button: false,
+                is_view_monsters_button: false,
+            });
+
+            // AFK FARM button (next to FIGHT button)
+            let afk_x = margin + button_width as i32 + button_spacing;
+            Rectangle::new(Point::new(afk_x, button_y), Size::new(button_width, button_height))
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 200)))
+                .draw(display)?;
+
+            Text::new("AFK FARM", Point::new(afk_x + 25, button_y + 40), text_style).draw(display)?;
+
+            self.touch_areas.push(TouchArea {
+                bounds: (afk_x, button_y, button_width, button_height),
+                location_id: None,
+                direction: None,
+                is_fight_button: false,
+                is_afk_farm_button: true,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,

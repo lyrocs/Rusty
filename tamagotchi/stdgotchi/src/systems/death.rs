@@ -110,8 +110,21 @@ pub fn death_detection_system(
                 BattleResult::Victory => {
                     log::info!("🎉 Victory in 3v3 battle!");
 
+                    // Get data from battle before mutating game_manager
+                    let updated_collection = battle_3v3_page.get_rustymon_collection();
+                    let fragment_drops = battle_3v3_page.get_fragment_drops();
+
                     // Sync battle state (update rustymon HP)
-                    game_manager.rustymon_collection = battle_3v3_page.get_rustymon_collection();
+                    game_manager.rustymon_collection = updated_collection;
+
+                    // Apply fragment drops
+                    if !fragment_drops.is_empty() {
+                        log::info!("✨ Applying {} fragment drops", fragment_drops.len());
+                        for (enemy_id, enemy_name) in fragment_drops {
+                            game_manager.fragment_collection.add_fragment(enemy_id, 1);
+                            log::info!("💎 Fragment added to collection: {} (ID: {})", enemy_name, enemy_id);
+                        }
+                    }
 
                     // Get rustymon that participated in battle (first 3 from team with HP > 0)
                     let mut battle_rustymon = Vec::new();

@@ -130,6 +130,53 @@ pub fn map_navigation_system(
                                 }
                             }
                         }
+                        TouchAction::AfkFarm => {
+                            // Enter AFK farming mode on current map
+                            let current_location_id = game_manager.map_page.world_map().current_location_id();
+                            let location_data = game_manager
+                                .map_page
+                                .world_map()
+                                .get_location(current_location_id)
+                                .cloned();
+
+                            if let Some(location) = location_data {
+                                if !location.enemies.is_empty() {
+                                    log::info!("🌾 Starting AFK farming at: {}", location.name);
+
+                                    // Get team rustymon
+                                    let mut team_rustymon = Vec::new();
+                                    for slot in &game_manager.rustymon_team.active_slots {
+                                        if let Some(id) = slot {
+                                            if let Some(rustymon) = game_manager.rustymon_collection.iter().find(|r| &r.id == id) {
+                                                team_rustymon.push(rustymon.clone());
+                                            }
+                                        }
+                                    }
+
+                                    if team_rustymon.is_empty() {
+                                        log::error!("❌ Cannot start AFK farming: no rustymon in team");
+                                        return;
+                                    }
+
+                                    // Create AFK farm page
+                                    match crate::ui::pages::AfkFarmPage::new(
+                                        team_rustymon,
+                                        &location.enemies,
+                                        game_manager.game_data.clone(),
+                                    ) {
+                                        Ok(afk_page) => {
+                                            game_manager.afk_farm_page = Some(afk_page);
+                                            app_state.current_mode = AppMode::AfkFarm;
+                                            app_state.needs_redraw = true;
+                                            log::info!("✅ AFK farming started successfully");
+                                        }
+                                        Err(e) => {
+                                            log::error!("❌ Failed to create AFK farm page: {:?}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

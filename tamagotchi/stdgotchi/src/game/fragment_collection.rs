@@ -1,9 +1,45 @@
 //! Fragment Collection System
 //!
-//! Manages monster fragments that can be used to summon new Rustymon.
+//! Manages monster fragments that can be used to evolve Rustymon.
+//! Evolution uses Fibonacci-based fragment requirements.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Calculate Fibonacci number at position n (1-indexed)
+/// Used for evolution fragment requirements
+/// Returns: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, fib(4)=3, fib(5)=5, fib(6)=8, etc.
+fn fibonacci(n: u32) -> u32 {
+    match n {
+        0 => 0,
+        1 => 1,
+        _ => {
+            let mut a = 0;
+            let mut b = 1;
+            for _ in 2..=n {
+                let temp = a + b;
+                a = b;
+                b = temp;
+            }
+            b
+        }
+    }
+}
+
+/// Calculate fragments needed for evolution
+/// Evolution 0 (initial summon): base_fragments
+/// Evolution 1: base_fragments * fib(2) = base * 2
+/// Evolution 2: base_fragments * fib(3) = base * 3
+/// Evolution 3: base_fragments * fib(4) = base * 5
+/// Evolution 4: base_fragments * fib(5) = base * 8
+/// Example: If base is 10, then: 10, 20, 30, 50, 80, 130, 210, ...
+pub fn calculate_evolution_fragments(base_fragments: u32, evolution_level: u32) -> u32 {
+    if evolution_level == 0 {
+        base_fragments
+    } else {
+        base_fragments * fibonacci(evolution_level + 1)
+    }
+}
 
 /// Collection of monster fragments
 #[derive(Debug, Clone, Serialize, Deserialize)]
