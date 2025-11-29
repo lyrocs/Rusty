@@ -176,14 +176,14 @@ pub fn calculate_dps(attacker_atk: u32, defender_def: u32) -> f32 {
 /// Calculate time to kill one monster (in seconds)
 /// Formula: monster HP / hero DPS
 pub fn time_to_kill(hero: &Hero, monster: &Enemy) -> f32 {
-    let hero_dps = calculate_dps(hero.attack, monster.defense);
-    monster.max_health as f32 / hero_dps
+    let hero_dps = calculate_dps(hero.attack as u32, monster.def);
+    monster.max_hp as f32 / hero_dps
 }
 
 /// Calculate damage hero takes per monster killed
 /// Formula: monster DPS × time to kill
 pub fn damage_per_kill(hero: &Hero, monster: &Enemy) -> f32 {
-    let monster_dps = calculate_dps(monster.attack, hero.defense);
+    let monster_dps = calculate_dps(monster.atk, hero.defense as u32);
     let ttk = time_to_kill(hero, monster);
     monster_dps * ttk
 }

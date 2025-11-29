@@ -10,6 +10,7 @@ pub mod map;
 pub mod menu;
 pub mod rest;
 pub mod quest_list;
+pub mod expedition_setup;
 
 pub use afk_farm::AfkFarmPage;
 pub use battle::BattlePage;
@@ -19,3 +20,4 @@ pub use map::{MapPage, TouchAction};
 pub use menu::MenuPage;
 pub use rest::RestPage;
 pub use quest_list::{QuestListPage, QuestListAction};
+pub use expedition_setup::ExpeditionSetupPage;
