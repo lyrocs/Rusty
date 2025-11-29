@@ -79,7 +79,8 @@ pub fn render_system(
                 app_state.needs_redraw = false;
             }
         }
-        AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::BattleResult => {
+        AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::BattleResult
+        | AppMode::ExpeditionSetup | AppMode::ExpeditionInProgress | AppMode::ExpeditionSummary => {
             // Game-based rendering with GameManager
             if let Some(mut game_manager) = game_manager {
                 // Update menu battle state if in Menu mode

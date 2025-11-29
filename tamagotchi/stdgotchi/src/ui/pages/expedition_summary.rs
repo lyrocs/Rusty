@@ -179,7 +179,7 @@ impl ExpeditionSummaryPage {
         let mut progress_text = heapless::String::<32>::new();
         write!(progress_text, "{}/{}", current_exp, exp_to_level).ok();
         let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
-        let text_x = bar_x + (bar_width / 2) - ((progress_text.len() as i32) * 3);
+        let text_x = bar_x + ((bar_width / 2) as i32) - ((progress_text.len() as i32) * 3);
         Text::new(&progress_text, Point::new(text_x, bar_y + 13), text_style).draw(display)?;
 
         Ok(())
