@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use super::element_system::Element;
 use super::job_system::JobClass;
+use super::expedition::{Card, HeroState};
 
 /// Hero character with stats and job progression
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,10 @@ pub struct Hero {
 
     // Element affinity (could be based on job)
     pub element: Element,
+
+    // Expedition system
+    pub state: HeroState,
+    pub cards: Vec<Card>,
 }
 
 impl Hero {
@@ -75,6 +80,10 @@ impl Hero {
             aspd: 1.0,
 
             element: Element::Neutral,
+
+            // Expedition system
+            state: HeroState::Ready,
+            cards: Vec::new(),
         };
 
         hero.recalculate_stats();

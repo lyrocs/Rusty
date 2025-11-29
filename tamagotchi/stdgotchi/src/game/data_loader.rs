@@ -8,6 +8,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 
+/// Card data embedded in enemy JSON
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CardData {
+    pub name: String,
+    pub rarity: u8,        // 1-5 stars
+    pub atk_bonus: u32,
+    pub def_bonus: u32,
+}
+
 /// Enemy data loaded from JSON
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnemyData {
@@ -29,6 +38,10 @@ pub struct EnemyData {
     pub hit: u32,
     pub flee: u32,
     pub element: String, // Will be parsed to Element enum
+
+    // Card drop system
+    pub drop_rate: f32,    // Probability of card drop (0.0-1.0)
+    pub card: CardData,    // Card that drops from this enemy
 }
 
 impl EnemyData {

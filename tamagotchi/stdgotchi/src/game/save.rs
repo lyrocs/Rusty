@@ -39,7 +39,7 @@ pub struct SaveData {
 
 impl SaveData {
     /// Current save data version
-    pub const CURRENT_VERSION: u32 = 4; // Bumped version for hero system
+    pub const CURRENT_VERSION: u32 = 5; // Bumped version for expedition system
 
     /// Default save file name
     pub const SAVE_FILE_NAME: &'static str = "stdgotchi_save.json";

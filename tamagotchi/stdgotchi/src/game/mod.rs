@@ -13,6 +13,7 @@ pub mod element_system;
 pub mod quest;
 pub mod hero;
 pub mod job_system;
+pub mod expedition;
 
 pub use enemy::*;
 pub use battle::*;
@@ -24,3 +25,4 @@ pub use element_system::*;
 pub use quest::*;
 pub use hero::*;
 pub use job_system::*;
+pub use expedition::*;

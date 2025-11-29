@@ -10,22 +10,19 @@
     "flee": 82,
     "base_exp": 150,
     "element": "water",
-    "fragment_drop_rate": 0.3,
-    "fragments_required": 3,
     "str": 1,
     "agi": 1,
     "int": 0,
     "dex": 6,
     "vit": 1,
     "luk": 30,
-    "learnable_skills": [
-      { "skill_id": 1, "learn_level": 1 },
-      { "skill_id": 2, "learn_level": 5 },
-      { "skill_id": 3, "learn_level": 10 },
-      { "skill_id": 28, "learn_level": 15 },
-      { "skill_id": 29, "learn_level": 20 },
-      { "skill_id": 30, "learn_level": 25 }
-    ]
+    "drop_rate": 0.01,
+    "card": {
+      "name": "Poring Card",
+      "rarity": 1,
+      "atk_bonus": 5,
+      "def_bonus": 0
+    }
   },
   {
     "name": "Fabre",
@@ -38,22 +35,19 @@
     "flee": 84,
     "base_exp": 158,
     "element": "earth",
-    "fragment_drop_rate": 0.3,
-    "fragments_required": 3,
     "str": 1,
     "agi": 2,
     "int": 0,
     "dex": 7,
     "vit": 4,
     "luk": 5,
-    "learnable_skills": [
-      { "skill_id": 5, "learn_level": 1 },
-      { "skill_id": 4, "learn_level": 5 },
-      { "skill_id": 6, "learn_level": 10 },
-      { "skill_id": 28, "learn_level": 15 },
-      { "skill_id": 2, "learn_level": 20 },
-      { "skill_id": 30, "learn_level": 30 }
-    ]
+    "drop_rate": 0.01,
+    "card": {
+      "name": "Fabre Card",
+      "rarity": 1,
+      "atk_bonus": 0,
+      "def_bonus": 5
+    }
   },
   {
     "name": "Hornet",
@@ -66,22 +60,19 @@
     "flee": 100,
     "base_exp": 19,
     "element": "wind",
-    "fragment_drop_rate": 0.2,
-    "fragments_required": 12,
     "str": 6,
     "agi": 20,
     "int": 10,
     "dex": 17,
     "vit": 8,
     "luk": 5,
-    "learnable_skills": [
-      { "skill_id": 10, "learn_level": 1 },
-      { "skill_id": 11, "learn_level": 5 },
-      { "skill_id": 12, "learn_level": 12 },
-      { "skill_id": 13, "learn_level": 18 },
-      { "skill_id": 28, "learn_level": 25 },
-      { "skill_id": 15, "learn_level": 35 }
-    ]
+    "drop_rate": 0.005,
+    "card": {
+      "name": "Hornet Card",
+      "rarity": 2,
+      "atk_bonus": 15,
+      "def_bonus": 0
+    }
   },
   {
     "name": "Thief Bug",
@@ -94,21 +85,18 @@
     "flee": 92,
     "base_exp": 17,
     "element": "neutral",
-    "fragment_drop_rate": 0.2,
-    "fragments_required": 20,
     "str": 1,
     "agi": 6,
     "int": 0,
     "dex": 11,
     "vit": 6,
     "luk": 0,
-    "learnable_skills": [
-      { "skill_id": 28, "learn_level": 1 },
-      { "skill_id": 19, "learn_level": 8 },
-      { "skill_id": 20, "learn_level": 15 },
-      { "skill_id": 21, "learn_level": 22 },
-      { "skill_id": 29, "learn_level": 30 },
-      { "skill_id": 30, "learn_level": 40 }
-    ]
+    "drop_rate": 0.008,
+    "card": {
+      "name": "Thief Bug Card",
+      "rarity": 2,
+      "atk_bonus": 10,
+      "def_bonus": 10
+    }
   }
 ]
