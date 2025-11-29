@@ -284,12 +284,12 @@ impl Page for ExpeditionSummaryPage {
             if let Some(reveal_time) = self.loot_reveal_time {
                 if reveal_time.elapsed() > Duration::from_millis(500) {
                     self.loot_state = LootState::Revealed;
-                    return true; // Trigger redraw
                 }
             }
         }
 
-        false
+        // Keep page active - expedition_summary_system will close it when user taps Continue
+        true
     }
 
     fn draw(&mut self, display: &mut Sh8601Driver, _full_redraw: bool) -> Result<(), Box<dyn Error>> {

@@ -232,8 +232,9 @@ impl ExpeditionSetupPage {
 
 impl Page for ExpeditionSetupPage {
     fn update(&mut self) -> bool {
-        // No animation updates needed
-        false
+        // Keep page active (return true)
+        // The expedition_setup_system will handle closing the page when START is pressed
+        true
     }
 
     fn draw(&mut self, display: &mut Sh8601Driver, _full_redraw: bool) -> Result<(), Box<dyn Error>> {
