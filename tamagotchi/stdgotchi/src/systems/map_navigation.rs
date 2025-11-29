@@ -69,7 +69,7 @@ pub fn map_navigation_system(
                             app_state.needs_redraw = true;
                         }
                         TouchAction::Fight => {
-                            // Enter battle on current map
+                            // Enter expedition setup on current map
                             let current_location_id = game_manager.map_page.world_map().current_location_id();
                             let location_data = game_manager
                                 .map_page
@@ -79,34 +79,71 @@ pub fn map_navigation_system(
 
                             if let Some(location) = location_data {
                                 if !location.enemies.is_empty() {
-                                    log::info!("Entering battle at: {}", location.name);
-                                    game_manager.selected_map_id = Some(current_location_id);
+                                    // Check if hero is ready for expedition
+                                    use crate::game::HeroState;
+                                    match &game_manager.hero.state {
+                                        HeroState::Ready => {
+                                            // Hero is ready, proceed with expedition setup
+                                            log::info!("🎯 Setting up expedition at: {}", location.name);
+                                            game_manager.selected_map_id = Some(current_location_id);
 
-                                    // Pick a random enemy from the map
-                                    let enemy_index = rand::random::<usize>() % location.enemies.len();
-                                    let initial_enemy_id = location.enemies[enemy_index];
+                                            // Pick a random enemy from the map
+                                            let enemy_index = rand::random::<usize>() % location.enemies.len();
+                                            let enemy_id = location.enemies[enemy_index];
 
-                                    // Store battle loading data for deferred creation
-                                    game_manager.battle_loading_data =
-                                        Some(crate::ecs::resources::BattleLoadingData {
-                                            map_id: current_location_id,
-                                            enemy_ids: location.enemies.clone(),
-                                            initial_enemy_id,
-                                        });
+                                            // Get enemy data
+                                            if let Some(enemy_data) = game_manager.game_data.get_enemy(enemy_id) {
+                                                // Create Enemy instance for expedition
+                                                use crate::game::Enemy;
+                                                let enemy = Enemy::from_data(
+                                                    enemy_data.id,
+                                                    enemy_data.name.clone(),
+                                                    enemy_data.level,
+                                                    enemy_data.hp,
+                                                    enemy_data.attack,
+                                                    enemy_data.defense,
+                                                    enemy_data.hit,
+                                                    enemy_data.flee,
+                                                    enemy_data.base_exp,
+                                                    enemy_data.get_element(),
+                                                );
 
-                                    // Check if hero is alive
-                                    if game_manager.hero.current_health > 0 {
-                                        // Hero vs enemies battle
-                                        log::info!("🎮 Starting battle with {} enemies!", location.enemies.len());
-                                        app_state.current_mode = AppMode::BattleLoading;
-                                    } else {
-                                        log::warn!("Hero is dead, cannot start battle!");
+                                                // Create expedition setup page
+                                                match crate::ui::pages::ExpeditionSetupPage::new(
+                                                    game_manager.hero.clone(),
+                                                    enemy,
+                                                ) {
+                                                    Ok(setup_page) => {
+                                                        game_manager.expedition_setup_page = Some(setup_page);
+                                                        app_state.current_mode = AppMode::ExpeditionSetup;
+                                                        app_state.needs_redraw = true;
+                                                        log::info!("✅ Expedition setup ready");
+                                                    }
+                                                    Err(e) => {
+                                                        log::error!("❌ Failed to create expedition setup: {:?}", e);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        HeroState::KO { recovery_time } => {
+                                            // Hero is KO, show remaining recovery time
+                                            if let Some(remaining) = game_manager.hero.state.remaining_time() {
+                                                let minutes = remaining / 60;
+                                                let seconds = remaining % 60;
+                                                log::warn!("❌ Hero is KO! Recovery in {}:{:02}", minutes, seconds);
+                                            } else {
+                                                log::warn!("❌ Hero is KO!");
+                                            }
+                                        }
+                                        HeroState::OnExpedition { end_time } => {
+                                            // Hero is already on expedition
+                                            if let Some(remaining) = game_manager.hero.state.remaining_time() {
+                                                log::warn!("❌ Hero is already on an expedition! ({} seconds remaining)", remaining);
+                                            } else {
+                                                log::warn!("❌ Hero is already on an expedition!");
+                                            }
+                                        }
                                     }
-
-                                    app_state.needs_redraw = true;
-                                    log::info!(
-                                        "Switched to loading screen, battle will be created on next frame"
-                                    );
                                 }
                             }
                         }

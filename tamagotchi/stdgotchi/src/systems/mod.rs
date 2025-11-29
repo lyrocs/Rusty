@@ -17,6 +17,8 @@ pub mod pokemon_info;
 pub mod render;
 pub mod rest;
 pub mod quest_navigation;
+pub mod expedition_setup;
+pub mod expedition_summary;
 
 // Re-export all systems
 pub use afk::afk_system;
@@ -34,3 +36,5 @@ pub use pokemon_info::pokemon_info_system;
 pub use render::render_system;
 pub use rest::rest_system;
 pub use quest_navigation::quest_navigation_system;
+pub use expedition_setup::expedition_setup_system;
+pub use expedition_summary::expedition_summary_system;

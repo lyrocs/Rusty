@@ -55,7 +55,7 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{afk_system, animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, pokemon_info_system, render_system, rest_system, quest_navigation_system};
+use systems::{afk_system, animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, expedition_setup_system, expedition_summary_system, fps_system, map_navigation_system, menu_system, pokemon_info_system, render_system, rest_system, quest_navigation_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -402,6 +402,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fps_system,
         menu_system,
         map_navigation_system,
+        expedition_setup_system, // Handle expedition setup page
+        expedition_summary_system, // Handle expedition summary page
         battle_loading_system, // Creates battle page after loading screen shown
         battle_system,
         battle_result_system, // Handle battle result screen
