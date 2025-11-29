@@ -21,6 +21,26 @@ pub enum Element {
     Dark,
 }
 
+impl Element {
+    /// Parse element from string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "neutral" => Some(Element::Neutral),
+            "fire" => Some(Element::Fire),
+            "water" => Some(Element::Water),
+            "wind" => Some(Element::Wind),
+            "earth" => Some(Element::Earth),
+            "holy" => Some(Element::Holy),
+            "shadow" => Some(Element::Shadow),
+            "ghost" => Some(Element::Ghost),
+            "poison" => Some(Element::Poison),
+            "undead" => Some(Element::Undead),
+            "dark" => Some(Element::Dark),
+            _ => None,
+        }
+    }
+}
+
 /// Get damage multiplier based on element matchup
 ///
 /// Returns:
@@ -123,6 +143,7 @@ pub fn get_element_icon(element: Element) -> &'static str {
         Shadow => "◆",
         Ghost => "♦",
         Undead => "†",
+        Dark => "◐",
     }
 }
 

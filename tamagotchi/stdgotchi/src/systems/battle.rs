@@ -1,11 +1,11 @@
 //! Battle system
 //!
-//! Handles input during battle mode, including menu access.
+//! Handles input during battle mode (auto-toggle button)
 
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::input_thread::{InputEvent, SwipeDirection};
+use crate::input_thread::InputEvent;
 
 /// System to handle battle mode input
 pub fn battle_system(
@@ -34,53 +34,15 @@ pub fn battle_system(
                 let x = *x as i32;
                 let y = *y as i32;
 
-                // Handle touch on battle page (for team switching)
+                // Handle touch on battle page (for auto-toggle button)
                 if let Some(ref mut battle_page) = game_manager.battle_page {
                     if let Some(action) = battle_page.handle_touch(x, y) {
                         use crate::ui::pages::battle::BattleAction;
                         match action {
-                            BattleAction::SwitchRustymon(slot) => {
-                                log::info!("Switching to team slot {}", slot);
-                                if let Err(e) = battle_page.switch_rustymon(slot) {
-                                    log::error!("Failed to switch Rustymon: {:?}", e);
-                                }
-                                app_state.needs_redraw = true;
-                            }
-                            BattleAction::UseSkill(skill_id) => {
-                                log::info!("Using skill {}", skill_id);
-                                if let Err(e) = battle_page.use_skill(skill_id) {
-                                    log::error!("Failed to use skill: {:?}", e);
-                                }
-                                app_state.needs_redraw = true;
-                            }
                             BattleAction::ToggleAuto => {
                                 battle_page.toggle_auto();
                                 app_state.needs_redraw = true;
                             }
-                        }
-                    }
-                }
-            }
-            InputEvent::Swipe { direction } => {
-                // Handle swipe to switch Rustymon
-                if let Some(ref mut battle_page) = game_manager.battle_page {
-                    match direction {
-                        SwipeDirection::Right => {
-                            log::info!("Swipe right: switching to next Rustymon");
-                            if let Err(e) = battle_page.switch_to_next_rustymon() {
-                                log::error!("Failed to switch to next Rustymon: {:?}", e);
-                            }
-                            app_state.needs_redraw = true;
-                        }
-                        SwipeDirection::Left => {
-                            log::info!("Swipe left: switching to previous Rustymon");
-                            if let Err(e) = battle_page.switch_to_prev_rustymon() {
-                                log::error!("Failed to switch to previous Rustymon: {:?}", e);
-                            }
-                            app_state.needs_redraw = true;
-                        }
-                        _ => {
-                            // Up/Down swipes not used in battle
                         }
                     }
                 }

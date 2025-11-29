@@ -39,47 +39,28 @@ pub fn afk_system(
                     if afk_farm_page.handle_touch(x, y) {
                         log::info!("🛑 User stopped AFK farming");
 
-                        // Get statistics before clearing page
-                        let (total_exp, elapsed_secs) = afk_farm_page.get_stats();
-                        let exp_per_min = if elapsed_secs > 0 {
-                            (total_exp as f32 / elapsed_secs as f32 * 60.0) as u32
+                        // Get updated hero with EXP gains
+                        let updated_hero = afk_farm_page.get_updated_hero();
+
+                        let old_level = game_manager.hero.level;
+                        let old_exp = game_manager.hero.experience;
+
+                        // Update hero with EXP gains
+                        game_manager.hero = updated_hero;
+
+                        // Log results
+                        if game_manager.hero.level > old_level {
+                            log::info!("⬆️ {} leveled up: {} → {} (EXP: {} → {})",
+                                game_manager.hero.name,
+                                old_level,
+                                game_manager.hero.level,
+                                old_exp,
+                                game_manager.hero.experience);
                         } else {
-                            0
-                        };
-
-                        log::info!("📊 AFK Farming Results: {} total EXP in {}s ({}/min)",
-                            total_exp, elapsed_secs, exp_per_min);
-
-                        // Get updated rustymon with EXP gains
-                        let updated_rustymon = afk_farm_page.get_updated_rustymon();
-
-                        // Update collection with the gained EXP and levels
-                        for updated in updated_rustymon {
-                            if let Some(rustymon) = game_manager.rustymon_collection.iter_mut().find(|r| r.id == updated.id) {
-                                let old_level = rustymon.level;
-                                let old_exp = rustymon.exp;
-                                rustymon.exp = updated.exp;
-                                rustymon.level = updated.level;
-
-                                // Recalculate stats if level changed
-                                if rustymon.level != old_level {
-                                    rustymon.recalculate_stats();
-                                }
-
-                                if rustymon.level > old_level {
-                                    log::info!("⬆️ {} leveled up: {} → {} (EXP: {} → {})",
-                                        rustymon.name,
-                                        old_level,
-                                        rustymon.level,
-                                        old_exp,
-                                        rustymon.exp);
-                                } else {
-                                    log::info!("💰 {} gained EXP: {} → {}",
-                                        rustymon.name,
-                                        old_exp,
-                                        rustymon.exp);
-                                }
-                            }
+                            log::info!("💰 {} gained EXP: {} → {}",
+                                game_manager.hero.name,
+                                old_exp,
+                                game_manager.hero.experience);
                         }
 
                         // Clear AFK farm page

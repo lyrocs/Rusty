@@ -39,21 +39,19 @@ pub fn rest_system(
                     if rest_page.handle_touch(x, y) {
                         log::info!("✅ User tapped continue button - applying HP regeneration");
 
-                        // Get updated rustymon with HP regeneration
-                        let updated_rustymon = rest_page.get_updated_rustymon();
+                        // Get updated hero with HP regeneration
+                        let updated_hero = rest_page.get_updated_hero();
 
-                        // Update collection with the regenerated HP
-                        for updated in updated_rustymon {
-                            if let Some(rustymon) = game_manager.rustymon_collection.iter_mut().find(|r| r.id == updated.id) {
-                                let old_hp = rustymon.current_hp;
-                                rustymon.current_hp = updated.current_hp;
-                                log::info!("💚 {} HP restored: {} → {} / {}",
-                                    rustymon.name,
-                                    old_hp,
-                                    rustymon.current_hp,
-                                    rustymon.max_hp);
-                            }
-                        }
+                        let old_hp = game_manager.hero.current_health;
+
+                        // Update hero
+                        game_manager.hero = updated_hero;
+
+                        log::info!("💚 {} HP restored: {} → {} / {}",
+                            game_manager.hero.name,
+                            old_hp,
+                            game_manager.hero.current_health,
+                            game_manager.hero.max_health);
 
                         // Clear rest page
                         game_manager.rest_page = None;

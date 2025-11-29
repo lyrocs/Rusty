@@ -40,7 +40,8 @@ pub fn death_detection_system(
                     Err(e) => {
                         log::error!("Failed to create death page: {:?}", e);
                         // Fallback: just reset hero HP and continue
-                        game_manager.hero.heal(game_manager.hero.max_health / 2);
+                        let heal_amount = game_manager.hero.max_health / 2;
+                        game_manager.hero.heal(heal_amount);
                     }
                 }
             } else {
