@@ -90,6 +90,7 @@ pub fn render_system(
                 }
 
                 if let Some(page) = game_manager.get_current_page(app_state.current_mode) {
+                    log::debug!("Rendering page for mode: {:?}", app_state.current_mode);
                     // Update page logic
                     let page_active = page.update();
 
@@ -112,6 +113,8 @@ pub fn render_system(
                         app_state.current_mode = AppMode::Map;
                         app_state.needs_redraw = true;
                     }
+                } else {
+                    log::warn!("No page found for mode: {:?}", app_state.current_mode);
                 }
             }
         }
