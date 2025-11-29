@@ -2,8 +2,24 @@
 //!
 //! Handles element advantages/disadvantages and UI display.
 
-use super::rustymon::Element;
 use embedded_graphics::pixelcolor::Rgb888;
+use serde::{Deserialize, Serialize};
+
+/// Element types for combat
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Element {
+    Neutral,
+    Fire,
+    Water,
+    Wind,
+    Earth,
+    Holy,
+    Shadow,
+    Ghost,
+    Poison,
+    Undead,
+    Dark,
+}
 
 /// Get damage multiplier based on element matchup
 ///

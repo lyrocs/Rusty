@@ -8,10 +8,8 @@ use std::fs;
 use std::path::Path;
 
 use super::KillTracker;
-use super::fragment_collection::FragmentCollection;
 use super::quest::QuestManager;
-use super::rustymon::Rustymon;
-use super::rustymon_team::RustymonTeam;
+use super::hero::Hero;
 
 /// Save data structure containing all persistent game state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,17 +29,8 @@ pub struct SaveData {
     /// Save timestamp (unix timestamp)
     pub save_timestamp: u64,
 
-    /// Rustymon collection (all owned Rustymon)
-    #[serde(default)]
-    pub rustymon_collection: Vec<Rustymon>,
-
-    /// Rustymon team (active team and bank)
-    #[serde(default)]
-    pub rustymon_team: RustymonTeam,
-
-    /// Fragment collection (monster fragments)
-    #[serde(default)]
-    pub fragment_collection: FragmentCollection,
+    /// The player's hero
+    pub hero: Hero,
 
     /// Quest progress and state
     #[serde(default)]
@@ -50,7 +39,7 @@ pub struct SaveData {
 
 impl SaveData {
     /// Current save data version
-    pub const CURRENT_VERSION: u32 = 3; // Bumped version for quest system
+    pub const CURRENT_VERSION: u32 = 4; // Bumped version for hero system
 
     /// Default save file name
     pub const SAVE_FILE_NAME: &'static str = "stdgotchi_save.json";
@@ -60,9 +49,7 @@ impl SaveData {
         kill_tracker: KillTracker,
         current_location_id: u32,
         play_time_seconds: u64,
-        rustymon_collection: Vec<Rustymon>,
-        rustymon_team: RustymonTeam,
-        fragment_collection: FragmentCollection,
+        hero: Hero,
         quest_manager: QuestManager,
     ) -> Self {
         Self {
@@ -71,9 +58,7 @@ impl SaveData {
             current_location_id,
             play_time_seconds,
             save_timestamp: Self::current_timestamp(),
-            rustymon_collection,
-            rustymon_team,
-            fragment_collection,
+            hero,
             quest_manager,
         }
     }

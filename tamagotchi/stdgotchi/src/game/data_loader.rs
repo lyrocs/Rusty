@@ -3,8 +3,7 @@
 //! Centralized JSON data loading for maps, enemies, etc.
 
 use super::quest::QuestData;
-use super::rustymon::Element;
-use super::skill::{Skill, LearnableSkill};
+use super::element_system::Element;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
@@ -30,10 +29,6 @@ pub struct EnemyData {
     pub hit: u32,
     pub flee: u32,
     pub element: String, // Will be parsed to Element enum
-    pub fragment_drop_rate: f32,
-    pub fragments_required: u32,
-    #[serde(default)]
-    pub learnable_skills: Vec<LearnableSkill>,
 }
 
 impl EnemyData {
@@ -137,7 +132,6 @@ pub struct ExpTableEntry {
 pub struct GameData {
     pub maps: HashMap<u32, MapData>,
     pub enemies: HashMap<u32, EnemyData>,
-    pub skills: HashMap<u32, Skill>,
     pub exp_table: HashMap<u32, u32>, // level -> exp to next level
     pub quests: HashMap<u32, QuestData>,
 }
@@ -163,15 +157,6 @@ impl GameData {
         }
         log::info!("Loaded {} enemies", enemies.len());
 
-        // Load skills
-        let skills_json = include_str!("../../assets/data/skills.json");
-        let skills_vec: Vec<Skill> = serde_json::from_str(skills_json)?;
-        let mut skills = HashMap::new();
-        for skill in skills_vec {
-            skills.insert(skill.id, skill);
-        }
-        log::info!("Loaded {} skills", skills.len());
-
         // Load exp table
         let exp_table_json = include_str!("../../assets/data/exp_table.json");
         let exp_table_vec: Vec<ExpTableEntry> = serde_json::from_str(exp_table_json)?;
@@ -193,7 +178,6 @@ impl GameData {
         Ok(Self {
             maps,
             enemies,
-            skills,
             exp_table,
             quests,
         })
@@ -228,21 +212,6 @@ impl GameData {
         } else {
             None
         }
-    }
-
-    /// Get skill by ID
-    pub fn get_skill(&self, id: u32) -> Option<&Skill> {
-        self.skills.get(&id)
-    }
-
-    /// Get all skills
-    pub fn get_all_skills(&self) -> &HashMap<u32, Skill> {
-        &self.skills
-    }
-
-    /// Get learnable skills for an enemy/Rustymon species
-    pub fn get_learnable_skills(&self, species_id: u32) -> Option<&Vec<LearnableSkill>> {
-        self.get_enemy(species_id).map(|e| &e.learnable_skills)
     }
 
     /// Get exp needed for next level from the exp table

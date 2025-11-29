@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::rustymon::Element;
+use super::element_system::Element;
 
 /// Enemy instance in battle
 #[derive(Debug, Clone, Serialize, Deserialize)]
