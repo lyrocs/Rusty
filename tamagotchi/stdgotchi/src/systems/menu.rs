@@ -55,37 +55,22 @@ pub fn menu_system(
                         }
                         MenuAction::Rest => {
                             log::info!("Navigating to Rest screen");
-                            // Get team rustymon (first 3 from active slots)
-                            let mut team_rustymon = Vec::new();
-                            for slot in game_manager.rustymon_team.active_slots.iter().take(3) {
-                                if let Some(rustymon_id) = slot {
-                                    if let Some(rustymon) = game_manager.rustymon_collection.iter().find(|r| &r.id == rustymon_id) {
-                                        team_rustymon.push(rustymon.clone());
-                                    }
+                            // Create rest page with hero
+                            match crate::ui::pages::RestPage::new(game_manager.hero.clone()) {
+                                Ok(rest_page) => {
+                                    game_manager.rest_page = Some(rest_page);
+                                    app_state.current_mode = AppMode::Rest;
+                                    app_state.needs_redraw = true;
+                                    log::info!("✅ Rest page created for {}", game_manager.hero.name);
                                 }
-                            }
-
-                            if !team_rustymon.is_empty() {
-                                // Create rest page with team rustymon
-                                match crate::ui::pages::RestPage::new(team_rustymon) {
-                                    Ok(rest_page) => {
-                                        game_manager.rest_page = Some(rest_page);
-                                        app_state.current_mode = AppMode::Rest;
-                                        app_state.needs_redraw = true;
-                                        log::info!("✅ Rest page created");
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to create rest page: {:?}", e);
-                                    }
+                                Err(e) => {
+                                    log::error!("Failed to create rest page: {:?}", e);
                                 }
-                            } else {
-                                log::warn!("No rustymon in team to rest");
                             }
                         }
                         MenuAction::Rustymon => {
-                            log::info!("Navigating to Rustymon List");
-                            app_state.current_mode = AppMode::RustymonList;
-                            app_state.needs_redraw = true;
+                            log::info!("Rustymon menu removed - feature deprecated");
+                            // Feature removed in hero system migration
                         }
                         MenuAction::Quests => {
                             log::info!("Navigating to Quest List");
@@ -96,9 +81,8 @@ pub fn menu_system(
                             app_state.needs_redraw = true;
                         }
                         MenuAction::Fragments => {
-                            log::info!("Navigating to Fragment Collection");
-                            app_state.current_mode = AppMode::FragmentCollection;
-                            app_state.needs_redraw = true;
+                            log::info!("Fragment collection menu removed - feature deprecated");
+                            // Feature removed in hero system migration
                         }
                         MenuAction::Pokemon => {
                             log::info!("Fetching Pokemon data from API...");

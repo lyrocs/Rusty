@@ -125,6 +125,7 @@ pub fn get_element_color(element: Element) -> Rgb888 {
         Shadow => Rgb888::new(100, 50, 150),   // Dark Purple
         Ghost => Rgb888::new(200, 150, 255),   // Lavender
         Undead => Rgb888::new(100, 100, 100),  // Dark Gray
+        Dark => Rgb888::new(50, 50, 50),       // Very Dark Gray
     }
 }
 

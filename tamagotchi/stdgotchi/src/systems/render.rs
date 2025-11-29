@@ -70,7 +70,7 @@ pub fn render_system(
     }
 
     match app_state.current_mode {
-        AppMode::BattleLoading | AppMode::Battle3v3Loading => {
+        AppMode::BattleLoading => {
             // Draw loading screen
             if app_state.needs_redraw {
                 if let Err(e) = draw_loading_screen(display) {
@@ -79,7 +79,7 @@ pub fn render_system(
                 app_state.needs_redraw = false;
             }
         }
-        AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::Battle3v3 | AppMode::BattleResult => {
+        AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::BattleResult => {
             // Game-based rendering with GameManager
             if let Some(mut game_manager) = game_manager {
                 // Update menu battle state if in Menu mode
@@ -108,14 +108,6 @@ pub fn render_system(
                     // Check if page is done
                     if !page_active {
                         log::info!("Page completed, returning to map");
-                        app_state.current_mode = AppMode::Map;
-                        app_state.needs_redraw = true;
-                    }
-                } else {
-                    // Page not found - log error
-                    if app_state.current_mode == AppMode::Battle3v3 {
-                        log::error!("❌ Render: get_current_page returned None for Battle3v3!");
-                        log::error!("Returning to map...");
                         app_state.current_mode = AppMode::Map;
                         app_state.needs_redraw = true;
                     }
@@ -194,116 +186,8 @@ pub fn render_system(
                 }
             }
         }
-        AppMode::RustymonList => {
-            // Rustymon list rendering - needs rustymon collection and team data
-            if let Some(mut game_manager) = game_manager {
-                let page_active = game_manager.rustymon_list_page.update();
-                let full_redraw = game_manager.rustymon_list_page.needs_full_redraw() || app_state.needs_redraw;
-
-                // Draw rustymon list with collection data
-                if let Err(e) = game_manager.draw_rustymon_list(display, full_redraw) {
-                    log::error!("Failed to draw rustymon list: {:?}", e);
-                }
-
-                if app_state.needs_redraw {
-                    app_state.needs_redraw = false;
-                }
-
-                if !page_active {
-                    info!("Rustymon list closed, returning to menu");
-                    app_state.current_mode = AppMode::Menu;
-                    app_state.needs_redraw = true;
-                }
-            }
-        }
-        AppMode::RustymonDetail => {
-            // Rustymon detail rendering - needs specific rustymon and team data
-            if let Some(mut game_manager) = game_manager {
-                let page_active = game_manager.rustymon_detail_page.update();
-                let full_redraw = game_manager.rustymon_detail_page.needs_full_redraw() || app_state.needs_redraw;
-
-                // Draw rustymon detail
-                if let Err(e) = game_manager.draw_rustymon_detail(display, full_redraw) {
-                    log::error!("Failed to draw rustymon detail: {:?}", e);
-                }
-
-                if app_state.needs_redraw {
-                    app_state.needs_redraw = false;
-                }
-
-                if !page_active {
-                    info!("Rustymon detail closed, returning to list");
-                    app_state.current_mode = AppMode::RustymonList;
-                    app_state.needs_redraw = true;
-                }
-            }
-        }
-        AppMode::RustymonSkills => {
-            // Rustymon skills rendering - needs specific rustymon and game data
-            if let Some(mut game_manager) = game_manager {
-                let page_active = game_manager.rustymon_skills_page.update();
-                let full_redraw = game_manager.rustymon_skills_page.needs_full_redraw() || app_state.needs_redraw;
-
-                // Draw rustymon skills
-                if let Err(e) = game_manager.draw_rustymon_skills(display, full_redraw) {
-                    log::error!("Failed to draw rustymon skills: {:?}", e);
-                }
-
-                if app_state.needs_redraw {
-                    app_state.needs_redraw = false;
-                }
-
-                if !page_active {
-                    info!("Rustymon skills closed, returning to detail");
-                    app_state.current_mode = AppMode::RustymonDetail;
-                    app_state.needs_redraw = true;
-                }
-            }
-        }
-        AppMode::FragmentCollection => {
-            // Fragment collection rendering - needs fragment data and game data
-            if let Some(mut game_manager) = game_manager {
-                let page_active = game_manager.fragment_collection_page.update();
-                let full_redraw = game_manager.fragment_collection_page.needs_full_redraw() || app_state.needs_redraw;
-
-                // Draw fragment collection
-                if let Err(e) = game_manager.draw_fragment_collection(display, full_redraw) {
-                    log::error!("Failed to draw fragment collection: {:?}", e);
-                }
-
-                if app_state.needs_redraw {
-                    app_state.needs_redraw = false;
-                }
-
-                if !page_active {
-                    info!("Fragment collection closed, returning to menu");
-                    app_state.current_mode = AppMode::Menu;
-                    app_state.needs_redraw = true;
-                }
-            }
-        }
-        AppMode::RustymonSummon => {
-            // Rustymon summon preview rendering - needs pending summon data
-            if let Some(mut game_manager) = game_manager {
-                let page_active = game_manager.rustymon_summon_page.update();
-                let full_redraw = game_manager.rustymon_summon_page.needs_full_redraw() || app_state.needs_redraw;
-
-                // Draw rustymon summon preview
-                if let Err(e) = game_manager.draw_rustymon_summon(display, full_redraw) {
-                    log::error!("Failed to draw rustymon summon: {:?}", e);
-                }
-
-                if app_state.needs_redraw {
-                    app_state.needs_redraw = false;
-                }
-
-                if !page_active {
-                    info!("Rustymon summon closed, returning to fragment collection");
-                    app_state.current_mode = AppMode::FragmentCollection;
-                    app_state.needs_redraw = true;
-                }
-            }
-        }
+        // Rustymon-related modes removed in hero system migration
+        // (RustymonList, RustymonDetail, RustymonSkills, FragmentCollection, RustymonSummon)
         AppMode::QuestList => {
             // Quest list rendering - needs quest manager and game data
             if let Some(mut game_manager) = game_manager {

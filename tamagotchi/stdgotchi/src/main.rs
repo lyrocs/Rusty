@@ -304,9 +304,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::info!("Save file read successfully, parsing JSON...");
                 match game::SaveData::from_json(&json_data) {
                     Ok(save_data) => {
-                        log::info!("Save file loaded! Rustymon count: {}, Fragments: {}",
-                                  save_data.rustymon_collection.len(),
-                                  save_data.fragment_collection.get_unique_monster_count());
+                        log::info!("Save file loaded! Hero: {} (Level {})",
+                                  save_data.hero.name,
+                                  save_data.hero.level);
                         GameManager::from_save_data(save_data, world_map, game_data)
                     }
                     Err(e) => {

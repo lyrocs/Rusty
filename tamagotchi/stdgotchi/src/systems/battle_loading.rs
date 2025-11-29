@@ -49,12 +49,13 @@ pub fn battle_loading_system(
     use crate::assets::battle::load_enemy_sprites_embedded;
     // Use poring sprites (ID 1002) as hero placeholder
     if let Some((idle, attack, attacked, death)) = load_enemy_sprites_embedded(1002) {
+        let death_ref = death.as_ref().map(|v| v.as_slice());
         battle_page
             .add_hero(
                 &idle,
                 &attack,
                 &attacked,
-                Some(&death),
+                death_ref,
                 (100, 220), // Hero position on left side
             )
             .ok();

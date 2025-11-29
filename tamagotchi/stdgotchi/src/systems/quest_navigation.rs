@@ -51,47 +51,30 @@ pub fn quest_navigation_system(
                                 if let Some(rewards) =
                                     game_manager.quest_manager.claim_rewards(quest_id, &quest_data)
                                 {
-                                    // Apply EXP reward to active Rustymon
+                                    // Apply EXP reward to hero
                                     if rewards.exp > 0 {
-                                        let active_id = game_manager
-                                            .rustymon_team
-                                            .get_active_rustymon_id()
-                                            .cloned();
-                                        if let Some(id) = active_id {
-                                            if let Some(rustymon) = game_manager
-                                                .rustymon_collection
-                                                .iter_mut()
-                                                .find(|r| r.id == id)
-                                            {
-                                                let leveled_up =
-                                                    rustymon.gain_exp(rewards.exp as u32);
-                                                log::info!(
-                                                    "Quest reward: {} gained {} EXP (Lv{})",
-                                                    rustymon.name,
-                                                    rewards.exp,
-                                                    rustymon.level
-                                                );
-                                                if leveled_up {
-                                                    log::info!(
-                                                        "🎉 {} leveled up to {}!",
-                                                        rustymon.name,
-                                                        rustymon.level
-                                                    );
-                                                }
-                                            }
+                                        let leveled_up =
+                                            game_manager.hero.gain_experience(rewards.exp as u32);
+                                        log::info!(
+                                            "Quest reward: {} gained {} EXP (Lv{})",
+                                            game_manager.hero.name,
+                                            rewards.exp,
+                                            game_manager.hero.level
+                                        );
+                                        if leveled_up {
+                                            log::info!(
+                                                "🎉 {} leveled up to {}!",
+                                                game_manager.hero.name,
+                                                game_manager.hero.level
+                                            );
                                         }
                                     }
 
-                                    // Apply fragment rewards
-                                    for fragment_reward in &rewards.fragments {
-                                        game_manager.fragment_collection.add_fragment(
-                                            fragment_reward.monster_id,
-                                            fragment_reward.amount,
-                                        );
-                                        log::info!(
-                                            "Quest reward: {} fragments of monster #{}",
-                                            fragment_reward.amount,
-                                            fragment_reward.monster_id
+                                    // Fragment rewards removed in hero system migration
+                                    if !rewards.fragments.is_empty() {
+                                        log::debug!(
+                                            "Fragment rewards deprecated ({} fragments ignored)",
+                                            rewards.fragments.len()
                                         );
                                     }
 

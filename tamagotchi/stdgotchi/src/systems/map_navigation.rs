@@ -94,33 +94,13 @@ pub fn map_navigation_system(
                                             initial_enemy_id,
                                         });
 
-                                    // Count alive rustymon in team
-                                    let alive_count = game_manager.rustymon_team.active_slots
-                                        .iter()
-                                        .filter(|slot| {
-                                            if let Some(id) = slot {
-                                                game_manager.rustymon_collection.iter()
-                                                    .find(|r| &r.id == id)
-                                                    .map(|r| r.current_hp > 0)
-                                                    .unwrap_or(false)
-                                            } else {
-                                                false
-                                            }
-                                        })
-                                        .count();
-
-                                    let has_enough_enemies = location.enemies.len() >= 3;
-
-                                    // ALWAYS use 3v3 for testing - uncomment condition below to make it conditional
-                                    // if has_enough_enemies && alive_count >= 3 {
-                                    if true {
-                                        log::info!("🎮 Starting 3v3 battle! (enemies: {}, alive rustymon: {})",
-                                            location.enemies.len(), alive_count);
-                                        app_state.current_mode = AppMode::Battle3v3Loading;
-                                    } else {
-                                        log::info!("Starting 1v1 battle (enemies: {}, alive: {}, need 3+ each)",
-                                            location.enemies.len(), alive_count);
+                                    // Check if hero is alive
+                                    if game_manager.hero.current_health > 0 {
+                                        // Hero vs enemies battle
+                                        log::info!("🎮 Starting battle with {} enemies!", location.enemies.len());
                                         app_state.current_mode = AppMode::BattleLoading;
+                                    } else {
+                                        log::warn!("Hero is dead, cannot start battle!");
                                     }
 
                                     app_state.needs_redraw = true;
@@ -143,24 +123,9 @@ pub fn map_navigation_system(
                                 if !location.enemies.is_empty() {
                                     log::info!("🌾 Starting AFK farming at: {}", location.name);
 
-                                    // Get team rustymon
-                                    let mut team_rustymon = Vec::new();
-                                    for slot in &game_manager.rustymon_team.active_slots {
-                                        if let Some(id) = slot {
-                                            if let Some(rustymon) = game_manager.rustymon_collection.iter().find(|r| &r.id == id) {
-                                                team_rustymon.push(rustymon.clone());
-                                            }
-                                        }
-                                    }
-
-                                    if team_rustymon.is_empty() {
-                                        log::error!("❌ Cannot start AFK farming: no rustymon in team");
-                                        return;
-                                    }
-
-                                    // Create AFK farm page
+                                    // Create AFK farm page with hero
                                     match crate::ui::pages::AfkFarmPage::new(
-                                        team_rustymon,
+                                        game_manager.hero.clone(),
                                         &location.enemies,
                                         game_manager.game_data.clone(),
                                     ) {
@@ -168,7 +133,7 @@ pub fn map_navigation_system(
                                             game_manager.afk_farm_page = Some(afk_page);
                                             app_state.current_mode = AppMode::AfkFarm;
                                             app_state.needs_redraw = true;
-                                            log::info!("✅ AFK farming started successfully");
+                                            log::info!("✅ AFK farming started for {}", game_manager.hero.name);
                                         }
                                         Err(e) => {
                                             log::error!("❌ Failed to create AFK farm page: {:?}", e);

@@ -384,12 +384,8 @@ impl BattlePage {
         death_data: Option<&[u8]>,
         position: (i32, i32),
     ) -> Result<(), Box<dyn Error>> {
-        // Enemy attacks based on ASPD
-        let attack_interval = if let Some(ref enemy) = self.game_enemy {
-            Duration::from_secs_f32(1.0 / (enemy.aspd as f32 / 100.0))
-        } else {
-            Duration::from_secs(2) // Default
-        };
+        // Enemy attacks at 1 attack/sec (aspd 100)
+        let attack_interval = Duration::from_secs(1);
 
         let entity = BattleEntity::new_with_flip(
             EntityRole::Enemy,
@@ -527,13 +523,27 @@ impl BattlePage {
 
         // Load enemy data
         if let Some(enemy_data) = self.game_data.get_enemy(enemy_id) {
-            let enemy = GameEnemy::new(enemy_data.clone(), 1); // Level 1 for now
+            // Create enemy scaled to hero level
+            let enemy = GameEnemy::from_data_scaled(
+                enemy_data.id,
+                enemy_data.name.clone(),
+                enemy_data.level,
+                enemy_data.hp,
+                enemy_data.attack,
+                enemy_data.defense,
+                enemy_data.hit,
+                enemy_data.flee,
+                enemy_data.base_exp,
+                enemy_data.get_element(),
+                self.hero.level,
+            );
             log::info!("Spawning enemy: {} (HP: {}/{})", enemy.name, enemy.current_hp, enemy.max_hp);
 
             // Load enemy sprites
             if let Some((idle, attack, attacked, death)) = load_enemy_sprites_embedded(enemy_id) {
                 let position = (270, 220); // Enemy position on right side
-                self.add_enemy(&idle, &attack, &attacked, Some(&death), position)?;
+                let death_ref = death.as_ref().map(|v| v.as_slice());
+                self.add_enemy(&idle, &attack, &attacked, death_ref, position)?;
             }
 
             self.game_enemy = Some(enemy);
@@ -547,7 +557,7 @@ impl BattlePage {
         if let Some(ref enemy) = self.game_enemy {
             if enemy.current_hp == 0 {
                 // Enemy died, record kill
-                self.kill_tracker.record_kill(enemy.id);
+                self.kill_tracker.record_kill(enemy.id, &enemy.name);
                 log::info!("Enemy {} defeated! Total kills: {}",
                     enemy.name, self.kill_tracker.get_total_kills());
 
