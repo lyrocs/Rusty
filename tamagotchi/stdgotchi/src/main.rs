@@ -36,12 +36,14 @@ mod input_thread;
 mod sdcard;
 mod systems;
 mod ui;
+mod wifi;
 
 use bevy_ecs::prelude::*;
 use crossbeam_channel::unbounded;
 use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
 use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, InputEventChannel, SharedI2cResource};
 use game::WorldMap;
+use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::gpio::PinDriver;
 use esp_idf_svc::hal::{
     i2c::{I2cConfig, I2cDriver},
@@ -49,10 +51,11 @@ use esp_idf_svc::hal::{
     spi::{SpiBusDriver, SpiDriver, config::DriverConfig, Dma},
     units::Hertz,
 };
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{afk_system, animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_3v3_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, render_system, rest_system, rustymon_list_system, rustymon_detail_system, rustymon_skills_system, fragment_collection_system, rustymon_summon_system, quest_navigation_system};
+use systems::{afk_system, animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_3v3_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, pokemon_info_system, render_system, rest_system, rustymon_list_system, rustymon_detail_system, rustymon_skills_system, fragment_collection_system, rustymon_summon_system, quest_navigation_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -177,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("=== stdgotchi starting with Bevy ECS ===");
     log::info!("ESP32-S3 with 1.8\" AMOLED Display (SH8601)");
 
-    let mut peripherals = Peripherals::take()?;
+    let peripherals = Peripherals::take()?;
 
     // Initialize I2C for GPIO expander and touch controller
     log::info!("Initializing I2C...");
@@ -218,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize SD card (CS pin will use shared I2C via static reference)
     log::info!("Initializing storage...");
-    let sd_card_wrapper = match init_sd_card(
+    let mut sd_card_wrapper = match init_sd_card(
         peripherals.spi3,
         peripherals.pins.gpio1,
         peripherals.pins.gpio2,
@@ -231,6 +234,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             log::warn!("Failed to initialize SD card: {:?}", e);
             log::warn!("Game saves will not persist. Insert SD card and restart to enable saves.");
+            None
+        }
+    };
+
+    // Initialize WiFi (needs to happen after SD card for config loading)
+    log::info!("Initializing WiFi...");
+    let sysloop = EspSystemEventLoop::take()?;
+    let nvs = EspDefaultNvsPartition::take()?;
+
+    // Load WiFi config from SD card or use default
+    let wifi_config = if let Some(ref mut sd_wrapper) = sd_card_wrapper {
+        match wifi::load_wifi_config(sd_wrapper) {
+            Ok(config) => {
+                log::info!("WiFi config loaded from SD card");
+                config
+            }
+            Err(e) => {
+                log::warn!("Failed to load WiFi config: {:?}", e);
+                log::info!("Creating default WiFi config file on SD card...");
+
+                // Try to create default config file
+                if let Err(create_err) = wifi::create_default_wifi_config(sd_wrapper) {
+                    log::error!("Failed to create default WiFi config: {:?}", create_err);
+                }
+
+                log::warn!("Using default WiFi credentials - please edit /sdcard/wifi.json");
+                wifi::WifiConfig::default()
+            }
+        }
+    } else {
+        log::warn!("No SD card available - using default WiFi credentials");
+        wifi::WifiConfig::default()
+    };
+
+    let wifi_resource = match wifi::wifi_create(&wifi_config, peripherals.modem, sysloop, nvs) {
+        Ok(wifi_conn) => {
+            log::info!("WiFi initialized successfully!");
+            Some(ecs::resources::WifiResource { wifi: wifi_conn })
+        }
+        Err(e) => {
+            log::error!("WiFi initialization failed: {:?}", e);
+            log::warn!("Continuing without WiFi - Pokemon API will not work");
             None
         }
     };
@@ -250,8 +295,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("World map initialized");
 
     // Try to load save file if SD card is available
-    let mut sd_wrapper_mut = sd_card_wrapper;
-    let game_manager = if let Some(ref mut sd_wrapper) = sd_wrapper_mut.as_mut() {
+    let game_manager = if let Some(ref mut sd_wrapper) = sd_card_wrapper.as_mut() {
         let filename = sdcard::get_save_path();
         log::info!("Attempting to load save file: {}", filename);
 
@@ -330,8 +374,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Used by SD card CS pin operations
     world.insert_non_send_resource(SharedI2cResource);
 
+    // Insert WiFi resource (if available) - keeps WiFi connection alive
+    if let Some(wifi_res) = wifi_resource {
+        world.insert_non_send_resource(wifi_res);
+        log::info!("WiFi resource inserted into ECS world - connection will stay active");
+    }
+
     // Insert SD card resource (if available)
-    if let Some(sd_wrapper) = sd_wrapper_mut {
+    if let Some(sd_wrapper) = sd_card_wrapper {
         world.insert_non_send_resource(sd_wrapper);
     }
 
@@ -372,7 +422,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     // Second group of systems (max 16 per tuple reached above)
-    schedule.add_systems(autosave_system);
+    schedule.add_systems((pokemon_info_system, autosave_system));
 
     log::info!("stdgotchi ready! Dual-threaded mode active.");
     log::info!("Input thread: GPIO at 100Hz, Touch/I2C at 20Hz (reduced bus contention)");

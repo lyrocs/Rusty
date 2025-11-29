@@ -23,6 +23,7 @@ pub enum MenuAction {
     Rustymon,
     Fragments,
     Quests,
+    Pokemon,
 }
 
 /// Touch button area
@@ -182,6 +183,19 @@ impl MenuPage {
             "FRAGMENTS",
             Rgb888::new(120, 100, 40),
             MenuAction::Fragments,
+        )?;
+        current_slot += 1;
+
+        // Draw Pokemon button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * current_slot,
+            button_width,
+            button_height,
+            "POKEMON API",
+            Rgb888::new(200, 60, 60),
+            MenuAction::Pokemon,
         )?;
 
         // Draw hint text at bottom

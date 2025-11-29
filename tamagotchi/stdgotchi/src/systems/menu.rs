@@ -100,6 +100,39 @@ pub fn menu_system(
                             app_state.current_mode = AppMode::FragmentCollection;
                             app_state.needs_redraw = true;
                         }
+                        MenuAction::Pokemon => {
+                            log::info!("Fetching Pokemon data from API...");
+                            // Call Pokemon API
+                            match crate::wifi::http_get("https://pokeapi.co/api/v2/pokemon/ditto") {
+                                Ok(response) => {
+                                    log::info!("Pokemon API response received ({} bytes)", response.len());
+                                    // Parse JSON to extract name
+                                    match serde_json::from_str::<serde_json::Value>(&response) {
+                                        Ok(json) => {
+                                            if let Some(name) = json.get("name").and_then(|v| v.as_str()) {
+                                                log::info!("Pokemon name: {}", name);
+                                            }
+                                            // Store response in game manager for display
+                                            game_manager.pokemon_api_response = Some(response);
+                                            app_state.current_mode = AppMode::PokemonInfo;
+                                            app_state.needs_redraw = true;
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to parse Pokemon JSON: {:?}", e);
+                                            game_manager.pokemon_api_response = Some(format!("Error parsing JSON: {}", e));
+                                            app_state.current_mode = AppMode::PokemonInfo;
+                                            app_state.needs_redraw = true;
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to fetch Pokemon data: {:?}", e);
+                                    game_manager.pokemon_api_response = Some(format!("Error: {:?}", e));
+                                    app_state.current_mode = AppMode::PokemonInfo;
+                                    app_state.needs_redraw = true;
+                                }
+                            }
+                        }
                     }
                 }
             }

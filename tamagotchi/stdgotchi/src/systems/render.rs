@@ -326,6 +326,90 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::PokemonInfo => {
+            // Pokemon API info display
+            if let Some(game_manager) = game_manager {
+                if app_state.needs_redraw {
+                    use embedded_graphics::{
+                        mono_font::{MonoTextStyle, ascii::FONT_6X10},
+                        pixelcolor::Rgb888,
+                        prelude::*,
+                        text::Text,
+                    };
+
+                    if let Err(e) = display.clear(Rgb888::new(15, 20, 30)) {
+                        log::error!("Failed to clear display: {:?}", e);
+                        return;
+                    }
+
+                    let title_style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
+                    let _ = Text::new("POKEMON API RESPONSE", Point::new(10, 20), title_style).draw(display);
+
+                    if let Some(ref response) = game_manager.pokemon_api_response {
+                        // Display Pokemon data
+                        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 200, 200));
+
+                        // Try to parse and pretty-print JSON
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
+                            let name = json.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                            let id = json.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let height = json.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let weight = json.get("weight").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                            let mut y = 50;
+                            let line_height = 15;
+
+                            let _ = Text::new(&format!("Name: {}", name), Point::new(10, y), text_style).draw(display);
+                            y += line_height;
+                            let _ = Text::new(&format!("ID: {}", id), Point::new(10, y), text_style).draw(display);
+                            y += line_height;
+                            let _ = Text::new(&format!("Height: {}", height), Point::new(10, y), text_style).draw(display);
+                            y += line_height;
+                            let _ = Text::new(&format!("Weight: {}", weight), Point::new(10, y), text_style).draw(display);
+                            y += line_height + 10;
+
+                            // Show abilities
+                            if let Some(abilities) = json.get("abilities").and_then(|v| v.as_array()) {
+                                let _ = Text::new("Abilities:", Point::new(10, y), text_style).draw(display);
+                                y += line_height;
+                                for ability in abilities.iter().take(5) {
+                                    if let Some(ability_name) = ability.get("ability")
+                                        .and_then(|a| a.get("name"))
+                                        .and_then(|n| n.as_str()) {
+                                        let _ = Text::new(&format!("  - {}", ability_name), Point::new(10, y), text_style).draw(display);
+                                        y += line_height;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Show raw response if parsing fails
+                            let text_style_small = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+                            let max_chars = 50;
+                            for (i, line) in response.lines().take(20).enumerate() {
+                                let truncated = if line.len() > max_chars {
+                                    &line[..max_chars]
+                                } else {
+                                    line
+                                };
+                                let _ = Text::new(truncated, Point::new(10, 50 + (i as i32 * 12)), text_style_small).draw(display);
+                            }
+                        }
+                    } else {
+                        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 100, 100));
+                        let _ = Text::new("No data available", Point::new(10, 50), text_style).draw(display);
+                    }
+
+                    // Show hint
+                    let hint_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+                    let _ = Text::new("Tap to return to menu", Point::new(10, 430), hint_style).draw(display);
+
+                    if let Err(e) = display.flush() {
+                        log::error!("Failed to flush display: {:?}", e);
+                    }
+                    app_state.needs_redraw = false;
+                }
+            }
+        }
     }
 }
 

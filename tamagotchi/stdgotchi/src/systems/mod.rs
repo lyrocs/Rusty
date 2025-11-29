@@ -14,6 +14,7 @@ pub mod fps;
 pub mod input;
 pub mod map_navigation;
 pub mod menu;
+pub mod pokemon_info;
 pub mod render;
 pub mod rest;
 pub mod rustymon_navigation;
@@ -32,6 +33,7 @@ pub use fps::fps_system;
 pub use input::button_system;
 pub use map_navigation::map_navigation_system;
 pub use menu::menu_system;
+pub use pokemon_info::pokemon_info_system;
 pub use render::render_system;
 pub use rest::rest_system;
 pub use rustymon_navigation::{

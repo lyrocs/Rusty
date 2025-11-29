@@ -52,6 +52,12 @@ impl SharedI2cResource {
     }
 }
 
+/// WiFi resource - NonSend because WiFi operations are not thread-safe
+/// Keeps the WiFi connection alive for the duration of the program
+pub struct WifiResource {
+    pub wifi: esp_idf_svc::wifi::BlockingWifi<esp_idf_svc::wifi::EspWifi<'static>>,
+}
+
 /// Page resource - NonSend because contains Page trait objects with non-Send data
 pub struct PageResource {
     pub page: Box<dyn Page>,
@@ -160,6 +166,7 @@ pub struct GameManager {
     pub pending_summon_rustymon: Option<Rustymon>, // Rustymon pending summon confirmation
     pub quest_manager: QuestManager,        // Quest system manager
     pub quest_list_page: QuestListPage,     // Quest list UI page
+    pub pokemon_api_response: Option<String>, // Pokemon API response data
 }
 
 impl GameManager {
@@ -218,6 +225,7 @@ impl GameManager {
             pending_summon_rustymon: None,
             quest_manager: QuestManager::new(),
             quest_list_page: QuestListPage::new(),
+            pokemon_api_response: None,
         }
     }
 
@@ -261,6 +269,7 @@ impl GameManager {
             pending_summon_rustymon: None,
             quest_manager: save_data.quest_manager,
             quest_list_page: QuestListPage::new(),
+            pokemon_api_response: None,
         }
     }
 
@@ -319,6 +328,7 @@ impl GameManager {
             AppMode::FragmentCollection => Some(&mut self.fragment_collection_page as &mut dyn Page),
             AppMode::RustymonSummon => Some(&mut self.rustymon_summon_page as &mut dyn Page),
             AppMode::QuestList => Some(&mut self.quest_list_page as &mut dyn Page),
+            AppMode::PokemonInfo => None, // Pokemon info has no page, handled directly in render system
         }
     }
 
@@ -643,6 +653,8 @@ pub enum AppMode {
     RustymonSummon,
     /// Quest list screen
     QuestList,
+    /// Pokemon API info screen
+    PokemonInfo,
 }
 
 impl Default for AppState {
