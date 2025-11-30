@@ -84,7 +84,7 @@ pub fn map_navigation_system(
                                     match &game_manager.hero.state {
                                         HeroState::Ready => {
                                             // Hero is ready, proceed with expedition setup
-                                            log::info!("🎯 Setting up expedition at: {}", location.name);
+                                            log::info!("Setting up expedition at: {}", location.name);
                                             game_manager.selected_map_id = Some(current_location_id);
 
                                             // Pick a random enemy from the map
@@ -117,30 +117,29 @@ pub fn map_navigation_system(
                                                         game_manager.expedition_setup_page = Some(setup_page);
                                                         app_state.current_mode = AppMode::ExpeditionSetup;
                                                         app_state.needs_redraw = true;
-                                                        log::info!("✅ Expedition setup ready");
                                                     }
                                                     Err(e) => {
-                                                        log::error!("❌ Failed to create expedition setup: {:?}", e);
+                                                        log::error!("Failed to create expedition setup: {:?}", e);
                                                     }
                                                 }
                                             }
                                         }
-                                        HeroState::KO { recovery_time } => {
+                                        HeroState::KO { recovery_time: _ } => {
                                             // Hero is KO, show remaining recovery time
                                             if let Some(remaining) = game_manager.hero.state.remaining_time() {
                                                 let minutes = remaining / 60;
                                                 let seconds = remaining % 60;
-                                                log::warn!("❌ Hero is KO! Recovery in {}:{:02}", minutes, seconds);
+                                                log::warn!("Hero is KO! Recovery in {}:{:02}", minutes, seconds);
                                             } else {
-                                                log::warn!("❌ Hero is KO!");
+                                                log::warn!("Hero is KO!");
                                             }
                                         }
-                                        HeroState::OnExpedition { end_time } => {
+                                        HeroState::OnExpedition { end_time: _ } => {
                                             // Hero is already on expedition
                                             if let Some(remaining) = game_manager.hero.state.remaining_time() {
-                                                log::warn!("❌ Hero is already on an expedition! ({} seconds remaining)", remaining);
+                                                log::warn!("Hero is already on an expedition! ({} seconds remaining)", remaining);
                                             } else {
-                                                log::warn!("❌ Hero is already on an expedition!");
+                                                log::warn!("Hero is already on an expedition!");
                                             }
                                         }
                                     }
@@ -158,7 +157,7 @@ pub fn map_navigation_system(
 
                             if let Some(location) = location_data {
                                 if !location.enemies.is_empty() {
-                                    log::info!("🌾 Starting AFK farming at: {}", location.name);
+                                    log::info!("Starting AFK farming at: {}", location.name);
 
                                     // Create AFK farm page with hero
                                     match crate::ui::pages::AfkFarmPage::new(
@@ -170,10 +169,10 @@ pub fn map_navigation_system(
                                             game_manager.afk_farm_page = Some(afk_page);
                                             app_state.current_mode = AppMode::AfkFarm;
                                             app_state.needs_redraw = true;
-                                            log::info!("✅ AFK farming started for {}", game_manager.hero.name);
+                                            log::info!("AFK farming started for {}", game_manager.hero.name);
                                         }
                                         Err(e) => {
-                                            log::error!("❌ Failed to create AFK farm page: {:?}", e);
+                                            log::error!("Failed to create AFK farm page: {:?}", e);
                                         }
                                     }
                                 }

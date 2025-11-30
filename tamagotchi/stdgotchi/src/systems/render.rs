@@ -48,7 +48,7 @@ pub fn render_system(
         }
     }
 
-    // Skip rendering if screen is off (but still update battle logic if in battle)
+    // Skip rendering if screen is off (but still update certain pages)
     if !app_state.screen_on {
         // Battle mode needs to continue updating even when screen is off
         if app_state.current_mode == AppMode::Battle {
@@ -66,6 +66,8 @@ pub fn render_system(
                 }
             }
         }
+        // Rest mode HP regeneration is handled by rest_system
+        // No need to call page.update() here since regeneration logic is in rest_system
         return;
     }
 
@@ -80,7 +82,8 @@ pub fn render_system(
             }
         }
         AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::BattleResult
-        | AppMode::ExpeditionSetup | AppMode::ExpeditionInProgress | AppMode::ExpeditionSummary => {
+        | AppMode::ExpeditionSetup | AppMode::ExpeditionInProgress | AppMode::ExpeditionSummary
+        | AppMode::HeroInfo | AppMode::CardCollection => {
             // Game-based rendering with GameManager
             if let Some(mut game_manager) = game_manager {
                 // Update menu battle state if in Menu mode
@@ -90,7 +93,6 @@ pub fn render_system(
                 }
 
                 if let Some(page) = game_manager.get_current_page(app_state.current_mode) {
-                    log::debug!("Rendering page for mode: {:?}", app_state.current_mode);
                     // Update page logic
                     let page_active = page.update();
 
@@ -113,8 +115,6 @@ pub fn render_system(
                         app_state.current_mode = AppMode::Map;
                         app_state.needs_redraw = true;
                     }
-                } else {
-                    log::warn!("No page found for mode: {:?}", app_state.current_mode);
                 }
             }
         }

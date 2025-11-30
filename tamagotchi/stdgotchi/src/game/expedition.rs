@@ -149,12 +149,13 @@ impl ExpeditionSize {
     }
 
     /// Get risk indicator emoji
+    /// Conservative thresholds to account for rounding and calculation errors
     pub fn risk_indicator(damage_ratio: f32) -> &'static str {
-        if damage_ratio < 0.5 {
+        if damage_ratio < 0.4 {
             "✓ Safe"
-        } else if damage_ratio < 0.8 {
+        } else if damage_ratio < 0.7 {
             "⚠️ Risky"
-        } else if damage_ratio < 1.0 {
+        } else if damage_ratio < 0.95 {
             "☠️ Dangerous"
         } else {
             "💀 Will die"
@@ -196,12 +197,28 @@ pub fn calculate_expedition(hero: &Hero, monster: &Enemy, count: u32) -> Expedit
     let total_time = time_per_kill * count as f32;
     let total_damage = damage_per_kill * count as f32;
 
+    // Hero survives if total damage is less than current HP
+    // If damage equals or exceeds HP, hero dies
     let survives = total_damage < hero.current_health as f32;
+
     let kills_before_death = if survives {
         count
     } else {
-        (hero.current_health as f32 / damage_per_kill).floor() as u32
+        // Calculate how many kills before running out of HP
+        // Use floor to get complete kills - if you can do 16.9 kills,
+        // you'll die during the 17th kill, so you complete 16 kills
+        let kills_possible = (hero.current_health as f32 / damage_per_kill).floor() as u32;
+        kills_possible
     };
+
+    let damage_ratio = total_damage / hero.current_health as f32;
+
+    log::info!(
+        "Expedition calc: {} vs {} x{} | HP:{} DMG/kill:{:.1} Total DMG:{:.1} Ratio:{:.2} Survives:{} Kills:{}/{}",
+        hero.name, monster.name, count,
+        hero.current_health, damage_per_kill, total_damage, damage_ratio,
+        survives, kills_before_death, count
+    );
 
     ExpeditionResult {
         duration_seconds: total_time,
@@ -271,8 +288,8 @@ mod tests {
     #[test]
     fn test_risk_indicators() {
         assert_eq!(ExpeditionSize::risk_indicator(0.3), "✓ Safe");
-        assert_eq!(ExpeditionSize::risk_indicator(0.6), "⚠️ Risky");
-        assert_eq!(ExpeditionSize::risk_indicator(0.9), "☠️ Dangerous");
+        assert_eq!(ExpeditionSize::risk_indicator(0.5), "⚠️ Risky");
+        assert_eq!(ExpeditionSize::risk_indicator(0.85), "☠️ Dangerous");
         assert_eq!(ExpeditionSize::risk_indicator(1.5), "💀 Will die");
     }
 

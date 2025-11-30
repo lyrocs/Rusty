@@ -121,6 +121,14 @@ fn start_expedition(
                 // Store expedition data
                 let now = Instant::now();
                 let duration = std::time::Duration::from_secs_f32(result.duration_seconds);
+                let duration_seconds = result.duration_seconds; // Save before moving
+
+                // Update hero state to OnExpedition
+                let end_timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() + duration.as_secs();
+                let start_timestamp = end_timestamp - duration.as_secs();
 
                 game_manager.expedition_data = Some(ExpeditionData {
                     enemy_id: enemy_data.id,
@@ -132,24 +140,28 @@ fn start_expedition(
                     result,
                 });
 
-                // Update hero state to OnExpedition
-                let end_timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() + duration.as_secs();
-
                 game_manager.hero.state = crate::game::HeroState::OnExpedition {
                     end_time: end_timestamp,
                 };
 
-                // For now, skip the in-progress animation and jump straight to summary
-                // (We can add the animation later if desired)
-                complete_expedition(game_manager);
-
-                app_state.current_mode = AppMode::ExpeditionSummary;
-                app_state.needs_redraw = true;
-
-                log::info!("✅ Expedition started and completed!");
+                // Create in-progress page
+                match crate::ui::pages::ExpeditionInProgressPage::new(
+                    enemy_data.name.clone(),
+                    size.count(),
+                    duration_seconds,
+                    start_timestamp,
+                    end_timestamp,
+                ) {
+                    Ok(progress_page) => {
+                        game_manager.expedition_in_progress_page = Some(progress_page);
+                        app_state.current_mode = AppMode::ExpeditionInProgress;
+                        app_state.needs_redraw = true;
+                        log::info!("Expedition started, showing progress page");
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create expedition progress page: {:?}", e);
+                    }
+                }
             }
         }
     }
@@ -172,6 +184,9 @@ fn complete_expedition(game_manager: &mut GameManager) {
     // Calculate EXP gained
     let exp_per_kill = expedition_data.result.kills_completed * 10; // Simple formula for now
     let total_exp = exp_per_kill * actual_kills;
+
+    // Capture level BEFORE applying EXP
+    let initial_level = game_manager.hero.level;
 
     // Apply EXP to hero
     let leveled_up = game_manager.hero.gain_experience(total_exp);
@@ -244,6 +259,7 @@ fn complete_expedition(game_manager: &mut GameManager) {
         // Create success summary page
         match crate::ui::pages::ExpeditionSummaryPage::new_success(
             game_manager.hero.clone(),
+            initial_level,
             actual_kills,
             total_exp,
             cards_dropped,
@@ -270,6 +286,7 @@ fn complete_expedition(game_manager: &mut GameManager) {
         // Create failure summary page
         match crate::ui::pages::ExpeditionSummaryPage::new_failure(
             game_manager.hero.clone(),
+            initial_level,
             expedition_data.target_kills,
             actual_kills,
             total_exp,

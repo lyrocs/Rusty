@@ -18,14 +18,22 @@ pub fn rest_system(
         return;
     }
 
-    // Skip if screen is off
-    if !app_state.screen_on {
-        return;
-    }
-
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
+
+    // Process HP regeneration even if screen is off
+    if let Some(ref mut rest_page) = game_manager.rest_page {
+        rest_page.process_regen();
+
+        // Update hero in game_manager with regenerated HP
+        game_manager.hero = rest_page.get_updated_hero();
+    }
+
+    // Only process input if screen is on
+    if !app_state.screen_on {
+        return;
+    }
 
     // Process input events
     for event in pending_events.events.iter() {
@@ -37,20 +45,13 @@ pub fn rest_system(
                 // Check if user tapped continue button
                 if let Some(ref rest_page) = game_manager.rest_page {
                     if rest_page.handle_touch(x, y) {
-                        log::info!("✅ User tapped continue button - applying HP regeneration");
+                        log::info!("✅ User tapped continue button - rest complete");
 
-                        // Get updated hero with HP regeneration
-                        let updated_hero = rest_page.get_updated_hero();
+                        let final_hp = game_manager.hero.current_health;
 
-                        let old_hp = game_manager.hero.current_health;
-
-                        // Update hero
-                        game_manager.hero = updated_hero;
-
-                        log::info!("💚 {} HP restored: {} → {} / {}",
+                        log::info!("💚 {} rested successfully: {} / {}",
                             game_manager.hero.name,
-                            old_hp,
-                            game_manager.hero.current_health,
+                            final_hp,
                             game_manager.hero.max_health);
 
                         // Clear rest page

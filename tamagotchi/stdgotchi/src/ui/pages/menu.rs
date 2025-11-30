@@ -20,8 +20,8 @@ pub enum MenuAction {
     Map,
     Battle,
     Rest,
-    Rustymon,
-    Fragments,
+    Hero,
+    Cards,
     Quests,
     Pokemon,
 }
@@ -147,16 +147,16 @@ impl MenuPage {
         )?;
         current_slot += 1;
 
-        // Draw Rustymon button
+        // Draw Hero button
         self.draw_button(
             display,
             button_x,
             start_y + spacing * current_slot,
             button_width,
             button_height,
-            "RUSTYMON",
+            "HERO",
             Rgb888::new(100, 40, 120),
-            MenuAction::Rustymon,
+            MenuAction::Hero,
         )?;
         current_slot += 1;
 
@@ -173,16 +173,16 @@ impl MenuPage {
         )?;
         current_slot += 1;
 
-        // Draw Fragments button
+        // Draw Cards button
         self.draw_button(
             display,
             button_x,
             start_y + spacing * current_slot,
             button_width,
             button_height,
-            "FRAGMENTS",
+            "CARDS",
             Rgb888::new(120, 100, 40),
-            MenuAction::Fragments,
+            MenuAction::Cards,
         )?;
         current_slot += 1;
 

@@ -168,9 +168,12 @@ pub struct GameManager {
     pub hero: Hero,                         // The player's hero
     pub quest_manager: QuestManager,        // Quest system manager
     pub quest_list_page: QuestListPage,     // Quest list UI page
+    pub hero_info_page: Option<crate::ui::pages::HeroInfoPage>, // Hero info UI page
+    pub cards_page: Option<crate::ui::pages::CardsPage>, // Card collection UI page
     pub pokemon_api_response: Option<String>, // Pokemon API response data
     // Expedition system fields
     pub expedition_setup_page: Option<crate::ui::pages::ExpeditionSetupPage>,
+    pub expedition_in_progress_page: Option<crate::ui::pages::ExpeditionInProgressPage>,
     pub expedition_summary_page: Option<crate::ui::pages::ExpeditionSummaryPage>,
     pub expedition_data: Option<ExpeditionData>, // Ongoing expedition state
 }
@@ -199,8 +202,11 @@ impl GameManager {
             hero,
             quest_manager: QuestManager::new(),
             quest_list_page: QuestListPage::new(),
+            hero_info_page: None,
+            cards_page: None,
             pokemon_api_response: None,
             expedition_setup_page: None,
+            expedition_in_progress_page: None,
             expedition_summary_page: None,
             expedition_data: None,
         }
@@ -217,6 +223,7 @@ impl GameManager {
             rest_page: None,
             afk_farm_page: None,
             expedition_setup_page: None,
+            expedition_in_progress_page: None,
             expedition_summary_page: None,
             expedition_data: None,
             kill_tracker: save_data.kill_tracker,
@@ -228,6 +235,8 @@ impl GameManager {
             hero: save_data.hero,
             quest_manager: save_data.quest_manager,
             quest_list_page: QuestListPage::new(),
+            hero_info_page: None,
+            cards_page: None,
             pokemon_api_response: None,
         }
     }
@@ -275,6 +284,13 @@ impl GameManager {
             }
             AppMode::QuestList => Some(&mut self.quest_list_page as &mut dyn Page),
             AppMode::PokemonInfo => None, // Pokemon info has no page, handled directly in render system
+            AppMode::HeroInfo => {
+                if let Some(ref mut page) = self.hero_info_page {
+                    Some(page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
             AppMode::ExpeditionSetup => {
                 if let Some(ref mut page) = self.expedition_setup_page {
                     Some(page as &mut dyn Page)
@@ -283,15 +299,21 @@ impl GameManager {
                 }
             }
             AppMode::ExpeditionInProgress => {
-                // Animation-only battle display, uses battle page
-                if let Some(ref mut battle_page) = self.battle_page {
-                    Some(battle_page as &mut dyn Page)
+                if let Some(ref mut page) = self.expedition_in_progress_page {
+                    Some(page as &mut dyn Page)
                 } else {
                     None
                 }
             }
             AppMode::ExpeditionSummary => {
                 if let Some(ref mut page) = self.expedition_summary_page {
+                    Some(page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::CardCollection => {
+                if let Some(ref mut page) = self.cards_page {
                     Some(page as &mut dyn Page)
                 } else {
                     None
@@ -514,12 +536,16 @@ pub enum AppMode {
     QuestList,
     /// Pokemon API info screen
     PokemonInfo,
+    /// Hero info screen
+    HeroInfo,
     /// Expedition setup (select size and see risk)
     ExpeditionSetup,
     /// Expedition in progress (animation-only battle)
     ExpeditionInProgress,
     /// Expedition summary (loot reveal)
     ExpeditionSummary,
+    /// Card collection screen
+    CardCollection,
 }
 
 impl Default for AppState {

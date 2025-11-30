@@ -237,56 +237,79 @@ impl Page for BattleResultPage {
 
         // Title
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
-        Text::new("⚔️ VICTORY! ⚔️", Point::new(90, 40), title_style).draw(display)?;
+        Text::new("⚔️ VICTORY! ⚔️", Point::new(90, 30), title_style).draw(display)?;
 
-        // Hero info section (centered)
-        let center_y = 180;
+        // Hero Section Box (near top)
+        let hero_box_y = 55;
+        Rectangle::new(
+            Point::new(10, hero_box_y),
+            Size::new(348, 85),
+        )
+        .into_styled(PrimitiveStyle::with_fill(Rgb888::new(30, 40, 50)))
+        .draw(display)?;
 
         // Hero name
         let name_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let name_x = 184 - (self.hero.name.len() as i32 * 5);
-        Text::new(&self.hero.name, Point::new(name_x, center_y - 60), name_style).draw(display)?;
+        Text::new(&self.hero.name, Point::new(20, hero_box_y + 20), name_style).draw(display)?;
 
         // Job and Level
         let job_name = self.hero.job.get_name();
         let mut job_level = heapless::String::<64>::new();
-        write!(job_level, "{} - Level {}", job_name, self.hero.level).ok();
-        let job_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
-        let job_x = 184 - (job_level.len() as i32 * 5);
-        Text::new(&job_level, Point::new(job_x, center_y - 30), job_style).draw(display)?;
+        write!(job_level, "{} Lv.{}", job_name, self.hero.level).ok();
+        let job_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 200, 200));
+        Text::new(&job_level, Point::new(20, hero_box_y + 35), job_style).draw(display)?;
 
-        // Level up indicator
-        if self.hero.level > self.initial_level {
-            let levels_gained = self.hero.level - self.initial_level;
-            let mut level_up_text = heapless::String::<32>::new();
-            if levels_gained == 1 {
-                write!(level_up_text, "🎉 Level Up! 🎉").ok();
-            } else {
-                write!(level_up_text, "🎉 +{} Levels! 🎉", levels_gained).ok();
-            }
-            let level_up_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(0, 255, 0));
-            let level_up_x = 184 - (level_up_text.len() as i32 * 5);
-            Text::new(&level_up_text, Point::new(level_up_x, center_y), level_up_style).draw(display)?;
-        }
-
-        // HP bar (centered)
+        // HP bar in hero section
         Self::draw_hp_bar(
             display,
             "HP:",
             self.hero.current_health,
             self.hero.max_health,
-            59, // Center the 250px bar: (368 - 250) / 2 = 59
-            center_y + 40,
+            20,
+            hero_box_y + 45,
         )?;
 
-        // HP restored indicator
+        // Results section
+        let center_y = 220;
+
+        // Level up indicator - PROMINENT
+        if self.hero.level > self.initial_level {
+            let levels_gained = self.hero.level - self.initial_level;
+
+            // Draw background highlight for level up
+            Rectangle::new(
+                Point::new(20, center_y - 10),
+                Size::new(328, 40),
+            )
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(50, 100, 50)))
+            .draw(display)?;
+
+            let mut level_up_text = heapless::String::<48>::new();
+            if levels_gained == 1 {
+                write!(level_up_text, "*** LEVEL UP! ***").ok();
+            } else {
+                write!(level_up_text, "*** +{} LEVELS UP! ***", levels_gained).ok();
+            }
+            let level_up_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 255, 100));
+            let level_up_x = 184 - (level_up_text.len() as i32 * 5);
+            Text::new(&level_up_text, Point::new(level_up_x, center_y + 15), level_up_style).draw(display)?;
+
+            // Show level transition
+            let mut level_transition = heapless::String::<32>::new();
+            write!(level_transition, "Level {} -> {}", self.initial_level, self.hero.level).ok();
+            let transition_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 255, 200));
+            let transition_x = 184 - (level_transition.len() as i32 * 3);
+            Text::new(&level_transition, Point::new(transition_x, center_y + 30), transition_style).draw(display)?;
+        }
+
+        // HP restored indicator (if any HP was restored)
         let hp_restored = self.hero.current_health - self.initial_hp;
         if hp_restored > 0 {
             let mut restored_text = heapless::String::<32>::new();
             write!(restored_text, "Restored: +{} HP", hp_restored).ok();
             let restored_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(150, 255, 150));
             let restored_x = 184 - (restored_text.len() as i32 * 3);
-            Text::new(&restored_text, Point::new(restored_x, center_y + 75), restored_style).draw(display)?;
+            Text::new(&restored_text, Point::new(restored_x, center_y + 15), restored_style).draw(display)?;
         }
 
         // EXP bar (centered)
@@ -297,7 +320,7 @@ impl Page for BattleResultPage {
             self.hero.experience_to_next_level,
             self.exp_gained,
             59,
-            center_y + 90,
+            center_y + 30,
         )?;
 
         // Draw continue button at bottom

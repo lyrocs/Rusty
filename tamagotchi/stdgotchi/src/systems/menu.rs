@@ -68,9 +68,19 @@ pub fn menu_system(
                                 }
                             }
                         }
-                        MenuAction::Rustymon => {
-                            log::info!("Rustymon menu removed - feature deprecated");
-                            // Feature removed in hero system migration
+                        MenuAction::Hero => {
+                            log::info!("Navigating to Hero Info");
+                            // Create hero info page
+                            match crate::ui::pages::HeroInfoPage::new(game_manager.hero.clone()) {
+                                Ok(hero_page) => {
+                                    game_manager.hero_info_page = Some(hero_page);
+                                    app_state.current_mode = AppMode::HeroInfo;
+                                    app_state.needs_redraw = true;
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to create hero info page: {:?}", e);
+                                }
+                            }
                         }
                         MenuAction::Quests => {
                             log::info!("Navigating to Quest List");
@@ -80,9 +90,22 @@ pub fn menu_system(
                             app_state.current_mode = AppMode::QuestList;
                             app_state.needs_redraw = true;
                         }
-                        MenuAction::Fragments => {
-                            log::info!("Fragment collection menu removed - feature deprecated");
-                            // Feature removed in hero system migration
+                        MenuAction::Cards => {
+                            log::info!("Navigating to Card Collection");
+                            // Create cards collection page with all game data and hero's owned cards
+                            match crate::ui::pages::CardsPage::new(
+                                game_manager.game_data.clone(),
+                                game_manager.hero.cards.clone()
+                            ) {
+                                Ok(cards_page) => {
+                                    game_manager.cards_page = Some(cards_page);
+                                    app_state.current_mode = AppMode::CardCollection;
+                                    app_state.needs_redraw = true;
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to create cards page: {:?}", e);
+                                }
+                            }
                         }
                         MenuAction::Pokemon => {
                             log::info!("Fetching Pokemon data from API...");

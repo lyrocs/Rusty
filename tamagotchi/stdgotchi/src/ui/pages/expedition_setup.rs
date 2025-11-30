@@ -29,7 +29,7 @@ impl ExpeditionSetupPage {
         log::info!("Expedition setup: {} vs {}", hero.name, enemy.name);
 
         Ok(Self {
-            background_color: Rgb888::new(20, 25, 35),
+            background_color: Rgb888::new(15, 20, 30), // Dark blue-gray background
             hero,
             enemy,
             selected_size: None,
@@ -43,10 +43,9 @@ impl ExpeditionSetupPage {
 
     /// Handle touch input - returns selected expedition size if user tapped a valid button
     pub fn handle_touch(&mut self, x: i32, y: i32) -> Option<ExpeditionSize> {
-        // Size selection buttons
-        let button_y = 290;
-        let button_h = 45;
-        let button_spacing = 5;
+        // Size selection buttons (must match draw_size_selection positions)
+        let button_y = 160;
+        let button_h = 70;
         let sizes = ExpeditionSize::all();
 
         for (i, size) in sizes.iter().enumerate() {
@@ -141,12 +140,12 @@ impl ExpeditionSetupPage {
             let damage_ratio = result.total_damage / hero.current_health as f32;
             let risk_indicator = ExpeditionSize::risk_indicator(damage_ratio);
 
-            // Button background color based on risk
-            let bg_color = if damage_ratio >= 1.0 {
+            // Button background color based on risk (matching risk_indicator thresholds)
+            let bg_color = if damage_ratio >= 0.95 {
                 Rgb888::new(60, 20, 20) // Will die - red
-            } else if damage_ratio >= 0.8 {
+            } else if damage_ratio >= 0.7 {
                 Rgb888::new(60, 40, 20) // Dangerous - orange
-            } else if damage_ratio >= 0.5 {
+            } else if damage_ratio >= 0.4 {
                 Rgb888::new(60, 60, 20) // Risky - yellow
             } else {
                 Rgb888::new(20, 60, 20) // Safe - green
@@ -202,6 +201,7 @@ impl ExpeditionSetupPage {
     /// Draw expedition details for selected size
     fn draw_expedition_details(
         display: &mut Sh8601Driver,
+        hero: &Hero,
         result: &ExpeditionResult,
     ) -> Result<(), Box<dyn Error>> {
         let info_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
@@ -220,8 +220,8 @@ impl ExpeditionSetupPage {
         }
         Text::new(&time_text, Point::new(20, y), info_style).draw(display)?;
 
-        // Damage estimate
-        let damage_percent = (result.total_damage / result.kills_completed as f32 * 100.0) as u32;
+        // Damage estimate (percentage of current HP)
+        let damage_percent = ((result.total_damage / hero.current_health as f32) * 100.0) as u32;
         let mut damage_text = heapless::String::<32>::new();
         write!(damage_text, "HP loss: ~{}%", damage_percent.min(100)).ok();
         Text::new(&damage_text, Point::new(20, y + 20), info_style).draw(display)?;
@@ -254,7 +254,7 @@ impl Page for ExpeditionSetupPage {
         // Show details if size selected
         if let Some(size) = self.selected_size {
             let result = self.calculate_for_size(size);
-            Self::draw_expedition_details(display, &result)?;
+            Self::draw_expedition_details(display, &self.hero, &result)?;
 
             // Start button
             let button_style = PrimitiveStyle::with_fill(Rgb888::new(50, 100, 50));
@@ -277,6 +277,9 @@ impl Page for ExpeditionSetupPage {
             "[TAP SIZE] to select"
         };
         Text::new(hint_text, Point::new(80, 450), hint_style).draw(display)?;
+
+        // Flush to display
+        display.flush()?;
 
         Ok(())
     }

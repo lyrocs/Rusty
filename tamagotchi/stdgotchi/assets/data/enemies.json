@@ -16,7 +16,7 @@
     "dex": 6,
     "vit": 1,
     "luk": 30,
-    "drop_rate": 0.01,
+    "drop_rate": 0.005,
     "card": {
       "name": "Poring Card",
       "rarity": 1,
@@ -41,7 +41,7 @@
     "dex": 7,
     "vit": 4,
     "luk": 5,
-    "drop_rate": 0.01,
+    "drop_rate": 0.005,
     "card": {
       "name": "Fabre Card",
       "rarity": 1,

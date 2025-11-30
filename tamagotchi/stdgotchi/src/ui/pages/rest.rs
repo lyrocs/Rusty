@@ -45,7 +45,7 @@ impl RestPage {
     }
 
     /// Process HP regeneration
-    fn process_regen(&mut self) {
+    pub fn process_regen(&mut self) {
         if self.last_regen.elapsed() >= HP_REGEN_INTERVAL {
             self.last_regen = Instant::now();
 
@@ -148,10 +148,8 @@ impl RestPage {
 
 impl Page for RestPage {
     fn update(&mut self) -> bool {
-        // Process HP regeneration
-        self.process_regen();
-
-        // Always keep page active - user must manually continue
+        // HP regeneration is handled by rest_system (even when screen is off)
+        // This just keeps the page active - user must manually continue
         true
     }
 
