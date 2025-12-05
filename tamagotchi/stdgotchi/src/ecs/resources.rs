@@ -8,7 +8,7 @@ use esp_idf_svc::hal::gpio::PinDriver;
 use std::time::Instant;
 
 use crate::display::{Ft3x68Driver, Sh8601Driver};
-use crate::game::{Hero, KillTracker, QuestManager, WorldMap};
+use crate::game::{Hero, KillTracker, QuestManager, WorldMap, MvpSpawnManager};
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
 use crate::ui::pages::{AfkFarmPage, BattlePage, MapPage, QuestListPage};
@@ -176,6 +176,16 @@ pub struct GameManager {
     pub expedition_in_progress_page: Option<crate::ui::pages::ExpeditionInProgressPage>,
     pub expedition_summary_page: Option<crate::ui::pages::ExpeditionSummaryPage>,
     pub expedition_data: Option<ExpeditionData>, // Ongoing expedition state
+    // MVP spawn management
+    pub mvp_spawn_manager: MvpSpawnManager,
+    // Semi-active battle and skill selection pages
+    pub skill_selection_page: Option<crate::ui::pages::SkillSelectionPage>,
+    pub semi_active_battle_page: Option<crate::ui::pages::SemiActiveBattlePage>,
+    // Hunt system pages
+    pub hunt_monster_list_page: Option<crate::ui::pages::HuntMonsterListPage>,
+    pub hunt_battle_result_page: Option<crate::ui::pages::HuntBattleResultPage>,
+    pub hunt_map_id: Option<u32>,  // Current map for hunting
+    pub hunt_enemy_id: Option<u32>,  // Current enemy being hunted
 }
 
 impl GameManager {
@@ -209,11 +219,36 @@ impl GameManager {
             expedition_in_progress_page: None,
             expedition_summary_page: None,
             expedition_data: None,
+            mvp_spawn_manager: MvpSpawnManager::new(),
+            skill_selection_page: None,
+            semi_active_battle_page: None,
+            hunt_monster_list_page: None,
+            hunt_battle_result_page: None,
+            hunt_map_id: None,
+            hunt_enemy_id: None,
         }
     }
 
     /// Create GameManager from save data
     pub fn from_save_data(save_data: crate::game::SaveData, world_map: WorldMap, game_data: crate::game::GameData) -> Self {
+        // Migrate cards to add missing unlocks_skill from game data
+        let mut hero = save_data.hero;
+        let mut cards_migrated = 0;
+        for card in &mut hero.cards {
+            if card.unlocks_skill.is_none() {
+                // Look up the enemy data to get the correct unlocks_skill
+                if let Some(enemy_data) = game_data.get_enemy(card.monster_id) {
+                    if enemy_data.card.unlocks_skill.is_some() {
+                        card.unlocks_skill = enemy_data.card.unlocks_skill;
+                        cards_migrated += 1;
+                    }
+                }
+            }
+        }
+        if cards_migrated > 0 {
+            log::info!("Migrated {} cards with unlocks_skill data", cards_migrated);
+        }
+
         Self {
             menu_page: crate::ui::pages::MenuPage::new(),
             map_page: MapPage::from_save(world_map, save_data.current_location_id, None), // Use embedded map backgrounds
@@ -232,12 +267,19 @@ impl GameManager {
             battle_loading_data: None,
             play_time_seconds: save_data.play_time_seconds,
             session_start: Instant::now(),
-            hero: save_data.hero,
+            hero,
             quest_manager: save_data.quest_manager,
             quest_list_page: QuestListPage::new(),
             hero_info_page: None,
             cards_page: None,
             pokemon_api_response: None,
+            mvp_spawn_manager: save_data.mvp_spawn_manager,
+            skill_selection_page: None,
+            semi_active_battle_page: None,
+            hunt_monster_list_page: None,
+            hunt_battle_result_page: None,
+            hunt_map_id: None,
+            hunt_enemy_id: None,
         }
     }
 
@@ -319,6 +361,34 @@ impl GameManager {
                     None
                 }
             }
+            AppMode::SkillSelection => {
+                if let Some(ref mut page) = self.skill_selection_page {
+                    Some(page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::SemiActiveBattle => {
+                if let Some(ref mut page) = self.semi_active_battle_page {
+                    Some(page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::HuntMonsterList => {
+                if let Some(ref mut page) = self.hunt_monster_list_page {
+                    Some(page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
+            AppMode::HuntBattleResult => {
+                if let Some(ref mut page) = self.hunt_battle_result_page {
+                    Some(page as &mut dyn Page)
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -342,6 +412,7 @@ impl GameManager {
             self.play_time_seconds,
             self.hero.clone(),
             self.quest_manager.clone(),
+            self.mvp_spawn_manager.clone(),
         );
 
         // Serialize to JSON
@@ -546,6 +617,14 @@ pub enum AppMode {
     ExpeditionSummary,
     /// Card collection screen
     CardCollection,
+    /// Skill selection screen (equip cards with skills)
+    SkillSelection,
+    /// Semi-active battle mode (turn-based with skills)
+    SemiActiveBattle,
+    /// Hunt monster selection screen
+    HuntMonsterList,
+    /// Hunt battle result screen
+    HuntBattleResult,
 }
 
 impl Default for AppState {

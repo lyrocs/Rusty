@@ -107,6 +107,7 @@ fn complete_expedition(game_manager: &mut GameManager) {
                 rarity: enemy_data.card.rarity,
                 atk_bonus: enemy_data.card.atk_bonus,
                 def_bonus: enemy_data.card.def_bonus,
+                unlocks_skill: enemy_data.card.unlocks_skill,
             };
 
             calculate_drops(&enemy, &card_template, enemy_data.drop_rate, kills, expedition_data.expedition_size)

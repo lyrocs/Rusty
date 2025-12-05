@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::element_system::Element;
 use super::job_system::JobClass;
 use super::expedition::{Card, HeroState};
+use super::skill::{EquippedSkillSlot, ActiveSkill};
 
 /// Hero character with stats and job progression
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +48,13 @@ pub struct Hero {
     // Expedition system
     pub state: HeroState,
     pub cards: Vec<Card>,
+
+    // Skill system - 3 slots for equipped skill cards
+    #[serde(default)]
+    pub equipped_skill_slots: [EquippedSkillSlot; 3],
+    /// Active skills during battle (tracks cooldowns)
+    #[serde(skip)]
+    pub active_skills: Vec<ActiveSkill>,
 }
 
 impl Hero {
@@ -84,6 +92,10 @@ impl Hero {
             // Expedition system
             state: HeroState::Ready,
             cards: Vec::new(),
+
+            // Skill system
+            equipped_skill_slots: Default::default(),
+            active_skills: Vec::new(),
         };
 
         hero.recalculate_stats();
@@ -203,6 +215,142 @@ impl Hero {
     pub fn rest(&mut self) {
         let heal_amount = self.max_health / 4; // Heal 25% per rest
         self.heal(heal_amount);
+    }
+
+    // ============================================================================
+    // SKILL SYSTEM
+    // ============================================================================
+
+    /// Equip a skill card to a specific slot (0, 1, or 2)
+    pub fn equip_skill(&mut self, slot_index: usize, card_monster_id: u32, skill_id: u32) -> Result<(), String> {
+        if slot_index >= 3 {
+            return Err("Invalid slot index (must be 0-2)".to_string());
+        }
+
+        // Check if this card is already equipped in another slot
+        for (i, slot) in self.equipped_skill_slots.iter().enumerate() {
+            if i != slot_index && slot.card_monster_id == Some(card_monster_id) {
+                return Err("This card is already equipped in another slot".to_string());
+            }
+        }
+
+        self.equipped_skill_slots[slot_index].equip(card_monster_id, skill_id);
+        Ok(())
+    }
+
+    /// Unequip a skill from a slot
+    pub fn unequip_skill(&mut self, slot_index: usize) {
+        if slot_index < 3 {
+            self.equipped_skill_slots[slot_index].unequip();
+        }
+    }
+
+    /// Get skill ID for a specific slot (if equipped)
+    pub fn get_equipped_skill(&self, slot_index: usize) -> Option<u32> {
+        if slot_index < 3 {
+            self.equipped_skill_slots[slot_index].skill_id
+        } else {
+            None
+        }
+    }
+
+    /// Get all equipped skill IDs
+    pub fn get_all_equipped_skills(&self) -> Vec<u32> {
+        self.equipped_skill_slots
+            .iter()
+            .filter_map(|slot| slot.skill_id)
+            .collect()
+    }
+
+    /// Initialize active skills at the start of battle
+    pub fn initialize_battle_skills(&mut self) {
+        self.active_skills.clear();
+        for slot in &self.equipped_skill_slots {
+            if let Some(skill_id) = slot.skill_id {
+                self.active_skills.push(ActiveSkill::new(skill_id));
+            }
+        }
+    }
+
+    /// Update all skill cooldowns (call every frame)
+    pub fn update_skill_cooldowns(&mut self, delta_time: f32) {
+        for skill in &mut self.active_skills {
+            skill.update(delta_time);
+        }
+    }
+
+    /// Check if a skill at a given index is ready
+    pub fn is_skill_ready(&self, skill_index: usize) -> bool {
+        self.active_skills
+            .get(skill_index)
+            .map(|s| s.is_ready())
+            .unwrap_or(false)
+    }
+
+    /// Use a skill at a given index (puts it on cooldown)
+    pub fn use_skill(&mut self, skill_index: usize, cooldown_seconds: f32) {
+        if let Some(skill) = self.active_skills.get_mut(skill_index) {
+            skill.use_skill(cooldown_seconds);
+        }
+    }
+
+    /// Get remaining cooldown for a skill at a given index
+    pub fn get_skill_cooldown(&self, skill_index: usize) -> Option<f32> {
+        self.active_skills
+            .get(skill_index)
+            .map(|s| s.remaining_cooldown)
+    }
+
+    /// Count how many skill cards are equipped
+    pub fn equipped_skill_count(&self) -> usize {
+        self.equipped_skill_slots
+            .iter()
+            .filter(|slot| !slot.is_empty())
+            .count()
+    }
+
+    /// Check if a card with the given monster ID is equipped
+    pub fn is_card_equipped(&self, card_monster_id: u32) -> bool {
+        self.equipped_skill_slots
+            .iter()
+            .any(|slot| slot.card_monster_id == Some(card_monster_id))
+    }
+
+    /// Add experience points to the hero, leveling up if necessary
+    pub fn add_experience(&mut self, exp: u32) {
+        self.experience += exp;
+        while self.experience >= self.experience_to_next_level {
+            self.experience -= self.experience_to_next_level;
+            self.level += 1;
+            self.experience_to_next_level = 100 + (self.level * 50);
+            log::info!("Hero leveled up to level {}!", self.level);
+            self.recalculate_stats();
+        }
+    }
+
+    /// Set the hero to KO state with recovery time
+    pub fn set_ko(&mut self, recovery_seconds: u64) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        self.state = HeroState::KO {
+            recovery_time: now + recovery_seconds,
+        };
+        self.current_health = 0;
+        log::info!("Hero is KO! Recovery in {} seconds", recovery_seconds);
+    }
+
+    /// Add a card to the hero's collection
+    pub fn add_card(&mut self, card: Card) {
+        // Check if already have this card
+        if self.cards.iter().any(|c| c.monster_id == card.monster_id) {
+            log::info!("Already have {} card", card.name);
+        } else {
+            log::info!("New card acquired: {}", card.name);
+            self.cards.push(card);
+        }
     }
 }
 

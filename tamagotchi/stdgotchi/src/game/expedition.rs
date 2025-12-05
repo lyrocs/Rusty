@@ -17,6 +17,9 @@ pub struct Card {
     pub rarity: u8,        // 1-5 stars
     pub atk_bonus: u32,
     pub def_bonus: u32,
+    /// Skill ID this card unlocks (None if no skill)
+    #[serde(default)]
+    pub unlocks_skill: Option<u32>,
 }
 
 impl Card {
@@ -28,7 +31,25 @@ impl Card {
             rarity,
             atk_bonus,
             def_bonus,
+            unlocks_skill: None,
         }
+    }
+
+    /// Create a card with a skill
+    pub fn with_skill(monster_id: u32, name: String, rarity: u8, atk_bonus: u32, def_bonus: u32, skill_id: u32) -> Self {
+        Self {
+            monster_id,
+            name,
+            rarity,
+            atk_bonus,
+            def_bonus,
+            unlocks_skill: Some(skill_id),
+        }
+    }
+
+    /// Check if this card has a skill
+    pub fn has_skill(&self) -> bool {
+        self.unlocks_skill.is_some()
     }
 }
 

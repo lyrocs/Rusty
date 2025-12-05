@@ -298,6 +298,248 @@ pub fn render_system(
                 }
             }
         }
+        AppMode::SkillSelection => {
+            // Skill selection screen rendering
+            if let Some(mut game_manager) = game_manager {
+                if let Some(ref mut skill_page) = game_manager.skill_selection_page {
+                    let page_active = skill_page.update();
+                    let full_redraw = skill_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw skill selection page
+                    if let Err(e) = skill_page.draw(display, full_redraw) {
+                        log::error!("Failed to draw skill selection page: {:?}", e);
+                    }
+
+                    // Flush display
+                    if let Err(e) = display.flush() {
+                        log::error!("Failed to flush display: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        // Page closed, copy hero back and return to menu
+                        let updated_hero = skill_page.get_hero().clone();
+                        game_manager.hero = updated_hero;
+                        game_manager.skill_selection_page = None;
+                        log::info!("Skill selection completed, returning to menu");
+                        app_state.current_mode = AppMode::Menu;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
+        AppMode::SemiActiveBattle => {
+            // Semi-active battle screen rendering
+            if let Some(mut game_manager) = game_manager {
+                // Check if this is a hunt battle before borrowing battle_page
+                let is_hunt_battle = game_manager.hunt_enemy_id.is_some();
+
+                if let Some(ref mut battle_page) = game_manager.semi_active_battle_page {
+                    let page_active = battle_page.update();
+                    let full_redraw = battle_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw semi-active battle page
+                    if let Err(e) = battle_page.draw(display, full_redraw) {
+                        log::error!("Failed to draw semi-active battle page: {:?}", e);
+                    }
+
+                    // Flush display
+                    if let Err(e) = display.flush() {
+                        log::error!("Failed to flush display: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        // Battle ended, get result and process
+                        if let Some(result) = battle_page.take_result() {
+                            use crate::ui::pages::semi_active_battle::BattleResult;
+                            match result {
+                                BattleResult::Victory { exp_gained, cards_dropped } => {
+                                    log::info!("Battle victory! EXP: {}, Cards: {:?}", exp_gained, cards_dropped);
+
+                                    if is_hunt_battle {
+                                        // Hunt battle - create result page
+                                        let enemy_id = game_manager.hunt_enemy_id.unwrap();
+                                        let enemy_name = game_manager.game_data.get_enemy(enemy_id)
+                                            .map(|e| e.name.clone())
+                                            .unwrap_or_else(|| "Unknown".to_string());
+
+                                        // Store level before to detect level up
+                                        let level_before = game_manager.hero.level;
+                                        let exp_before = game_manager.hero.experience;
+                                        let exp_to_next = game_manager.hero.experience_to_next_level;
+
+                                        // Add EXP and cards to hero
+                                        game_manager.hero.add_experience(exp_gained);
+                                        let card_dropped = if !cards_dropped.is_empty() {
+                                            let card = cards_dropped[0].clone();
+                                            for c in cards_dropped {
+                                                game_manager.hero.add_card(c);
+                                            }
+                                            Some(card)
+                                        } else {
+                                            None
+                                        };
+
+                                        let leveled_up = game_manager.hero.level > level_before;
+
+                                        // Create hunt result page
+                                        let result_page = crate::ui::pages::HuntBattleResultPage::new(
+                                            game_manager.hero.clone(),
+                                            enemy_id,
+                                            enemy_name,
+                                            exp_gained,
+                                            exp_before,
+                                            exp_to_next,
+                                            level_before,
+                                            leveled_up,
+                                            card_dropped,
+                                            true, // victory
+                                        );
+                                        game_manager.hunt_battle_result_page = Some(result_page);
+                                        game_manager.semi_active_battle_page = None;
+                                        app_state.current_mode = AppMode::HuntBattleResult;
+                                        app_state.needs_redraw = true;
+                                        return;
+                                    } else {
+                                        // MVP battle - add EXP and cards to hero
+                                        game_manager.hero.add_experience(exp_gained);
+                                        for card in cards_dropped {
+                                            game_manager.hero.add_card(card);
+                                        }
+                                    }
+                                }
+                                BattleResult::Defeat => {
+                                    log::info!("Battle defeat!");
+
+                                    if is_hunt_battle {
+                                        // Hunt battle defeat - show result page
+                                        let enemy_id = game_manager.hunt_enemy_id.unwrap();
+                                        let enemy_name = game_manager.game_data.get_enemy(enemy_id)
+                                            .map(|e| e.name.clone())
+                                            .unwrap_or_else(|| "Unknown".to_string());
+
+                                        // Hero gets KO'd
+                                        game_manager.hero.set_ko(300); // 5 min recovery
+
+                                        // Create hunt result page
+                                        let result_page = crate::ui::pages::HuntBattleResultPage::new(
+                                            game_manager.hero.clone(),
+                                            enemy_id,
+                                            enemy_name,
+                                            0, // no exp
+                                            game_manager.hero.experience,
+                                            game_manager.hero.experience_to_next_level,
+                                            game_manager.hero.level,
+                                            false, // no level up
+                                            None, // no card
+                                            false, // defeat
+                                        );
+                                        game_manager.hunt_battle_result_page = Some(result_page);
+                                        game_manager.semi_active_battle_page = None;
+                                        app_state.current_mode = AppMode::HuntBattleResult;
+                                        app_state.needs_redraw = true;
+                                        return;
+                                    } else {
+                                        // MVP battle - Hero gets KO'd
+                                        game_manager.hero.set_ko(300); // 5 min recovery
+                                    }
+                                }
+                                BattleResult::Fled => {
+                                    log::info!("Fled from battle");
+                                    // Clear hunt state if fleeing from hunt
+                                    if is_hunt_battle {
+                                        game_manager.hunt_enemy_id = None;
+                                        game_manager.hunt_map_id = None;
+                                        game_manager.hunt_monster_list_page = None;
+                                    }
+                                }
+                                BattleResult::InProgress => {
+                                    // Should not happen since take_result only returns Some when battle ended
+                                    log::warn!("Unexpected InProgress result");
+                                }
+                            }
+                        }
+                        game_manager.semi_active_battle_page = None;
+                        log::info!("Semi-active battle completed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
+        AppMode::HuntMonsterList => {
+            // Hunt monster list screen rendering
+            if let Some(mut game_manager) = game_manager {
+                if let Some(ref mut hunt_page) = game_manager.hunt_monster_list_page {
+                    let page_active = hunt_page.update();
+                    let full_redraw = hunt_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw hunt monster list page
+                    if let Err(e) = hunt_page.draw(display, full_redraw) {
+                        log::error!("Failed to draw hunt monster list page: {:?}", e);
+                    }
+
+                    // Flush display
+                    if let Err(e) = display.flush() {
+                        log::error!("Failed to flush display: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        // Page closed, return to map
+                        game_manager.hunt_monster_list_page = None;
+                        game_manager.hunt_map_id = None;
+                        log::info!("Hunt monster list closed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
+        AppMode::HuntBattleResult => {
+            // Hunt battle result screen rendering
+            if let Some(mut game_manager) = game_manager {
+                if let Some(ref mut result_page) = game_manager.hunt_battle_result_page {
+                    let page_active = result_page.update();
+                    let full_redraw = result_page.needs_full_redraw() || app_state.needs_redraw;
+
+                    // Draw hunt battle result page
+                    if let Err(e) = result_page.draw(display, full_redraw) {
+                        log::error!("Failed to draw hunt battle result page: {:?}", e);
+                    }
+
+                    // Flush display
+                    if let Err(e) = display.flush() {
+                        log::error!("Failed to flush display: {:?}", e);
+                    }
+
+                    if app_state.needs_redraw {
+                        app_state.needs_redraw = false;
+                    }
+
+                    if !page_active {
+                        // Page closed, return to map
+                        game_manager.hunt_battle_result_page = None;
+                        game_manager.hunt_monster_list_page = None;
+                        game_manager.hunt_enemy_id = None;
+                        game_manager.hunt_map_id = None;
+                        log::info!("Hunt battle result closed, returning to map");
+                        app_state.current_mode = AppMode::Map;
+                        app_state.needs_redraw = true;
+                    }
+                }
+            }
+        }
     }
 }
 

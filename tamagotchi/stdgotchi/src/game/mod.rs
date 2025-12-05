@@ -14,6 +14,9 @@ pub mod quest;
 pub mod hero;
 pub mod job_system;
 pub mod expedition;
+pub mod skill;
+pub mod mvp_spawn;
+pub mod battle_mode;
 
 pub use enemy::*;
 pub use battle::*;
@@ -26,3 +29,6 @@ pub use quest::*;
 pub use hero::*;
 pub use job_system::*;
 pub use expedition::*;
+pub use skill::*;
+pub use mvp_spawn::*;
+pub use battle_mode::*;

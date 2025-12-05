@@ -146,8 +146,8 @@ pub fn map_navigation_system(
                                 }
                             }
                         }
-                        TouchAction::AfkFarm => {
-                            // Enter AFK farming mode on current map
+                        TouchAction::Expedition => {
+                            // Enter expedition setup on current map
                             let current_location_id = game_manager.map_page.world_map().current_location_id();
                             let location_data = game_manager
                                 .map_page
@@ -157,24 +157,136 @@ pub fn map_navigation_system(
 
                             if let Some(location) = location_data {
                                 if !location.enemies.is_empty() {
-                                    log::info!("Starting AFK farming at: {}", location.name);
+                                    // Check if hero is ready for expedition
+                                    use crate::game::HeroState;
+                                    match &game_manager.hero.state {
+                                        HeroState::Ready => {
+                                            // Hero is ready, proceed with expedition setup
+                                            log::info!("Setting up expedition at: {}", location.name);
+                                            game_manager.selected_map_id = Some(current_location_id);
 
-                                    // Create AFK farm page with hero
-                                    match crate::ui::pages::AfkFarmPage::new(
-                                        game_manager.hero.clone(),
-                                        &location.enemies,
-                                        game_manager.game_data.clone(),
-                                    ) {
-                                        Ok(afk_page) => {
-                                            game_manager.afk_farm_page = Some(afk_page);
-                                            app_state.current_mode = AppMode::AfkFarm;
-                                            app_state.needs_redraw = true;
-                                            log::info!("AFK farming started for {}", game_manager.hero.name);
+                                            // Pick a random enemy from the map
+                                            let enemy_index = rand::random::<usize>() % location.enemies.len();
+                                            let enemy_id = location.enemies[enemy_index];
+
+                                            // Get enemy data
+                                            if let Some(enemy_data) = game_manager.game_data.get_enemy(enemy_id) {
+                                                // Create Enemy instance for expedition
+                                                use crate::game::Enemy;
+                                                let enemy = Enemy::from_data(
+                                                    enemy_data.id,
+                                                    enemy_data.name.clone(),
+                                                    enemy_data.level,
+                                                    enemy_data.hp,
+                                                    enemy_data.attack,
+                                                    enemy_data.defense,
+                                                    enemy_data.hit,
+                                                    enemy_data.flee,
+                                                    enemy_data.base_exp,
+                                                    enemy_data.get_element(),
+                                                );
+
+                                                // Create expedition setup page
+                                                match crate::ui::pages::ExpeditionSetupPage::new(
+                                                    game_manager.hero.clone(),
+                                                    enemy,
+                                                ) {
+                                                    Ok(setup_page) => {
+                                                        game_manager.expedition_setup_page = Some(setup_page);
+                                                        app_state.current_mode = AppMode::ExpeditionSetup;
+                                                        app_state.needs_redraw = true;
+                                                    }
+                                                    Err(e) => {
+                                                        log::error!("Failed to create expedition setup: {:?}", e);
+                                                    }
+                                                }
+                                            }
                                         }
-                                        Err(e) => {
-                                            log::error!("Failed to create AFK farm page: {:?}", e);
+                                        HeroState::KO { recovery_time: _ } => {
+                                            if let Some(remaining) = game_manager.hero.state.remaining_time() {
+                                                let minutes = remaining / 60;
+                                                let seconds = remaining % 60;
+                                                log::warn!("Hero is KO! Recovery in {}:{:02}", minutes, seconds);
+                                            }
+                                        }
+                                        HeroState::OnExpedition { end_time: _ } => {
+                                            if let Some(remaining) = game_manager.hero.state.remaining_time() {
+                                                log::warn!("Hero is already on an expedition! ({} seconds remaining)", remaining);
+                                            }
                                         }
                                     }
+                                }
+                            }
+                        }
+                        TouchAction::MvpFight(enemy_id) => {
+                            log::info!("MVP fight requested for enemy {}", enemy_id);
+
+                            // Check if hero is ready
+                            use crate::game::HeroState;
+                            match &game_manager.hero.state {
+                                HeroState::Ready => {
+                                    // Create SemiActiveBattlePage
+                                    use embedded_graphics::pixelcolor::Rgb888;
+
+                                    let mut battle_page = crate::ui::pages::SemiActiveBattlePage::new(
+                                        Rgb888::new(20, 25, 35), // Dark background
+                                        game_manager.hero.clone(),
+                                        enemy_id,
+                                        game_manager.kill_tracker.clone(),
+                                        game_manager.game_data.clone(),
+                                    );
+
+                                    // Initialize the battle (loads enemy, etc.)
+                                    if let Err(e) = battle_page.initialize() {
+                                        log::error!("Failed to initialize MVP battle: {:?}", e);
+                                    } else {
+                                        game_manager.semi_active_battle_page = Some(battle_page);
+                                        app_state.current_mode = AppMode::SemiActiveBattle;
+                                        app_state.needs_redraw = true;
+                                        log::info!("MVP battle started!");
+                                    }
+                                }
+                                HeroState::KO { recovery_time: _ } => {
+                                    if let Some(remaining) = game_manager.hero.state.remaining_time() {
+                                        let minutes = remaining / 60;
+                                        let seconds = remaining % 60;
+                                        log::warn!("Hero is KO! Recovery in {}:{:02}", minutes, seconds);
+                                    }
+                                }
+                                HeroState::OnExpedition { end_time: _ } => {
+                                    log::warn!("Hero is already on an expedition!");
+                                }
+                            }
+                        }
+                        TouchAction::Hunt(map_id) => {
+                            log::info!("Hunt requested for map {}", map_id);
+
+                            // Check if hero is ready
+                            use crate::game::HeroState;
+                            match &game_manager.hero.state {
+                                HeroState::Ready => {
+                                    // Create HuntMonsterListPage
+                                    let hunt_page = crate::ui::pages::HuntMonsterListPage::new(
+                                        game_manager.hero.clone(),
+                                        game_manager.game_data.clone(),
+                                        map_id,
+                                    );
+
+                                    game_manager.hunt_monster_list_page = Some(hunt_page);
+                                    game_manager.hunt_map_id = Some(map_id);
+                                    app_state.current_mode = AppMode::HuntMonsterList;
+                                    app_state.needs_redraw = true;
+                                    log::info!("Hunt monster list opened for map {}", map_id);
+                                }
+                                HeroState::KO { recovery_time: _ } => {
+                                    if let Some(remaining) = game_manager.hero.state.remaining_time() {
+                                        let minutes = remaining / 60;
+                                        let seconds = remaining % 60;
+                                        log::warn!("Hero is KO! Recovery in {}:{:02}", minutes, seconds);
+                                    }
+                                }
+                                HeroState::OnExpedition { end_time: _ } => {
+                                    log::warn!("Hero is already on an expedition!");
                                 }
                             }
                         }

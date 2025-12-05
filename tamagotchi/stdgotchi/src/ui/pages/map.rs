@@ -33,10 +33,13 @@ struct TouchArea {
     location_id: Option<u32>,     // None for FIGHT buttons
     direction: Option<Direction>,  // None for FIGHT buttons
     is_fight_button: bool,
-    is_afk_farm_button: bool,
+    is_expedition_button: bool,
     is_back_button: bool,
     is_view_world_map_button: bool,
     is_view_monsters_button: bool,
+    is_mvp_button: bool,
+    mvp_enemy_id: Option<u32>,
+    is_hunt_button: bool,
 }
 
 impl TouchArea {
@@ -66,11 +69,13 @@ pub struct MapPage {
 pub enum TouchAction {
     Travel(u32),         // Travel to location ID
     Fight,               // Enter battle on current map
-    AfkFarm,             // Enter AFK farming mode
+    Expedition,          // Enter expedition setup
     ViewMapDetails(u32), // View details for a specific map (Page 1 → Page 2)
     ViewMonsterList(u32), // View monster list for a map (Page 2 → Page 3)
     BackToWorldMap,      // Return to world map grid (Page 2 → Page 1)
     BackToMapDetails,    // Return to map details (Page 3 → Page 2)
+    MvpFight(u32),       // Fight MVP on map (enemy_id)
+    Hunt(u32),           // Open hunt monster list for map
 }
 
 impl MapPage {
@@ -366,10 +371,13 @@ impl MapPage {
                     location_id: Some(map_id),
                     direction: None,
                     is_fight_button: false,
-                    is_afk_farm_button: false,
+                    is_expedition_button: false,
                     is_back_button: false,
                     is_view_world_map_button: false,
                     is_view_monsters_button: false,
+                    is_mvp_button: false,
+                    mvp_enemy_id: None,
+                    is_hunt_button: false,
                 });
             }
         }
@@ -530,37 +538,43 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: false,
-                is_afk_farm_button: false,
+                is_expedition_button: false,
                 is_back_button: false,
                 is_view_world_map_button: true,
                 is_view_monsters_button: false,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: false,
             });
         } else {
-            // Field/Dungeon buttons: "FIGHT", "MONSTERS", "WORLD MAP"
-            // Fight button
+            // Field/Dungeon buttons: "HUNT", "MONSTERS", "WORLD MAP"
+            // Hunt button (opens monster selection)
             Rectangle::new(
                 Point::new(margin, button_y),
                 Size::new(button_width, button_height),
             )
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(150, 40, 40)))
+            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(150, 80, 40)))
             .draw(display)?;
 
             Text::new(
-                "FIGHT",
-                Point::new(margin + 30, button_y + 32),
+                "HUNT",
+                Point::new(margin + 35, button_y + 32),
                 text_style_button,
             )
             .draw(display)?;
 
             self.touch_areas.push(TouchArea {
                 bounds: (margin, button_y, button_width, button_height),
-                location_id: Some(map_id), // Store map_id so we know which map to fight on
+                location_id: Some(map_id),
                 direction: None,
-                is_fight_button: true,
-                is_afk_farm_button: false,
+                is_fight_button: false,
+                is_expedition_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: true,
             });
 
             // Monsters button
@@ -584,10 +598,13 @@ impl MapPage {
                 location_id: Some(map_id),
                 direction: None,
                 is_fight_button: false,
-                is_afk_farm_button: false,
+                is_expedition_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: true,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: false,
             });
 
             // World Map button
@@ -611,40 +628,130 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: false,
-                is_afk_farm_button: false,
+                is_expedition_button: false,
                 is_back_button: false,
                 is_view_world_map_button: true,
                 is_view_monsters_button: false,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: false,
             });
 
-            // AFK FARM button (second row, centered)
-            let afk_button_y = button_y + button_height as i32 + 8;
-            let afk_button_width = 230u32; // Wider button for "AFK FARM" text
-            let afk_button_x = (368 - afk_button_width as i32) / 2; // Center horizontally
-            Rectangle::new(
-                Point::new(afk_button_x, afk_button_y),
-                Size::new(afk_button_width, button_height),
-            )
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 200)))
-            .draw(display)?;
+            // Check for MVP monsters on this map first to determine layout
+            let mvp_enemies = self.world_map.game_data().get_mvp_enemies();
+            let mvp_for_map: Vec<_> = mvp_enemies
+                .iter()
+                .filter(|e| e.spawn_map_id == Some(map_id))
+                .collect();
 
-            Text::new(
-                "AFK FARM",
-                Point::new(afk_button_x + 70, afk_button_y + 32),
-                text_style_button,
-            )
-            .draw(display)?;
+            // Second row: AFK FARM and MVP button (if exists) side by side
+            let second_row_y = button_y + button_height as i32 + 8;
 
-            self.touch_areas.push(TouchArea {
-                bounds: (afk_button_x, afk_button_y, afk_button_width, button_height),
-                location_id: None,
-                direction: None,
-                is_fight_button: false,
-                is_afk_farm_button: true,
-                is_back_button: false,
-                is_view_world_map_button: false,
-                is_view_monsters_button: false,
-            });
+            if !mvp_for_map.is_empty() {
+                // Two buttons side by side: AFK FARM | MVP
+                let half_width = 170u32;
+                let spacing = 8;
+                let total_width = half_width * 2 + spacing as u32;
+                let start_x = (368 - total_width as i32) / 2;
+
+                // EXPEDITION button (left)
+                Rectangle::new(
+                    Point::new(start_x, second_row_y),
+                    Size::new(half_width, button_height),
+                )
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 200)))
+                .draw(display)?;
+
+                Text::new(
+                    "EXPEDITION",
+                    Point::new(start_x + 30, second_row_y + 32),
+                    text_style_button,
+                )
+                .draw(display)?;
+
+                self.touch_areas.push(TouchArea {
+                    bounds: (start_x, second_row_y, half_width, button_height),
+                    location_id: None,
+                    direction: None,
+                    is_fight_button: false,
+                    is_expedition_button: true,
+                    is_back_button: false,
+                    is_view_world_map_button: false,
+                    is_view_monsters_button: false,
+                    is_mvp_button: false,
+                    mvp_enemy_id: None,
+                    is_hunt_button: false,
+                });
+
+                // MVP button (right)
+                let mvp = mvp_for_map[0];
+                let mvp_button_x = start_x + half_width as i32 + spacing;
+
+                Rectangle::new(
+                    Point::new(mvp_button_x, second_row_y),
+                    Size::new(half_width, button_height),
+                )
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(180, 60, 180)))
+                .draw(display)?;
+
+                // MVP name (truncated if needed)
+                let mut mvp_text = heapless::String::<16>::new();
+                use core::fmt::Write as FmtWrite;
+                let name_short: String = mvp.name.chars().take(10).collect();
+                write!(mvp_text, "{}", name_short).ok();
+                Text::new(
+                    &mvp_text,
+                    Point::new(mvp_button_x + 40, second_row_y + 32),
+                    text_style_button,
+                )
+                .draw(display)?;
+
+                self.touch_areas.push(TouchArea {
+                    bounds: (mvp_button_x, second_row_y, half_width, button_height),
+                    location_id: Some(map_id),
+                    direction: None,
+                    is_fight_button: false,
+                    is_expedition_button: false,
+                    is_back_button: false,
+                    is_view_world_map_button: false,
+                    is_view_monsters_button: false,
+                    is_mvp_button: true,
+                    mvp_enemy_id: Some(mvp.id),
+                    is_hunt_button: false,
+                });
+            } else {
+                // No MVP - center the EXPEDITION button
+                let exp_button_width = 230u32;
+                let exp_button_x = (368 - exp_button_width as i32) / 2;
+
+                Rectangle::new(
+                    Point::new(exp_button_x, second_row_y),
+                    Size::new(exp_button_width, button_height),
+                )
+                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 150, 200)))
+                .draw(display)?;
+
+                Text::new(
+                    "EXPEDITION",
+                    Point::new(exp_button_x + 55, second_row_y + 32),
+                    text_style_button,
+                )
+                .draw(display)?;
+
+                self.touch_areas.push(TouchArea {
+                    bounds: (exp_button_x, second_row_y, exp_button_width, button_height),
+                    location_id: None,
+                    direction: None,
+                    is_fight_button: false,
+                    is_expedition_button: true,
+                    is_back_button: false,
+                    is_view_world_map_button: false,
+                    is_view_monsters_button: false,
+                    is_mvp_button: false,
+                    mvp_enemy_id: None,
+                    is_hunt_button: false,
+                });
+            }
         }
 
         Ok(())
@@ -697,10 +804,13 @@ impl MapPage {
             location_id: Some(map_id), // Remember which map we came from
             direction: None,
             is_fight_button: false,
-            is_afk_farm_button: false,
+            is_expedition_button: false,
             is_back_button: true,
             is_view_world_map_button: false,
             is_view_monsters_button: false,
+            is_mvp_button: false,
+            mvp_enemy_id: None,
+            is_hunt_button: false,
         });
 
         // Draw header
@@ -810,10 +920,13 @@ impl MapPage {
                 location_id: Some(map_id),
                 direction: None,
                 is_fight_button: true,
-                is_afk_farm_button: false,
+                is_expedition_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: false,
             });
         }
 
@@ -881,10 +994,26 @@ impl MapPage {
                     return Some(TouchAction::Fight);
                 }
 
-                // Handle AFK farm button
-                if area.is_afk_farm_button {
-                    log::info!("🌾 AFK Farm button pressed!");
-                    return Some(TouchAction::AfkFarm);
+                // Handle expedition button
+                if area.is_expedition_button {
+                    log::info!("🗺️ Expedition button pressed!");
+                    return Some(TouchAction::Expedition);
+                }
+
+                // Handle MVP fight button
+                if area.is_mvp_button {
+                    if let Some(enemy_id) = area.mvp_enemy_id {
+                        log::info!("MVP Fight button pressed for enemy {}", enemy_id);
+                        return Some(TouchAction::MvpFight(enemy_id));
+                    }
+                }
+
+                // Handle Hunt button
+                if area.is_hunt_button {
+                    if let Some(map_id) = area.location_id {
+                        log::info!("Hunt button pressed for map {}", map_id);
+                        return Some(TouchAction::Hunt(map_id));
+                    }
                 }
 
                 // Handle location selection
@@ -1120,10 +1249,13 @@ impl MapPage {
             location_id: Some(location.id),
             direction: Some(*direction),
             is_fight_button: false,
-            is_afk_farm_button: false,
+            is_expedition_button: false,
             is_back_button: false,
             is_view_world_map_button: false,
             is_view_monsters_button: false,
+            is_mvp_button: false,
+            mvp_enemy_id: None,
+            is_hunt_button: false,
         });
 
         Ok(())
@@ -1206,10 +1338,13 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: true,
-                is_afk_farm_button: false,
+                is_expedition_button: false,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: false,
             });
 
             // AFK FARM button (next to FIGHT button)
@@ -1225,10 +1360,13 @@ impl MapPage {
                 location_id: None,
                 direction: None,
                 is_fight_button: false,
-                is_afk_farm_button: true,
+                is_expedition_button: true,
                 is_back_button: false,
                 is_view_world_map_button: false,
                 is_view_monsters_button: false,
+                is_mvp_button: false,
+                mvp_enemy_id: None,
+                is_hunt_button: false,
             });
         }
 

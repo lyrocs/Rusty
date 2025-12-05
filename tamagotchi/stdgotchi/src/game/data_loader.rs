@@ -4,9 +4,20 @@
 
 use super::quest::QuestData;
 use super::element_system::Element;
+use super::skill::SkillData;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
+
+/// Monster type for spawn mechanics
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MonsterType {
+    #[default]
+    Normal,
+    MiniMvp,
+    Mvp,
+}
 
 /// Card data embedded in enemy JSON
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +26,9 @@ pub struct CardData {
     pub rarity: u8,        // 1-5 stars
     pub atk_bonus: u32,
     pub def_bonus: u32,
+    /// Skill ID this card unlocks (None if no skill)
+    #[serde(default)]
+    pub unlocks_skill: Option<u32>,
 }
 
 /// Enemy data loaded from JSON
@@ -28,7 +42,8 @@ pub struct EnemyData {
     pub defense: u32,
     pub base_exp: u64,
     // Base stats
-    pub str: u32,
+    #[serde(rename = "str")]
+    pub str_stat: u32,
     pub int: u32,
     pub dex: u32,
     pub vit: u32,
@@ -42,6 +57,16 @@ pub struct EnemyData {
     // Card drop system
     pub drop_rate: f32,    // Probability of card drop (0.0-1.0)
     pub card: CardData,    // Card that drops from this enemy
+
+    // MVP system
+    #[serde(default)]
+    pub monster_type: MonsterType,
+    /// Respawn timer in minutes (only for Mini MVP and MVP)
+    #[serde(default)]
+    pub spawn_timer_minutes: Option<u32>,
+    /// Map ID where this MVP spawns (only for Mini MVP and MVP)
+    #[serde(default)]
+    pub spawn_map_id: Option<u32>,
 }
 
 impl EnemyData {
@@ -147,6 +172,7 @@ pub struct GameData {
     pub enemies: HashMap<u32, EnemyData>,
     pub exp_table: HashMap<u32, u32>, // level -> exp to next level
     pub quests: HashMap<u32, QuestData>,
+    pub skills: HashMap<u32, SkillData>,
 }
 
 impl GameData {
@@ -188,11 +214,21 @@ impl GameData {
         }
         log::info!("Loaded {} quests", quests.len());
 
+        // Load skills
+        let skills_json = include_str!("../../assets/data/skills.json");
+        let skills_vec: Vec<SkillData> = serde_json::from_str(skills_json)?;
+        let mut skills = HashMap::new();
+        for skill in skills_vec {
+            skills.insert(skill.id, skill);
+        }
+        log::info!("Loaded {} skills", skills.len());
+
         Ok(Self {
             maps,
             enemies,
             exp_table,
             quests,
+            skills,
         })
     }
 
@@ -254,6 +290,32 @@ impl GameData {
             .values()
             .filter(|q| q.get_quest_type() == super::quest::QuestType::Achievement)
             .collect()
+    }
+
+    /// Get skill by ID
+    pub fn get_skill(&self, id: u32) -> Option<&SkillData> {
+        self.skills.get(&id)
+    }
+
+    /// Get all skills
+    pub fn get_all_skills(&self) -> &HashMap<u32, SkillData> {
+        &self.skills
+    }
+
+    /// Get all Mini MVP and MVP enemies
+    pub fn get_mvp_enemies(&self) -> Vec<&EnemyData> {
+        self.enemies
+            .values()
+            .filter(|e| matches!(e.monster_type, MonsterType::MiniMvp | MonsterType::Mvp))
+            .collect()
+    }
+
+    /// Check if an enemy is a Mini MVP or MVP
+    pub fn is_mvp(&self, enemy_id: u32) -> bool {
+        self.enemies
+            .get(&enemy_id)
+            .map(|e| matches!(e.monster_type, MonsterType::MiniMvp | MonsterType::Mvp))
+            .unwrap_or(false)
     }
 }
 

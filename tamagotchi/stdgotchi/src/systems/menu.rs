@@ -107,6 +107,17 @@ pub fn menu_system(
                                 }
                             }
                         }
+                        MenuAction::Skills => {
+                            log::info!("Navigating to Skill Selection");
+                            // Create skill selection page
+                            let skill_page = crate::ui::pages::SkillSelectionPage::new(
+                                game_manager.hero.clone(),
+                                game_manager.game_data.clone(),
+                            );
+                            game_manager.skill_selection_page = Some(skill_page);
+                            app_state.current_mode = AppMode::SkillSelection;
+                            app_state.needs_redraw = true;
+                        }
                         MenuAction::Pokemon => {
                             log::info!("Fetching Pokemon data from API...");
                             // Call Pokemon API

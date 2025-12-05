@@ -10,6 +10,7 @@ use std::path::Path;
 use super::KillTracker;
 use super::quest::QuestManager;
 use super::hero::Hero;
+use super::mvp_spawn::MvpSpawnManager;
 
 /// Save data structure containing all persistent game state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,11 +36,15 @@ pub struct SaveData {
     /// Quest progress and state
     #[serde(default)]
     pub quest_manager: QuestManager,
+
+    /// MVP spawn timer tracking
+    #[serde(default)]
+    pub mvp_spawn_manager: MvpSpawnManager,
 }
 
 impl SaveData {
     /// Current save data version
-    pub const CURRENT_VERSION: u32 = 5; // Bumped version for expedition system
+    pub const CURRENT_VERSION: u32 = 6; // Bumped version for skill system and MVP spawns
 
     /// Default save file name
     pub const SAVE_FILE_NAME: &'static str = "stdgotchi_save.json";
@@ -51,6 +56,7 @@ impl SaveData {
         play_time_seconds: u64,
         hero: Hero,
         quest_manager: QuestManager,
+        mvp_spawn_manager: MvpSpawnManager,
     ) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
@@ -60,6 +66,7 @@ impl SaveData {
             save_timestamp: Self::current_timestamp(),
             hero,
             quest_manager,
+            mvp_spawn_manager,
         }
     }
 

@@ -21,7 +21,8 @@
       "name": "Poring Card",
       "rarity": 1,
       "atk_bonus": 5,
-      "def_bonus": 0
+      "def_bonus": 0,
+      "unlocks_skill": 3
     }
   },
   {
@@ -71,7 +72,8 @@
       "name": "Hornet Card",
       "rarity": 2,
       "atk_bonus": 15,
-      "def_bonus": 0
+      "def_bonus": 0,
+      "unlocks_skill": 6
     }
   },
   {
@@ -96,7 +98,66 @@
       "name": "Thief Bug Card",
       "rarity": 2,
       "atk_bonus": 10,
-      "def_bonus": 10
+      "def_bonus": 10,
+      "unlocks_skill": 1
     }
+  },
+  {
+    "name": "Angeling",
+    "id": 1096,
+    "level": 77,
+    "hp": 23000,
+    "attack": 250,
+    "defense": 72,
+    "hit": 200,
+    "flee": 200,
+    "base_exp": 50000,
+    "element": "holy",
+    "str": 1,
+    "agi": 50,
+    "int": 77,
+    "dex": 100,
+    "vit": 50,
+    "luk": 200,
+    "drop_rate": 0.01,
+    "card": {
+      "name": "Angeling Card",
+      "rarity": 5,
+      "atk_bonus": 100,
+      "def_bonus": 100,
+      "unlocks_skill": 9
+    },
+    "monster_type": "mini_mvp",
+    "spawn_timer_minutes": 20,
+    "spawn_map_id": 2
+  },
+  {
+    "name": "Drake",
+    "id": 1112,
+    "level": 91,
+    "hp": 150000,
+    "attack": 500,
+    "defense": 100,
+    "hit": 250,
+    "flee": 150,
+    "base_exp": 250000,
+    "element": "wind",
+    "str": 80,
+    "agi": 50,
+    "int": 25,
+    "dex": 100,
+    "vit": 100,
+    "luk": 50,
+    "drop_rate": 0.02,
+    "card": {
+      "name": "Drake Card",
+      "rarity": 5,
+      "atk_bonus": 200,
+      "def_bonus": 150,
+      "unlocks_skill": 5
+    },
+    "monster_type": "mvp",
+    "spawn_timer_minutes": 180,
+    "spawn_map_id": 3
   }
 ]

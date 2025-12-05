@@ -22,6 +22,7 @@ pub enum MenuAction {
     Rest,
     Hero,
     Cards,
+    Skills,
     Quests,
     Pokemon,
 }
@@ -183,6 +184,19 @@ impl MenuPage {
             "CARDS",
             Rgb888::new(120, 100, 40),
             MenuAction::Cards,
+        )?;
+        current_slot += 1;
+
+        // Draw Skills button
+        self.draw_button(
+            display,
+            button_x,
+            start_y + spacing * current_slot,
+            button_width,
+            button_height,
+            "SKILLS",
+            Rgb888::new(180, 60, 180),
+            MenuAction::Skills,
         )?;
         current_slot += 1;
 
