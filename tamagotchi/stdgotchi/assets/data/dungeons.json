@@ -1,0 +1,203 @@
+{
+  "dungeons": [
+    {
+      "id": "culvert",
+      "name": "Culvert",
+      "zone_id": "prontera",
+      "description": "Les égouts souterrains de Prontera",
+      "checkpoints": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+      "dominant_elements": ["water", "shadow"],
+      "enemy_pools": [
+        {
+          "floor_min": 1,
+          "floor_max": 10,
+          "species": ["thief_bug", "familiar", "poring"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 11,
+          "floor_max": 20,
+          "species": ["thief_bug", "familiar"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 21,
+          "floor_max": 30,
+          "species": ["thief_bug", "familiar"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 31,
+          "floor_max": 999,
+          "species": ["thief_bug", "familiar", "poring"],
+          "enemies_per_floor": 1
+        }
+      ],
+      "boss_floors": [10, 20, 30, 40, 50],
+      "bosses": {
+        "10": "golden_thief_bug",
+        "20": "thief_bug_queen",
+        "30": "giant_familiar",
+        "40": "golden_thief_bug",
+        "50": "thief_bug_queen"
+      },
+      "base_crystal_reward": 5,
+      "base_xp_reward": 20
+    },
+    {
+      "id": "payon_dungeon",
+      "name": "Payon Cave",
+      "zone_id": "payon",
+      "description": "La grotte hantée près de Payon",
+      "checkpoints": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+      "dominant_elements": ["shadow", "ghost"],
+      "enemy_pools": [
+        {
+          "floor_min": 1,
+          "floor_max": 10,
+          "species": ["wolf", "snake", "whisper"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 11,
+          "floor_max": 20,
+          "species": ["whisper", "nine_tail", "sohee"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 21,
+          "floor_max": 999,
+          "species": ["nine_tail", "sohee", "whisper"],
+          "enemies_per_floor": 1
+        }
+      ],
+      "boss_floors": [10, 20, 30, 40, 50],
+      "bosses": {
+        "10": "nine_tail",
+        "20": "sohee",
+        "30": "nine_tail",
+        "40": "sohee",
+        "50": "nine_tail"
+      },
+      "base_crystal_reward": 8,
+      "base_xp_reward": 30
+    },
+    {
+      "id": "geffen_tower",
+      "name": "Geffen Tower",
+      "zone_id": "geffen",
+      "description": "La tour des mages de Geffen",
+      "checkpoints": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+      "dominant_elements": ["ghost", "shadow"],
+      "enemy_pools": [
+        {
+          "floor_min": 1,
+          "floor_max": 10,
+          "species": ["archer_skeleton", "hunter_fly"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 11,
+          "floor_max": 20,
+          "species": ["marionette", "hunter_fly", "archer_skeleton"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 21,
+          "floor_max": 999,
+          "species": ["marionette", "archer_skeleton"],
+          "enemies_per_floor": 1
+        }
+      ],
+      "boss_floors": [10, 20, 30, 40, 50],
+      "bosses": {
+        "10": "marionette",
+        "20": "archer_skeleton",
+        "30": "marionette",
+        "40": "archer_skeleton",
+        "50": "marionette"
+      },
+      "base_crystal_reward": 12,
+      "base_xp_reward": 45
+    },
+    {
+      "id": "pyramides",
+      "name": "Pyramides",
+      "zone_id": "morroc",
+      "description": "Les anciennes pyramides du désert",
+      "checkpoints": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+      "dominant_elements": ["shadow", "fire"],
+      "enemy_pools": [
+        {
+          "floor_min": 1,
+          "floor_max": 10,
+          "species": ["mummy", "isis"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 11,
+          "floor_max": 20,
+          "species": ["isis", "mummy", "minorous"],
+          "enemies_per_floor": 1
+        },
+        {
+          "floor_min": 21,
+          "floor_max": 999,
+          "species": ["minorous", "isis", "mummy"],
+          "enemies_per_floor": 1
+        }
+      ],
+      "boss_floors": [10, 20, 30, 40, 50],
+      "bosses": {
+        "10": "isis",
+        "20": "minorous",
+        "30": "isis",
+        "40": "minorous",
+        "50": "isis"
+      },
+      "base_crystal_reward": 15,
+      "base_xp_reward": 60
+    },
+    {
+      "id": "clock_tower",
+      "name": "Clock Tower",
+      "zone_id": "aldebaran",
+      "description": "La tour de l'horloge d'Aldebaran",
+      "checkpoints": [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+      "dominant_elements": ["ghost", "shadow"],
+      "enemy_pools": [
+        {
+          "floor_min": 1,
+          "floor_max": 999,
+          "species": ["marionette", "archer_skeleton", "whisper"],
+          "enemies_per_floor": 1
+        }
+      ],
+      "boss_floors": [10, 20, 30, 40, 50],
+      "bosses": {
+        "10": "marionette",
+        "20": "archer_skeleton",
+        "30": "marionette",
+        "40": "archer_skeleton",
+        "50": "marionette"
+      },
+      "base_crystal_reward": 20,
+      "base_xp_reward": 80
+    }
+  ],
+  "reward_multipliers": {
+    "by_start_floor": {
+      "1": 1.0,
+      "5": 1.0,
+      "10": 1.5,
+      "15": 1.5,
+      "20": 2.0,
+      "25": 2.0,
+      "30": 2.5,
+      "35": 2.5,
+      "40": 2.5,
+      "45": 2.5,
+      "50": 2.5
+    }
+  }
+}

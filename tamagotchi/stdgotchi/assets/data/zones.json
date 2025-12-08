@@ -1,0 +1,65 @@
+{
+  "zones": [
+    {
+      "id": "prontera",
+      "name": "Prontera",
+      "description": "La capitale du royaume de Rune-Midgard",
+      "maps": ["plains_south", "forest_west", "sewers", "hills_north"],
+      "dungeon_id": "culvert",
+      "unlock_condition": null,
+      "level_range": [1, 15]
+    },
+    {
+      "id": "payon",
+      "name": "Payon",
+      "description": "Village des archers dans les montagnes",
+      "maps": ["payon_forest", "payon_cave", "payon_temple", "payon_summit"],
+      "dungeon_id": "payon_dungeon",
+      "unlock_condition": {
+        "type": "dungeon_floor",
+        "dungeon_id": "culvert",
+        "floor": 20
+      },
+      "level_range": [10, 25]
+    },
+    {
+      "id": "geffen",
+      "name": "Geffen",
+      "description": "Cité des mages et de la magie",
+      "maps": ["geffen_field", "geffen_ruins", "geffen_tower_entrance", "geffen_library"],
+      "dungeon_id": "geffen_tower",
+      "unlock_condition": {
+        "type": "dungeon_floor",
+        "dungeon_id": "payon_dungeon",
+        "floor": 15
+      },
+      "level_range": [20, 35]
+    },
+    {
+      "id": "morroc",
+      "name": "Morroc",
+      "description": "Cité du désert aux pyramides anciennes",
+      "maps": ["morroc_desert", "morroc_oasis", "morroc_ruins", "morroc_sphinx_entrance", "morroc_pyramid_entrance"],
+      "dungeon_id": "pyramides",
+      "unlock_condition": {
+        "type": "dungeon_floor",
+        "dungeon_id": "geffen_tower",
+        "floor": 15
+      },
+      "level_range": [30, 45]
+    },
+    {
+      "id": "aldebaran",
+      "name": "Aldebaran",
+      "description": "Ville des horloges et du commerce",
+      "maps": ["aldebaran_field", "aldebaran_sewers", "aldebaran_clock_entrance", "aldebaran_streets"],
+      "dungeon_id": "clock_tower",
+      "unlock_condition": {
+        "type": "dungeon_floor",
+        "dungeon_id": "pyramides",
+        "floor": 15
+      },
+      "level_range": [40, 60]
+    }
+  ]
+}

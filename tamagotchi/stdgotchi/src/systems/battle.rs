@@ -1,11 +1,13 @@
-//! Battle system
+//! Battle system (Stub)
 //!
-//! Handles input during battle mode, including menu access.
+//! NOTE: Simplified for Phase 1 migration.
+//! Will be replaced with new real-time combat in Phase 2.
 
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::input_thread::{InputEvent, SwipeDirection};
+use crate::input_thread::InputEvent;
+use crate::ui::pages::battle::BattleAction;
 
 /// System to handle battle mode input
 pub fn battle_system(
@@ -29,64 +31,60 @@ pub fn battle_system(
 
     // Process all input events from pending events
     for event in pending_events.events.iter() {
-        match event {
-            InputEvent::Touch { x, y } => {
-                let x = *x as i32;
-                let y = *y as i32;
+        if let InputEvent::Touch { x, y } = event {
+            let x = *x as i32;
+            let y = *y as i32;
 
-                // Handle touch on battle page (for team switching)
-                if let Some(ref mut battle_page) = game_manager.battle_page {
-                    if let Some(action) = battle_page.handle_touch(x, y) {
-                        use crate::ui::pages::battle::BattleAction;
-                        match action {
-                            BattleAction::SwitchRustymon(slot) => {
-                                log::info!("Switching to team slot {}", slot);
-                                if let Err(e) = battle_page.switch_rustymon(slot) {
-                                    log::error!("Failed to switch Rustymon: {:?}", e);
-                                }
-                                app_state.needs_redraw = true;
-                            }
-                            BattleAction::UseSkill(skill_id) => {
-                                log::info!("Using skill {}", skill_id);
-                                if let Err(e) = battle_page.use_skill(skill_id) {
-                                    log::error!("Failed to use skill: {:?}", e);
-                                }
-                                app_state.needs_redraw = true;
-                            }
-                            BattleAction::ToggleAuto => {
-                                battle_page.toggle_auto();
-                                app_state.needs_redraw = true;
-                            }
+            // Handle touch on battle page
+            let action = if let Some(ref mut battle_page) = game_manager.battle_page {
+                battle_page.handle_touch(x, y)
+            } else {
+                BattleAction::None
+            };
+
+            match action {
+                BattleAction::Victory => {
+                    log::info!("Victory! Switching to result screen");
+
+                    // Get data for result page
+                    let exp_gained = game_manager.battle_page.as_ref()
+                        .map(|p| p.get_exp_gained())
+                        .unwrap_or(0);
+
+                    // Update kill tracker
+                    if let Some(ref battle_page) = game_manager.battle_page {
+                        game_manager.kill_tracker = battle_page.get_kill_tracker().clone();
+                    }
+
+                    let game_data = game_manager.game_data.clone();
+
+                    // Create result page
+                    match crate::ui::pages::BattleResultPage::new(exp_gained, true, game_data) {
+                        Ok(result_page) => {
+                            game_manager.battle_result_page = Some(result_page);
+                            game_manager.battle_page = None;
+                            app_state.current_mode = AppMode::BattleResult;
+                        }
+                        Err(e) => {
+                            log::error!("Failed to create result page: {:?}", e);
+                            game_manager.battle_page = None;
+                            app_state.current_mode = AppMode::Map;
                         }
                     }
+                    app_state.needs_redraw = true;
                 }
-            }
-            InputEvent::Swipe { direction } => {
-                // Handle swipe to switch Rustymon
-                if let Some(ref mut battle_page) = game_manager.battle_page {
-                    match direction {
-                        SwipeDirection::Right => {
-                            log::info!("Swipe right: switching to next Rustymon");
-                            if let Err(e) = battle_page.switch_to_next_rustymon() {
-                                log::error!("Failed to switch to next Rustymon: {:?}", e);
-                            }
-                            app_state.needs_redraw = true;
-                        }
-                        SwipeDirection::Left => {
-                            log::info!("Swipe left: switching to previous Rustymon");
-                            if let Err(e) = battle_page.switch_to_prev_rustymon() {
-                                log::error!("Failed to switch to previous Rustymon: {:?}", e);
-                            }
-                            app_state.needs_redraw = true;
-                        }
-                        _ => {
-                            // Up/Down swipes not used in battle
-                        }
-                    }
+                BattleAction::Defeat => {
+                    log::info!("Defeat! death_detection_system will handle this");
                 }
-            }
-            _ => {
-                // Other events are not needed in battle mode
+                BattleAction::Flee => {
+                    log::info!("Fleeing battle!");
+                    game_manager.battle_page = None;
+                    app_state.current_mode = AppMode::Map;
+                    app_state.needs_redraw = true;
+                }
+                BattleAction::None => {
+                    app_state.needs_redraw = true;
+                }
             }
         }
     }

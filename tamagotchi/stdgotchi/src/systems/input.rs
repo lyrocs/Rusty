@@ -37,10 +37,10 @@ pub fn button_system(
                 button_res.pwr_last_state = false;
             }
             InputEvent::BootPressed => {
-                // Handle boot button globally - opens Menu (if screen is on)
+                // Handle boot button globally - opens Home (if screen is on)
                 if app_state.screen_on {
-                    log::info!("BOOT button pressed - Opening Menu");
-                    app_state.current_mode = AppMode::Menu;
+                    log::info!("BOOT button pressed - Opening Home");
+                    app_state.current_mode = AppMode::Home;
                     app_state.needs_redraw = true;
                 }
             }

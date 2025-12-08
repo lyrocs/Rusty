@@ -1,17 +1,17 @@
 //! Save/Load System
 //!
 //! Handles serialization and persistence of game state to SD card.
+//! Supports full Monster Tamer save data including monsters, team, player, and expeditions.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
 
 use super::KillTracker;
-use super::fragment_collection::FragmentCollection;
-use super::quest::QuestManager;
-use super::rustymon::Rustymon;
-use super::rustymon_team::RustymonTeam;
+use super::core::{Monster, Team, Player};
+use super::systems::expedition::Expedition;
 
 /// Save data structure containing all persistent game state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,39 +31,48 @@ pub struct SaveData {
     /// Save timestamp (unix timestamp)
     pub save_timestamp: u64,
 
-    /// Rustymon collection (all owned Rustymon)
+    /// Player's owned monsters
     #[serde(default)]
-    pub rustymon_collection: Vec<Rustymon>,
+    pub monsters: Vec<Monster>,
 
-    /// Rustymon team (active team and bank)
+    /// Player's active team
     #[serde(default)]
-    pub rustymon_team: RustymonTeam,
+    pub team: Team,
 
-    /// Fragment collection (monster fragments)
+    /// Player resources (crystals, essences)
     #[serde(default)]
-    pub fragment_collection: FragmentCollection,
+    pub player: Player,
 
-    /// Quest progress and state
+    /// Active expeditions (max 2)
+    #[serde(default = "default_expeditions")]
+    pub active_expeditions: [Option<Expedition>; 2],
+
+    /// Dungeon progress (highest floor reached per dungeon)
     #[serde(default)]
-    pub quest_manager: QuestManager,
+    pub dungeon_progress: HashMap<String, u16>,
+}
+
+fn default_expeditions() -> [Option<Expedition>; 2] {
+    [None, None]
 }
 
 impl SaveData {
     /// Current save data version
-    pub const CURRENT_VERSION: u32 = 3; // Bumped version for quest system
+    pub const CURRENT_VERSION: u32 = 7; // Version 7: Monster Tamer Phase 3 (Expeditions)
 
     /// Default save file name
     pub const SAVE_FILE_NAME: &'static str = "stdgotchi_save.json";
 
-    /// Create new save data from game state
+    /// Create full save data with all game state
     pub fn new(
         kill_tracker: KillTracker,
         current_location_id: u32,
         play_time_seconds: u64,
-        rustymon_collection: Vec<Rustymon>,
-        rustymon_team: RustymonTeam,
-        fragment_collection: FragmentCollection,
-        quest_manager: QuestManager,
+        monsters: Vec<Monster>,
+        team: Team,
+        player: Player,
+        active_expeditions: [Option<Expedition>; 2],
+        dungeon_progress: HashMap<String, u16>,
     ) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
@@ -71,10 +80,31 @@ impl SaveData {
             current_location_id,
             play_time_seconds,
             save_timestamp: Self::current_timestamp(),
-            rustymon_collection,
-            rustymon_team,
-            fragment_collection,
-            quest_manager,
+            monsters,
+            team,
+            player,
+            active_expeditions,
+            dungeon_progress,
+        }
+    }
+
+    /// Create minimal save data (backwards compatible, creates empty data)
+    pub fn new_minimal(
+        kill_tracker: KillTracker,
+        current_location_id: u32,
+        play_time_seconds: u64,
+    ) -> Self {
+        Self {
+            version: Self::CURRENT_VERSION,
+            kill_tracker,
+            current_location_id,
+            play_time_seconds,
+            save_timestamp: Self::current_timestamp(),
+            monsters: Vec::new(),
+            team: Team::default(),
+            player: Player::default(),
+            active_expeditions: [None, None],
+            dungeon_progress: HashMap::new(),
         }
     }
 
@@ -135,25 +165,16 @@ mod tests {
     #[test]
     fn test_save_data_serialization() {
         let kill_tracker = KillTracker::new();
-        let rustymon_collection = Vec::new();
-        let rustymon_team = RustymonTeam::new();
-        let fragment_collection = FragmentCollection::new();
-        let quest_manager = QuestManager::new();
-        let save_data = SaveData::new(
+        let save_data = SaveData::new_minimal(
             kill_tracker,
             1,
             3600,
-            rustymon_collection,
-            rustymon_team,
-            fragment_collection,
-            quest_manager,
         );
 
         // Serialize
         let json = save_data.to_json().unwrap();
         assert!(json.contains("version"));
-        assert!(json.contains("rustymon_collection"));
-        assert!(json.contains("quest_manager"));
+        assert!(json.contains("kill_tracker"));
 
         // Deserialize
         let loaded = SaveData::from_json(&json).unwrap();

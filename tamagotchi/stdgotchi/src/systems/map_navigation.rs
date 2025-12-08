@@ -1,11 +1,16 @@
-//! Map navigation system
+//! Map navigation system (Stub)
 //!
-//! Handles map navigation, location selection, and transitions to battle.
+//! NOTE: Simplified for Phase 1 migration.
+//! Will be replaced with proper navigation and battle initiation in Phase 2.
 
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
+use crate::game::core::MonsterStatus;
+use crate::game::systems::combat::CombatState;
+use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
 use crate::input_thread::{InputEvent, SwipeDirection};
+use crate::ui::pages::{DungeonCombatPage, ExpeditionTeamSelectPage, MonsterSelectData};
 
 /// System to handle map navigation
 pub fn map_navigation_system(
@@ -27,6 +32,18 @@ pub fn map_navigation_system(
         return;
     };
 
+    // Initialize game data if not already set (only once, not every frame)
+    if !game_manager.map_page.has_game_data() {
+        let zones: Vec<_> = game_manager.tamer_data.all_zones().cloned().collect();
+        let maps: Vec<_> = game_manager.tamer_data.all_tamer_maps().cloned().collect();
+        game_manager.map_page.set_game_data(zones, maps);
+        log::info!("Map page game data initialized");
+    }
+
+    // Update dungeon progress on the map page (clone to avoid borrow conflict)
+    let progress = game_manager.dungeon_progress.clone();
+    game_manager.map_page.update_dungeon_progress(&progress);
+
     // Process all input events from pending events
     for event in pending_events.events.iter() {
         match event {
@@ -39,158 +56,190 @@ pub fn map_navigation_system(
                 if let Some(action) = game_manager.map_page.handle_touch(x, y) {
                     use crate::ui::pages::TouchAction;
                     match action {
-                        TouchAction::Travel(location_id) => {
-                            // Travel to the selected location
-                            log::info!("Traveling to location: {}", location_id);
-                            if let Err(e) = game_manager.map_page.travel_to(location_id) {
-                                log::error!("Failed to travel: {}", e);
-                            } else {
+                        TouchAction::StartExpedition(map_id) => {
+                            log::info!("Starting expedition on map: {}", map_id);
+                            // Create expedition team selection page
+                            if let Some(expedition_page) = create_expedition_team_page(
+                                game_manager,
+                                &map_id,
+                            ) {
+                                game_manager.expedition_team_page = Some(expedition_page);
+                                game_manager.selected_expedition_map_id = Some(map_id);
+                                app_state.current_mode = AppMode::ExpeditionTeamSelect;
                                 app_state.needs_redraw = true;
                             }
                         }
-                        TouchAction::ViewMapDetails(_map_id) => {
-                            // Map details view - just redraw (state changed in handle_touch)
-                            log::info!("Viewing map details for map {}", _map_id);
-                            app_state.needs_redraw = true;
-                        }
-                        TouchAction::ViewMonsterList(_map_id) => {
-                            // Monster list view - just redraw (state changed in handle_touch)
-                            log::info!("Viewing monster list for map {}", _map_id);
-                            app_state.needs_redraw = true;
-                        }
-                        TouchAction::BackToWorldMap => {
-                            // Back to world map grid - just redraw (state changed in handle_touch)
-                            log::info!("Returning to world map grid");
-                            app_state.needs_redraw = true;
-                        }
-                        TouchAction::BackToMapDetails => {
-                            // Back to map details - just redraw (state changed in handle_touch)
-                            log::info!("Returning to map details");
-                            app_state.needs_redraw = true;
-                        }
-                        TouchAction::Fight => {
-                            // Enter battle on current map
-                            let current_location_id = game_manager.map_page.world_map().current_location_id();
-                            let location_data = game_manager
-                                .map_page
-                                .world_map()
-                                .get_location(current_location_id)
-                                .cloned();
-
-                            if let Some(location) = location_data {
-                                if !location.enemies.is_empty() {
-                                    log::info!("Entering battle at: {}", location.name);
-                                    game_manager.selected_map_id = Some(current_location_id);
-
-                                    // Pick a random enemy from the map
-                                    let enemy_index = rand::random::<usize>() % location.enemies.len();
-                                    let initial_enemy_id = location.enemies[enemy_index];
-
-                                    // Store battle loading data for deferred creation
-                                    game_manager.battle_loading_data =
-                                        Some(crate::ecs::resources::BattleLoadingData {
-                                            map_id: current_location_id,
-                                            enemy_ids: location.enemies.clone(),
-                                            initial_enemy_id,
-                                        });
-
-                                    // Count alive rustymon in team
-                                    let alive_count = game_manager.rustymon_team.active_slots
-                                        .iter()
-                                        .filter(|slot| {
-                                            if let Some(id) = slot {
-                                                game_manager.rustymon_collection.iter()
-                                                    .find(|r| &r.id == id)
-                                                    .map(|r| r.current_hp > 0)
-                                                    .unwrap_or(false)
-                                            } else {
-                                                false
-                                            }
-                                        })
-                                        .count();
-
-                                    let has_enough_enemies = location.enemies.len() >= 3;
-
-                                    // ALWAYS use 3v3 for testing - uncomment condition below to make it conditional
-                                    // if has_enough_enemies && alive_count >= 3 {
-                                    if true {
-                                        log::info!("🎮 Starting 3v3 battle! (enemies: {}, alive rustymon: {})",
-                                            location.enemies.len(), alive_count);
-                                        app_state.current_mode = AppMode::Battle3v3Loading;
-                                    } else {
-                                        log::info!("Starting 1v1 battle (enemies: {}, alive: {}, need 3+ each)",
-                                            location.enemies.len(), alive_count);
-                                        app_state.current_mode = AppMode::BattleLoading;
-                                    }
-
-                                    app_state.needs_redraw = true;
-                                    log::info!(
-                                        "Switched to loading screen, battle will be created on next frame"
-                                    );
-                                }
+                        TouchAction::StartDungeon { dungeon_id, start_floor } => {
+                            log::info!("Map -> Dungeon Combat: {} from floor {}", dungeon_id, start_floor);
+                            // Start dungeon combat
+                            if let Some((combat_page, dungeon_run)) = create_dungeon_combat(
+                                game_manager,
+                                &dungeon_id,
+                                start_floor,
+                            ) {
+                                game_manager.dungeon_combat_page = Some(combat_page);
+                                game_manager.active_dungeon_run = Some(dungeon_run);
+                                game_manager.selected_dungeon_id = Some(dungeon_id);
+                                app_state.current_mode = AppMode::DungeonCombat;
+                                app_state.needs_redraw = true;
+                            } else {
+                                log::warn!("Failed to create dungeon combat - no available monsters?");
                             }
                         }
-                        TouchAction::AfkFarm => {
-                            // Enter AFK farming mode on current map
-                            let current_location_id = game_manager.map_page.world_map().current_location_id();
-                            let location_data = game_manager
-                                .map_page
-                                .world_map()
-                                .get_location(current_location_id)
-                                .cloned();
-
-                            if let Some(location) = location_data {
-                                if !location.enemies.is_empty() {
-                                    log::info!("🌾 Starting AFK farming at: {}", location.name);
-
-                                    // Get team rustymon
-                                    let mut team_rustymon = Vec::new();
-                                    for slot in &game_manager.rustymon_team.active_slots {
-                                        if let Some(id) = slot {
-                                            if let Some(rustymon) = game_manager.rustymon_collection.iter().find(|r| &r.id == id) {
-                                                team_rustymon.push(rustymon.clone());
-                                            }
-                                        }
-                                    }
-
-                                    if team_rustymon.is_empty() {
-                                        log::error!("❌ Cannot start AFK farming: no rustymon in team");
-                                        return;
-                                    }
-
-                                    // Create AFK farm page
-                                    match crate::ui::pages::AfkFarmPage::new(
-                                        team_rustymon,
-                                        &location.enemies,
-                                        game_manager.game_data.clone(),
-                                    ) {
-                                        Ok(afk_page) => {
-                                            game_manager.afk_farm_page = Some(afk_page);
-                                            app_state.current_mode = AppMode::AfkFarm;
-                                            app_state.needs_redraw = true;
-                                            log::info!("✅ AFK farming started successfully");
-                                        }
-                                        Err(e) => {
-                                            log::error!("❌ Failed to create AFK farm page: {:?}", e);
-                                        }
-                                    }
-                                }
-                            }
+                        TouchAction::BackToHome => {
+                            log::info!("Map -> Home");
+                            app_state.current_mode = AppMode::Home;
+                            app_state.needs_redraw = true;
+                        }
+                        TouchAction::None => {
+                            // Internal navigation, just redraw
+                            app_state.needs_redraw = true;
                         }
                     }
                 }
             }
             InputEvent::Swipe { direction } => {
-                // Swipe right to go back to menu
+                // Swipe right to go back
                 if *direction == SwipeDirection::Right {
-                    log::info!("Swipe right: closing Map, returning to menu");
-                    app_state.current_mode = AppMode::Menu;
-                    app_state.needs_redraw = true;
+                    if game_manager.map_page.is_at_top_level() {
+                        log::info!("Swipe right: returning to home");
+                        app_state.current_mode = AppMode::Home;
+                        app_state.needs_redraw = true;
+                    } else {
+                        // Go back within map navigation
+                        game_manager.map_page.go_back();
+                        app_state.needs_redraw = true;
+                    }
                 }
             }
-            _ => {
-                // Ignore other events in map mode
+            _ => {}
+        }
+    }
+}
+
+/// Create dungeon combat with player team vs dungeon enemy
+fn create_dungeon_combat(
+    game_manager: &mut GameManager,
+    dungeon_id: &str,
+    start_floor: u16,
+) -> Option<(DungeonCombatPage, DungeonRun)> {
+    // Clone dungeon data to avoid borrow conflict
+    let dungeon = game_manager.tamer_data.get_dungeon(dungeon_id)?.clone();
+    let dungeon_name = dungeon.name.clone();
+
+    // Get player's team monsters (must be available and alive)
+    let team_ids = game_manager.team.monster_ids().to_vec();
+    let mut player_monsters: Vec<crate::game::core::Monster> = Vec::new();
+
+    for monster_id in &team_ids {
+        if let Some(monster) = game_manager.get_monster_mut(monster_id) {
+            if monster.status == crate::game::core::MonsterStatus::Available && monster.is_alive() {
+                // Clone monster for combat and heal it
+                let mut combat_monster = monster.clone();
+                combat_monster.full_heal();
+                player_monsters.push(combat_monster);
             }
         }
     }
+
+    if player_monsters.is_empty() {
+        log::warn!("No available monsters for dungeon combat");
+        return None;
+    }
+
+    // Generate enemy for this floor
+    let enemy = generate_floor_enemy(game_manager, &dungeon, start_floor)?;
+
+    log::info!("Starting dungeon combat: {} monsters vs {} (Lv.{}) in {} floor {}",
+        player_monsters.len(), enemy.name, enemy.level, dungeon_name, start_floor);
+
+    // Create dungeon run
+    let dungeon_run = DungeonRun::new(dungeon_id.to_string(), start_floor);
+
+    // Create combat state
+    let combat_state = CombatState::new(player_monsters, enemy, start_floor);
+
+    // Create combat page
+    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name);
+
+    Some((combat_page, dungeon_run))
+}
+
+/// Generate enemy for a dungeon floor
+fn generate_floor_enemy(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+) -> Option<crate::game::core::Monster> {
+    use rand::Rng;
+
+    let mut rng = rand::thread_rng();
+
+    // Check if boss floor
+    if dungeon.is_boss_floor(floor) {
+        if let Some(boss_species) = dungeon.get_boss_species(floor) {
+            // Boss level = floor + 5
+            let boss_level = (floor + 5).min(99) as u8;
+            if let Some(mut boss) = game_manager.tamer_data.create_monster_at_level(boss_species, boss_level) {
+                // Scale boss stats based on floor
+                let multiplier = floor_stat_multiplier(floor);
+                boss.hp_max = (boss.hp_max as f32 * multiplier * 1.5) as u16; // Extra HP for bosses
+                boss.hp_current = boss.hp_max;
+                boss.atk = (boss.atk as f32 * multiplier * 1.2) as u16;
+                boss.def = (boss.def as f32 * multiplier * 1.2) as u16;
+                return Some(boss);
+            }
+        }
+    }
+
+    // Regular enemy - get enemy pool for this floor
+    let pool = dungeon.get_enemy_pool(floor)?;
+    if pool.species.is_empty() {
+        return None;
+    }
+
+    // Pick random species from pool
+    let species_idx = rng.gen_range(0..pool.species.len());
+    let species_id = &pool.species[species_idx];
+
+    // Enemy level based on floor
+    let enemy_level = (floor.min(99)) as u8;
+
+    // Create enemy
+    let mut enemy = game_manager.tamer_data.create_monster_at_level(species_id, enemy_level)?;
+
+    // Scale stats based on floor
+    let multiplier = floor_stat_multiplier(floor);
+    enemy.hp_max = (enemy.hp_max as f32 * multiplier) as u16;
+    enemy.hp_current = enemy.hp_max;
+    enemy.atk = (enemy.atk as f32 * multiplier) as u16;
+    enemy.def = (enemy.def as f32 * multiplier) as u16;
+
+    Some(enemy)
+}
+
+/// Create expedition team selection page from map ID
+pub fn create_expedition_team_page(
+    game_manager: &GameManager,
+    map_id: &str,
+) -> Option<ExpeditionTeamSelectPage> {
+    let tamer_map = game_manager.tamer_data.get_tamer_map(map_id)?;
+
+    let monster_data: Vec<MonsterSelectData> = game_manager.monsters.iter()
+        .map(|m| MonsterSelectData {
+            id: m.id.clone(),
+            name: m.name.clone(),
+            level: m.level,
+            element: m.element,
+            is_available: m.status == MonsterStatus::Available,
+            is_selected: false,
+        })
+        .collect();
+
+    Some(ExpeditionTeamSelectPage::new(
+        tamer_map.id.clone(),
+        tamer_map.name.clone(),
+        tamer_map.required_elements.clone(),
+        monster_data,
+    ))
 }

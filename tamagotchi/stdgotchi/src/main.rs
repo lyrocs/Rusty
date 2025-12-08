@@ -55,7 +55,7 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{afk_system, animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_3v3_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, fps_system, map_navigation_system, menu_system, pokemon_info_system, render_system, rest_system, rustymon_list_system, rustymon_detail_system, rustymon_skills_system, fragment_collection_system, rustymon_summon_system, quest_navigation_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, dungeon_combat_navigation_system, between_floors_navigation_system, dungeon_defeat_navigation_system, expedition_navigation_system, fps_system, home_navigation_system, map_navigation_system, menu_system, monster_navigation_system, render_system, utility_navigation_system};
 
 /// TCA9554 GPIO expander I2C address
 const TCA9554_ADDRESS: u8 = 0x20;
@@ -238,6 +238,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // WiFi initialization disabled for faster boot
+    // TODO: Re-enable when WiFi features are needed
+    /*
     // Initialize WiFi (needs to happen after SD card for config loading)
     log::info!("Initializing WiFi...");
     let sysloop = EspSystemEventLoop::take()?;
@@ -279,6 +282,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+    */
+    log::info!("WiFi skipped for faster boot");
 
     // Load game data (maps, enemies, etc.)
     log::info!("Loading game data...");
@@ -304,9 +309,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::info!("Save file read successfully, parsing JSON...");
                 match game::SaveData::from_json(&json_data) {
                     Ok(save_data) => {
-                        log::info!("Save file loaded! Rustymon count: {}, Fragments: {}",
-                                  save_data.rustymon_collection.len(),
-                                  save_data.fragment_collection.get_unique_monster_count());
+                        log::info!("Save file loaded! Play time: {} seconds", save_data.play_time_seconds);
                         GameManager::from_save_data(save_data, world_map, game_data)
                     }
                     Err(e) => {
@@ -374,11 +377,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Used by SD card CS pin operations
     world.insert_non_send_resource(SharedI2cResource);
 
+    // WiFi resource disabled - see WiFi initialization section above
+    /*
     // Insert WiFi resource (if available) - keeps WiFi connection alive
     if let Some(wifi_res) = wifi_resource {
         world.insert_non_send_resource(wifi_res);
         log::info!("WiFi resource inserted into ECS world - connection will stay active");
     }
+    */
 
     // Insert SD card resource (if available)
     if let Some(sd_wrapper) = sd_card_wrapper {
@@ -400,29 +406,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Add systems in groups (max 16 per tuple)
     schedule.add_systems((
         fps_system,
+        home_navigation_system, // Handle home screen navigation (default start screen)
         menu_system,
         map_navigation_system,
+        monster_navigation_system, // Handle monster list/detail navigation
+        utility_navigation_system, // Handle inventory/collection navigation
+        expedition_navigation_system, // Handle expedition map/team/result navigation
+        dungeon_combat_navigation_system, // Handle dungeon combat -> between floors
+        between_floors_navigation_system, // Handle between floors -> next combat or exit
+        dungeon_defeat_navigation_system, // Handle defeat screen retry/quit
         battle_loading_system, // Creates battle page after loading screen shown
-        battle_3v3_loading_system, // Creates 3v3 battle page after loading screen shown
         battle_system,
         battle_result_system, // Handle battle result screen
         death_detection_system, // Check for death in battle
         death_system, // Handle death screen and respawn
-        rest_system, // Handle rest screen and HP regeneration
-        afk_system, // Handle AFK farming mode
-        rustymon_list_system, // Rustymon list navigation
-        rustymon_detail_system, // Rustymon detail navigation
-        rustymon_skills_system, // Rustymon skills navigation
-        fragment_collection_system, // Fragment collection navigation
-        rustymon_summon_system, // Rustymon summon preview
-        quest_navigation_system, // Quest list navigation
         animation_init_system,
         render_system,
         animation_cleanup_system,
+        autosave_system,
     ));
-
-    // Second group of systems (max 16 per tuple reached above)
-    schedule.add_systems((pokemon_info_system, autosave_system));
 
     log::info!("stdgotchi ready! Dual-threaded mode active.");
     log::info!("Input thread: GPIO at 100Hz, Touch/I2C at 20Hz (reduced bus contention)");

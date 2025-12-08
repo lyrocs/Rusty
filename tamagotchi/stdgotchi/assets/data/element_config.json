@@ -1,0 +1,205 @@
+{
+  "elements": [
+    {
+      "id": "fire",
+      "name": "Feu",
+      "icon": "fire"
+    },
+    {
+      "id": "water",
+      "name": "Eau",
+      "icon": "water"
+    },
+    {
+      "id": "earth",
+      "name": "Terre",
+      "icon": "earth"
+    },
+    {
+      "id": "wind",
+      "name": "Vent",
+      "icon": "wind"
+    },
+    {
+      "id": "thunder",
+      "name": "Foudre",
+      "icon": "thunder"
+    },
+    {
+      "id": "shadow",
+      "name": "Shadow",
+      "icon": "shadow"
+    },
+    {
+      "id": "holy",
+      "name": "Holy",
+      "icon": "holy"
+    },
+    {
+      "id": "ghost",
+      "name": "Ghost",
+      "icon": "ghost"
+    }
+  ],
+  "advantages": {
+    "fire": {
+      "strong_against": ["earth", "wind"],
+      "weak_against": ["water"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "water": {
+      "strong_against": ["fire"],
+      "weak_against": ["earth", "wind"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "earth": {
+      "strong_against": ["water"],
+      "weak_against": ["fire"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "wind": {
+      "strong_against": ["earth"],
+      "weak_against": ["fire"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "thunder": {
+      "strong_against": ["water"],
+      "weak_against": ["earth"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "shadow": {
+      "strong_against": ["holy", "ghost"],
+      "weak_against": ["holy"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "holy": {
+      "strong_against": ["shadow"],
+      "weak_against": ["ghost"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5
+    },
+    "ghost": {
+      "strong_against": [],
+      "weak_against": ["holy"],
+      "multiplier_strong": 1.5,
+      "multiplier_weak": 0.5,
+      "notes": "Neutral vs most, weak to Holy only"
+    }
+  },
+  "reactions": [
+    {
+      "id": "vaporize",
+      "name": "VAPORIZE",
+      "aura": "water",
+      "trigger": "fire",
+      "effect": "damage_multiplier",
+      "value": 2.0,
+      "description": "Dégâts x2"
+    },
+    {
+      "id": "vaporize_reverse",
+      "name": "VAPORIZE",
+      "aura": "fire",
+      "trigger": "water",
+      "effect": "damage_multiplier",
+      "value": 2.0,
+      "description": "Dégâts x2"
+    },
+    {
+      "id": "electrocute",
+      "name": "ELECTROCUTE",
+      "aura": "water",
+      "trigger": "thunder",
+      "effect": "damage_stun",
+      "value": 1.0,
+      "stun_duration": 1.0,
+      "description": "Dégâts + Stun 1 sec"
+    },
+    {
+      "id": "bloom",
+      "name": "BLOOM",
+      "aura": "water",
+      "trigger": "earth",
+      "effect": "heal_team",
+      "value": 0.15,
+      "description": "Heal équipe 15%"
+    },
+    {
+      "id": "swirl_fire",
+      "name": "SWIRL FIRE",
+      "aura": "fire",
+      "trigger": "wind",
+      "effect": "propagate_aura",
+      "value": 1.0,
+      "aura_type": "fire",
+      "description": "Propage Burn à tous ennemis"
+    },
+    {
+      "id": "melt",
+      "name": "MELT",
+      "aura": "fire",
+      "trigger": "earth",
+      "effect": "damage_multiplier",
+      "value": 1.5,
+      "description": "Dégâts x1.5"
+    },
+    {
+      "id": "burning",
+      "name": "BURNING",
+      "aura": "earth",
+      "trigger": "fire",
+      "effect": "damage_dot",
+      "value": 1.0,
+      "dot_duration": 5.0,
+      "description": "Gros DoT 5 sec"
+    },
+    {
+      "id": "superconduct",
+      "name": "SUPERCONDUCT",
+      "aura": "thunder",
+      "trigger": "water",
+      "effect": "def_reduction",
+      "value": 0.30,
+      "duration": 5.0,
+      "description": "DEF ennemi -30% pendant 5 sec"
+    },
+    {
+      "id": "swirl",
+      "name": "SWIRL",
+      "aura": "*",
+      "trigger": "wind",
+      "effect": "propagate_aura",
+      "value": 1.0,
+      "description": "Propage l'aura aux autres ennemis",
+      "notes": "Triggers with any aura except wind"
+    },
+    {
+      "id": "purify",
+      "name": "PURIFY",
+      "aura": "shadow",
+      "trigger": "holy",
+      "effect": "damage_multiplier",
+      "value": 2.0,
+      "description": "Dégâts x2"
+    },
+    {
+      "id": "corrupt",
+      "name": "CORRUPT",
+      "aura": "holy",
+      "trigger": "shadow",
+      "effect": "damage_multiplier",
+      "value": 2.0,
+      "description": "Dégâts x2"
+    }
+  ],
+  "aura_duration": {
+    "auto_attack": 2.0,
+    "skill": 4.0
+  }
+}

@@ -1,9 +1,63 @@
-//! Element System
+//! Element System (Legacy)
 //!
 //! Handles element advantages/disadvantages and UI display.
+//! NOTE: This is the legacy element system. New Monster Tamer code should use game::core::Element.
 
-use super::rustymon::Element;
 use embedded_graphics::pixelcolor::Rgb888;
+use serde::{Deserialize, Serialize};
+
+/// Legacy Element type for existing battle system
+/// The new Monster Tamer system uses game::core::Element
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Element {
+    #[default]
+    Neutral,
+    Water,
+    Earth,
+    Fire,
+    Wind,
+    Poison,
+    Holy,
+    Shadow,
+    Ghost,
+    Undead,
+}
+
+impl Element {
+    /// Parse element from string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "neutral" | "" => Some(Element::Neutral),
+            "water" => Some(Element::Water),
+            "earth" => Some(Element::Earth),
+            "fire" => Some(Element::Fire),
+            "wind" => Some(Element::Wind),
+            "poison" => Some(Element::Poison),
+            "holy" => Some(Element::Holy),
+            "shadow" => Some(Element::Shadow),
+            "ghost" => Some(Element::Ghost),
+            "undead" => Some(Element::Undead),
+            _ => None,
+        }
+    }
+
+    /// Get element name as string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Element::Neutral => "Neutral",
+            Element::Water => "Water",
+            Element::Earth => "Earth",
+            Element::Fire => "Fire",
+            Element::Wind => "Wind",
+            Element::Poison => "Poison",
+            Element::Holy => "Holy",
+            Element::Shadow => "Shadow",
+            Element::Ghost => "Ghost",
+            Element::Undead => "Undead",
+        }
+    }
+}
 
 /// Get damage multiplier based on element matchup
 ///

@@ -1,0 +1,173 @@
+{
+  "skills": [
+    {
+      "id": "meteor",
+      "name": "Meteor",
+      "element": "fire",
+      "description": "Gros dégâts + applique Burn (DoT)",
+      "effect_type": "damage_dot",
+      "damage_multiplier": 2.0,
+      "dot_damage": 10,
+      "dot_duration": 5.0,
+      "dot_tick_interval": 0.5
+    },
+    {
+      "id": "tidal_wave",
+      "name": "Tidal Wave",
+      "element": "water",
+      "description": "Dégâts + applique Wet",
+      "effect_type": "damage_aura",
+      "damage_multiplier": 1.5,
+      "applies_aura": "water",
+      "aura_duration": 4.0
+    },
+    {
+      "id": "poison_spore",
+      "name": "Poison Spore",
+      "element": "earth",
+      "description": "DoT poison + applique Nature",
+      "effect_type": "damage_dot",
+      "damage_multiplier": 1.0,
+      "dot_damage": 8,
+      "dot_duration": 6.0,
+      "dot_tick_interval": 0.5,
+      "applies_aura": "earth"
+    },
+    {
+      "id": "thunder_bolt",
+      "name": "Thunder Bolt",
+      "element": "thunder",
+      "description": "Dégâts instantanés + applique Shock",
+      "effect_type": "damage_aura",
+      "damage_multiplier": 1.8,
+      "applies_aura": "thunder",
+      "aura_duration": 4.0
+    },
+    {
+      "id": "gust",
+      "name": "Gust",
+      "element": "wind",
+      "description": "Dégâts + Swirl (propage éléments)",
+      "effect_type": "damage_swirl",
+      "damage_multiplier": 1.3,
+      "propagates_aura": true
+    },
+    {
+      "id": "soul_strike",
+      "name": "Soul Strike",
+      "element": "shadow",
+      "description": "Dégâts ignorant 30% DEF",
+      "effect_type": "damage_pierce",
+      "damage_multiplier": 1.5,
+      "def_ignore_percent": 0.30
+    },
+    {
+      "id": "heal",
+      "name": "Heal",
+      "element": "holy",
+      "description": "Soigne le monstre actif",
+      "effect_type": "heal",
+      "heal_percent": 0.30
+    },
+    {
+      "id": "quick_hit",
+      "name": "Quick Hit",
+      "element": "earth",
+      "description": "Attaque rapide avec bonus de vitesse",
+      "effect_type": "damage",
+      "damage_multiplier": 1.2,
+      "speed_bonus": 0.50
+    },
+    {
+      "id": "harden",
+      "name": "Harden",
+      "element": "earth",
+      "description": "Augmente la DEF de 50% pendant 5 sec",
+      "effect_type": "buff",
+      "buff_stat": "def",
+      "buff_percent": 0.50,
+      "buff_duration": 5.0
+    },
+    {
+      "id": "steal",
+      "name": "Steal",
+      "element": "shadow",
+      "description": "Dégâts + chance de voler des ressources",
+      "effect_type": "damage_steal",
+      "damage_multiplier": 1.0,
+      "steal_chance": 0.25,
+      "steal_crystals_min": 5,
+      "steal_crystals_max": 15
+    },
+    {
+      "id": "fang",
+      "name": "Fang",
+      "element": "earth",
+      "description": "Morsure puissante",
+      "effect_type": "damage",
+      "damage_multiplier": 1.8
+    },
+    {
+      "id": "poison",
+      "name": "Poison",
+      "element": "earth",
+      "description": "Empoisonne l'ennemi",
+      "effect_type": "damage_dot",
+      "damage_multiplier": 1.0,
+      "dot_damage": 12,
+      "dot_duration": 8.0,
+      "dot_tick_interval": 0.5
+    },
+    {
+      "id": "fire_bolt",
+      "name": "Fire Bolt",
+      "element": "fire",
+      "description": "Boule de feu",
+      "effect_type": "damage_aura",
+      "damage_multiplier": 1.6,
+      "applies_aura": "fire",
+      "aura_duration": 4.0
+    },
+    {
+      "id": "arrow_shot",
+      "name": "Arrow Shot",
+      "element": "shadow",
+      "description": "Tir à distance précis",
+      "effect_type": "damage",
+      "damage_multiplier": 1.7,
+      "crit_chance": 0.20
+    },
+    {
+      "id": "dark_strike",
+      "name": "Dark Strike",
+      "element": "shadow",
+      "description": "Frappe des ténèbres",
+      "effect_type": "damage_aura",
+      "damage_multiplier": 2.0,
+      "applies_aura": "shadow",
+      "aura_duration": 4.0
+    },
+    {
+      "id": "curse",
+      "name": "Curse",
+      "element": "shadow",
+      "description": "Maudit l'ennemi, réduisant SPD de 30%",
+      "effect_type": "debuff",
+      "damage_multiplier": 0.5,
+      "debuff_stat": "spd",
+      "debuff_percent": 0.30,
+      "debuff_duration": 6.0
+    }
+  ],
+  "effect_types": {
+    "damage": "Simple damage with multiplier",
+    "damage_dot": "Damage + damage over time",
+    "damage_aura": "Damage + applies elemental aura",
+    "damage_pierce": "Damage ignoring some DEF",
+    "damage_swirl": "Damage + propagate existing auras",
+    "damage_steal": "Damage + chance to steal resources",
+    "heal": "Heal the active monster",
+    "buff": "Apply positive stat modifier",
+    "debuff": "Apply negative stat modifier to enemy"
+  }
+}

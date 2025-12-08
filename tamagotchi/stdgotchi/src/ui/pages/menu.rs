@@ -3,7 +3,7 @@
 //! Main menu for navigating between game modes.
 
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20, ascii::FONT_6X10},
+    mono_font::{MonoTextStyle, ascii::FONT_10X20, ascii::FONT_9X15},
     pixelcolor::Rgb888,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -19,11 +19,9 @@ use crate::ui::page::Page;
 pub enum MenuAction {
     Map,
     Battle,
-    Rest,
-    Rustymon,
-    Fragments,
-    Quests,
-    Pokemon,
+    Monsters,    // Coming in Phase 2
+    Expedition,  // Coming in Phase 2
+    Dungeon,     // Coming in Phase 2
 }
 
 /// Touch button area
@@ -134,72 +132,46 @@ impl MenuPage {
             current_slot += 1;
         }
 
-        // Draw Rest button
+        // Draw Monsters button (Phase 2)
         self.draw_button(
             display,
             button_x,
             start_y + spacing * current_slot,
             button_width,
             button_height,
-            "REST",
-            Rgb888::new(60, 120, 140),
-            MenuAction::Rest,
-        )?;
-        current_slot += 1;
-
-        // Draw Rustymon button
-        self.draw_button(
-            display,
-            button_x,
-            start_y + spacing * current_slot,
-            button_width,
-            button_height,
-            "RUSTYMON",
+            "MONSTERS",
             Rgb888::new(100, 40, 120),
-            MenuAction::Rustymon,
+            MenuAction::Monsters,
         )?;
         current_slot += 1;
 
-        // Draw Quests button
+        // Draw Expedition button (Phase 2)
         self.draw_button(
             display,
             button_x,
             start_y + spacing * current_slot,
             button_width,
             button_height,
-            "QUESTS",
-            Rgb888::new(40, 120, 80),
-            MenuAction::Quests,
+            "EXPEDITION",
+            Rgb888::new(60, 120, 80),
+            MenuAction::Expedition,
         )?;
         current_slot += 1;
 
-        // Draw Fragments button
+        // Draw Dungeon button (Phase 2)
         self.draw_button(
             display,
             button_x,
             start_y + spacing * current_slot,
             button_width,
             button_height,
-            "FRAGMENTS",
-            Rgb888::new(120, 100, 40),
-            MenuAction::Fragments,
-        )?;
-        current_slot += 1;
-
-        // Draw Pokemon button
-        self.draw_button(
-            display,
-            button_x,
-            start_y + spacing * current_slot,
-            button_width,
-            button_height,
-            "POKEMON API",
-            Rgb888::new(200, 60, 60),
-            MenuAction::Pokemon,
+            "DUNGEON",
+            Rgb888::new(120, 60, 40),
+            MenuAction::Dungeon,
         )?;
 
         // Draw hint text at bottom
-        let hint_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let hint_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 100, 100));
         Text::new("Tap to select", Point::new(130, 435), hint_style).draw(display)?;
 
         display.flush()?;

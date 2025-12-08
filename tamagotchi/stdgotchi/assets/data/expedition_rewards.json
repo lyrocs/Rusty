@@ -1,0 +1,64 @@
+{
+  "durations": {
+    "20": {
+      "minutes": 20,
+      "rating": 3,
+      "rating_display": "★★★",
+      "xp_base": 50,
+      "crystals_base": 15,
+      "capture_chance": 0.15,
+      "description": "Meilleur ratio récompenses/temps"
+    },
+    "60": {
+      "minutes": 60,
+      "rating": 2,
+      "rating_display": "★★☆",
+      "xp_base": 120,
+      "crystals_base": 35,
+      "capture_chance": 0.25,
+      "description": "Bon équilibre"
+    },
+    "240": {
+      "minutes": 240,
+      "rating": 1,
+      "rating_display": "★☆☆",
+      "xp_base": 350,
+      "crystals_base": 90,
+      "capture_chance": 0.40,
+      "description": "Pour joueurs occupés"
+    },
+    "480": {
+      "minutes": 480,
+      "rating": 1,
+      "rating_display": "★☆☆",
+      "xp_base": 600,
+      "crystals_base": 150,
+      "capture_chance": 0.50,
+      "description": "Expédition de nuit"
+    }
+  },
+  "efficiency_comparison": {
+    "note": "Les durées courtes donnent un meilleur ratio (3x 20min > 1x 1h) pour récompenser les joueurs actifs",
+    "20min_x3": {
+      "total_minutes": 60,
+      "total_xp": 150,
+      "total_crystals": 45,
+      "capture_chances": 3
+    },
+    "60min_x1": {
+      "total_minutes": 60,
+      "total_xp": 120,
+      "total_crystals": 35,
+      "capture_chances": 1
+    }
+  },
+  "essence_rewards": {
+    "note": "Les essences dépendent de la map d'expédition, pas de la durée",
+    "base_multiplier_by_duration": {
+      "20": 1.0,
+      "60": 2.0,
+      "240": 5.0,
+      "480": 8.0
+    }
+  }
+}

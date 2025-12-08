@@ -1,10 +1,9 @@
 //! Game Data Loader
 //!
 //! Centralized JSON data loading for maps, enemies, etc.
+//! NOTE: This loader is being migrated. New code should use game::data module.
 
-use super::quest::QuestData;
-use super::rustymon::Element;
-use super::skill::{Skill, LearnableSkill};
+use super::element_system::Element;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
@@ -32,8 +31,7 @@ pub struct EnemyData {
     pub element: String, // Will be parsed to Element enum
     pub fragment_drop_rate: f32,
     pub fragments_required: u32,
-    #[serde(default)]
-    pub learnable_skills: Vec<LearnableSkill>,
+    // Skills removed - use new Monster system for skills
 }
 
 impl EnemyData {
@@ -137,9 +135,7 @@ pub struct ExpTableEntry {
 pub struct GameData {
     pub maps: HashMap<u32, MapData>,
     pub enemies: HashMap<u32, EnemyData>,
-    pub skills: HashMap<u32, Skill>,
     pub exp_table: HashMap<u32, u32>, // level -> exp to next level
-    pub quests: HashMap<u32, QuestData>,
 }
 
 impl GameData {
@@ -163,15 +159,6 @@ impl GameData {
         }
         log::info!("Loaded {} enemies", enemies.len());
 
-        // Load skills
-        let skills_json = include_str!("../../assets/data/skills.json");
-        let skills_vec: Vec<Skill> = serde_json::from_str(skills_json)?;
-        let mut skills = HashMap::new();
-        for skill in skills_vec {
-            skills.insert(skill.id, skill);
-        }
-        log::info!("Loaded {} skills", skills.len());
-
         // Load exp table
         let exp_table_json = include_str!("../../assets/data/exp_table.json");
         let exp_table_vec: Vec<ExpTableEntry> = serde_json::from_str(exp_table_json)?;
@@ -181,21 +168,10 @@ impl GameData {
         }
         log::info!("Loaded exp table for {} levels", exp_table.len());
 
-        // Load quests
-        let quests_json = include_str!("../../assets/data/quests.json");
-        let quests_vec: Vec<QuestData> = serde_json::from_str(quests_json)?;
-        let mut quests = HashMap::new();
-        for quest in quests_vec {
-            quests.insert(quest.id, quest);
-        }
-        log::info!("Loaded {} quests", quests.len());
-
         Ok(Self {
             maps,
             enemies,
-            skills,
             exp_table,
-            quests,
         })
     }
 
@@ -230,52 +206,14 @@ impl GameData {
         }
     }
 
-    /// Get skill by ID
-    pub fn get_skill(&self, id: u32) -> Option<&Skill> {
-        self.skills.get(&id)
-    }
-
-    /// Get all skills
-    pub fn get_all_skills(&self) -> &HashMap<u32, Skill> {
-        &self.skills
-    }
-
-    /// Get learnable skills for an enemy/Rustymon species
-    pub fn get_learnable_skills(&self, species_id: u32) -> Option<&Vec<LearnableSkill>> {
-        self.get_enemy(species_id).map(|e| &e.learnable_skills)
-    }
-
     /// Get exp needed for next level from the exp table
     pub fn get_exp_for_level(&self, level: u32) -> u32 {
         // Return exp from table, or 0 if at max level (99) or level not found
         *self.exp_table.get(&level).unwrap_or(&0)
     }
-
-    /// Get quest by ID
-    pub fn get_quest(&self, id: u32) -> Option<&QuestData> {
-        self.quests.get(&id)
-    }
-
-    /// Get all quests
-    pub fn get_all_quests(&self) -> &HashMap<u32, QuestData> {
-        &self.quests
-    }
-
-    /// Get daily quests
-    pub fn get_daily_quests(&self) -> Vec<&QuestData> {
-        self.quests.values().filter(|q| q.is_daily()).collect()
-    }
-
-    /// Get achievement quests
-    pub fn get_achievement_quests(&self) -> Vec<&QuestData> {
-        self.quests
-            .values()
-            .filter(|q| q.get_quest_type() == super::quest::QuestType::Achievement)
-            .collect()
-    }
 }
 
-// Global exp table for use by Rustymon without needing GameData reference
+// Global exp table for use without needing GameData reference
 use std::sync::OnceLock;
 
 static EXP_TABLE: OnceLock<HashMap<u32, u32>> = OnceLock::new();

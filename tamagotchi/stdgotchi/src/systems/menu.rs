@@ -1,11 +1,13 @@
 //! Menu navigation system
 //!
-//! Handles menu interactions and navigation to different game modes.
+//! Handles menu navigation and action dispatching.
 
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::input_thread::InputEvent;
+use crate::systems::expedition_navigation::create_expedition_map_page;
+use crate::ui::pages::MonsterListPage;
 
 /// System to handle menu navigation
 pub fn menu_system(
@@ -45,7 +47,6 @@ pub fn menu_system(
                         }
                         MenuAction::Battle => {
                             log::info!("Navigating to Battle");
-                            // Only switch to battle if there's an active battle
                             if game_manager.battle_page.is_some() {
                                 app_state.current_mode = AppMode::Battle;
                                 app_state.needs_redraw = true;
@@ -53,92 +54,31 @@ pub fn menu_system(
                                 log::warn!("No active battle");
                             }
                         }
-                        MenuAction::Rest => {
-                            log::info!("Navigating to Rest screen");
-                            // Get team rustymon (first 3 from active slots)
-                            let mut team_rustymon = Vec::new();
-                            for slot in game_manager.rustymon_team.active_slots.iter().take(3) {
-                                if let Some(rustymon_id) = slot {
-                                    if let Some(rustymon) = game_manager.rustymon_collection.iter().find(|r| &r.id == rustymon_id) {
-                                        team_rustymon.push(rustymon.clone());
-                                    }
-                                }
-                            }
-
-                            if !team_rustymon.is_empty() {
-                                // Create rest page with team rustymon
-                                match crate::ui::pages::RestPage::new(team_rustymon) {
-                                    Ok(rest_page) => {
-                                        game_manager.rest_page = Some(rest_page);
-                                        app_state.current_mode = AppMode::Rest;
-                                        app_state.needs_redraw = true;
-                                        log::info!("✅ Rest page created");
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to create rest page: {:?}", e);
-                                    }
-                                }
-                            } else {
-                                log::warn!("No rustymon in team to rest");
-                            }
-                        }
-                        MenuAction::Rustymon => {
-                            log::info!("Navigating to Rustymon List");
-                            app_state.current_mode = AppMode::RustymonList;
+                        MenuAction::Monsters => {
+                            log::info!("Navigating to Monster List");
+                            // Create monster list page
+                            let team_ids: Vec<String> = game_manager.team.monster_ids().to_vec();
+                            let list_page = MonsterListPage::new(&game_manager.monsters, &team_ids);
+                            game_manager.monster_list_page = Some(list_page);
+                            app_state.current_mode = AppMode::MonsterList;
                             app_state.needs_redraw = true;
                         }
-                        MenuAction::Quests => {
-                            log::info!("Navigating to Quest List");
-                            // Auto-start daily quests when opening quest page
-                            game_manager.check_quest_resets();
-                            game_manager.auto_start_daily_quests();
-                            app_state.current_mode = AppMode::QuestList;
+                        MenuAction::Expedition => {
+                            log::info!("Navigating to Expedition Map");
+                            // Create expedition map page
+                            let map_page = create_expedition_map_page(game_manager);
+                            game_manager.expedition_map_page = Some(map_page);
+                            app_state.current_mode = AppMode::ExpeditionMap;
                             app_state.needs_redraw = true;
                         }
-                        MenuAction::Fragments => {
-                            log::info!("Navigating to Fragment Collection");
-                            app_state.current_mode = AppMode::FragmentCollection;
-                            app_state.needs_redraw = true;
-                        }
-                        MenuAction::Pokemon => {
-                            log::info!("Fetching Pokemon data from API...");
-                            // Call Pokemon API
-                            match crate::wifi::http_get("https://pokeapi.co/api/v2/pokemon/ditto") {
-                                Ok(response) => {
-                                    log::info!("Pokemon API response received ({} bytes)", response.len());
-                                    // Parse JSON to extract name
-                                    match serde_json::from_str::<serde_json::Value>(&response) {
-                                        Ok(json) => {
-                                            if let Some(name) = json.get("name").and_then(|v| v.as_str()) {
-                                                log::info!("Pokemon name: {}", name);
-                                            }
-                                            // Store response in game manager for display
-                                            game_manager.pokemon_api_response = Some(response);
-                                            app_state.current_mode = AppMode::PokemonInfo;
-                                            app_state.needs_redraw = true;
-                                        }
-                                        Err(e) => {
-                                            log::error!("Failed to parse Pokemon JSON: {:?}", e);
-                                            game_manager.pokemon_api_response = Some(format!("Error parsing JSON: {}", e));
-                                            app_state.current_mode = AppMode::PokemonInfo;
-                                            app_state.needs_redraw = true;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to fetch Pokemon data: {:?}", e);
-                                    game_manager.pokemon_api_response = Some(format!("Error: {:?}", e));
-                                    app_state.current_mode = AppMode::PokemonInfo;
-                                    app_state.needs_redraw = true;
-                                }
-                            }
+                        MenuAction::Dungeon => {
+                            // Dungeon system coming in Phase 2
+                            log::info!("Dungeon system coming in Phase 2");
                         }
                     }
                 }
             }
-            _ => {
-                // Ignore other events in menu mode
-            }
+            _ => {}
         }
     }
 }

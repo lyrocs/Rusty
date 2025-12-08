@@ -1,0 +1,269 @@
+{
+  "species": [
+    {
+      "id": "poring",
+      "name": "Poring",
+      "element": "water",
+      "base_hp": 80,
+      "base_atk": 15,
+      "base_def": 10,
+      "base_spd": 20,
+      "skill_id": "heal",
+      "zones": ["prontera"],
+      "swap_talent": null
+    },
+    {
+      "id": "lunatic",
+      "name": "Lunatic",
+      "element": "earth",
+      "base_hp": 70,
+      "base_atk": 20,
+      "base_def": 12,
+      "base_spd": 35,
+      "skill_id": "quick_hit",
+      "zones": ["prontera"],
+      "swap_talent": "quick"
+    },
+    {
+      "id": "fabre",
+      "name": "Fabre",
+      "element": "earth",
+      "base_hp": 90,
+      "base_atk": 18,
+      "base_def": 15,
+      "base_spd": 18,
+      "skill_id": "poison_spore",
+      "zones": ["prontera"],
+      "swap_talent": null
+    },
+    {
+      "id": "pupa",
+      "name": "Pupa",
+      "element": "earth",
+      "base_hp": 120,
+      "base_atk": 5,
+      "base_def": 30,
+      "base_spd": 5,
+      "skill_id": "harden",
+      "zones": ["prontera"],
+      "swap_talent": "shield"
+    },
+    {
+      "id": "thief_bug",
+      "name": "Thief Bug",
+      "element": "shadow",
+      "base_hp": 85,
+      "base_atk": 25,
+      "base_def": 18,
+      "base_spd": 28,
+      "skill_id": "steal",
+      "zones": ["prontera"],
+      "swap_talent": null
+    },
+    {
+      "id": "familiar",
+      "name": "Familiar",
+      "element": "shadow",
+      "base_hp": 75,
+      "base_atk": 30,
+      "base_def": 12,
+      "base_spd": 32,
+      "skill_id": "soul_strike",
+      "zones": ["prontera"],
+      "swap_talent": null
+    },
+    {
+      "id": "wolf",
+      "name": "Wolf",
+      "element": "earth",
+      "base_hp": 100,
+      "base_atk": 35,
+      "base_def": 20,
+      "base_spd": 30,
+      "skill_id": "fang",
+      "zones": ["payon"],
+      "swap_talent": null
+    },
+    {
+      "id": "snake",
+      "name": "Snake",
+      "element": "earth",
+      "base_hp": 95,
+      "base_atk": 28,
+      "base_def": 22,
+      "base_spd": 25,
+      "skill_id": "poison",
+      "zones": ["payon"],
+      "swap_talent": null
+    },
+    {
+      "id": "nine_tail",
+      "name": "Nine Tail",
+      "element": "ghost",
+      "base_hp": 110,
+      "base_atk": 45,
+      "base_def": 25,
+      "base_spd": 40,
+      "skill_id": "fire_bolt",
+      "zones": ["payon"],
+      "swap_talent": "dodge"
+    },
+    {
+      "id": "whisper",
+      "name": "Whisper",
+      "element": "ghost",
+      "base_hp": 70,
+      "base_atk": 40,
+      "base_def": 15,
+      "base_spd": 45,
+      "skill_id": "soul_strike",
+      "zones": ["payon"],
+      "swap_talent": "dodge"
+    },
+    {
+      "id": "sohee",
+      "name": "Sohee",
+      "element": "water",
+      "base_hp": 120,
+      "base_atk": 35,
+      "base_def": 28,
+      "base_spd": 30,
+      "skill_id": "heal",
+      "zones": ["payon"],
+      "swap_talent": "regen"
+    },
+    {
+      "id": "archer_skeleton",
+      "name": "Archer Skeleton",
+      "element": "shadow",
+      "base_hp": 90,
+      "base_atk": 50,
+      "base_def": 20,
+      "base_spd": 38,
+      "skill_id": "arrow_shot",
+      "zones": ["geffen"],
+      "swap_talent": null
+    },
+    {
+      "id": "hunter_fly",
+      "name": "Hunter Fly",
+      "element": "wind",
+      "base_hp": 80,
+      "base_atk": 42,
+      "base_def": 18,
+      "base_spd": 48,
+      "skill_id": "gust",
+      "zones": ["geffen"],
+      "swap_talent": "quick"
+    },
+    {
+      "id": "marionette",
+      "name": "Marionette",
+      "element": "ghost",
+      "base_hp": 95,
+      "base_atk": 55,
+      "base_def": 22,
+      "base_spd": 35,
+      "skill_id": "soul_strike",
+      "zones": ["geffen"],
+      "swap_talent": null
+    },
+    {
+      "id": "isis",
+      "name": "Isis",
+      "element": "shadow",
+      "base_hp": 130,
+      "base_atk": 60,
+      "base_def": 35,
+      "base_spd": 32,
+      "skill_id": "dark_strike",
+      "zones": ["morroc"],
+      "swap_talent": "shield"
+    },
+    {
+      "id": "mummy",
+      "name": "Mummy",
+      "element": "shadow",
+      "base_hp": 150,
+      "base_atk": 48,
+      "base_def": 40,
+      "base_spd": 20,
+      "skill_id": "curse",
+      "zones": ["morroc"],
+      "swap_talent": "shield"
+    },
+    {
+      "id": "minorous",
+      "name": "Minorous",
+      "element": "fire",
+      "base_hp": 160,
+      "base_atk": 70,
+      "base_def": 45,
+      "base_spd": 25,
+      "skill_id": "meteor",
+      "zones": ["morroc"],
+      "swap_talent": null
+    },
+    {
+      "id": "golden_thief_bug",
+      "name": "Golden Thief Bug",
+      "element": "shadow",
+      "base_hp": 200,
+      "base_atk": 55,
+      "base_def": 40,
+      "base_spd": 35,
+      "skill_id": "steal",
+      "zones": ["prontera"],
+      "swap_talent": null,
+      "is_boss": true
+    },
+    {
+      "id": "thief_bug_queen",
+      "name": "Thief Bug Queen",
+      "element": "shadow",
+      "base_hp": 250,
+      "base_atk": 60,
+      "base_def": 45,
+      "base_spd": 30,
+      "skill_id": "soul_strike",
+      "zones": ["prontera"],
+      "swap_talent": null,
+      "is_boss": true
+    },
+    {
+      "id": "giant_familiar",
+      "name": "Giant Familiar",
+      "element": "shadow",
+      "base_hp": 300,
+      "base_atk": 70,
+      "base_def": 50,
+      "base_spd": 40,
+      "skill_id": "soul_strike",
+      "zones": ["prontera"],
+      "swap_talent": null,
+      "is_boss": true
+    }
+  ],
+  "swap_talents": {
+    "shield": {
+      "name": "Shield",
+      "description": "Gagne un bouclier (absorbe 30 dégâts)",
+      "shield_value": 30
+    },
+    "quick": {
+      "name": "Quick",
+      "description": "Première attaque instantanée",
+      "instant_attack": true
+    },
+    "regen": {
+      "name": "Regen",
+      "description": "Soigne 10% HP en entrant",
+      "heal_percent": 0.10
+    },
+    "dodge": {
+      "name": "Dodge",
+      "description": "Esquive la prochaine attaque",
+      "dodge_next": true
+    }
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "maps": [
+    {
+      "id": "plains_south",
+      "name": "Plaine Sud",
+      "zone_id": "prontera",
+      "level_range": [1, 5],
+      "required_elements": ["water"],
+      "capturable_species": ["poring", "lunatic", "fabre"],
+      "base_rewards": {
+        "crystals": 15,
+        "essences": [
+          {"element": "earth", "amount": 3}
+        ]
+      }
+    },
+    {
+      "id": "forest_west",
+      "name": "Forêt Ouest",
+      "zone_id": "prontera",
+      "level_range": [5, 10],
+      "required_elements": ["water", "earth"],
+      "capturable_species": ["lunatic", "fabre", "pupa"],
+      "base_rewards": {
+        "crystals": 15,
+        "essences": [
+          {"element": "earth", "amount": 3},
+          {"element": "water", "amount": 2}
+        ]
+      }
+    },
+    {
+      "id": "sewers",
+      "name": "Égouts",
+      "zone_id": "prontera",
+      "level_range": [8, 12],
+      "required_elements": ["earth"],
+      "capturable_species": ["thief_bug", "familiar"],
+      "base_rewards": {
+        "crystals": 20,
+        "essences": [
+          {"element": "earth", "amount": 4}
+        ]
+      }
+    },
+    {
+      "id": "hills_north",
+      "name": "Collines Nord",
+      "zone_id": "prontera",
+      "level_range": [10, 15],
+      "required_elements": ["thunder", "wind"],
+      "capturable_species": ["poring", "lunatic"],
+      "base_rewards": {
+        "crystals": 25,
+        "essences": [
+          {"element": "thunder", "amount": 3},
+          {"element": "wind", "amount": 3}
+        ]
+      }
+    },
+    {
+      "id": "payon_forest",
+      "name": "Forêt de Payon",
+      "zone_id": "payon",
+      "level_range": [10, 15],
+      "required_elements": ["earth"],
+      "capturable_species": ["wolf", "snake"],
+      "base_rewards": {
+        "crystals": 20,
+        "essences": [
+          {"element": "earth", "amount": 5}
+        ]
+      }
+    },
+    {
+      "id": "payon_cave",
+      "name": "Grotte de Payon",
+      "zone_id": "payon",
+      "level_range": [12, 18],
+      "required_elements": ["shadow", "ghost"],
+      "capturable_species": ["whisper", "nine_tail"],
+      "base_rewards": {
+        "crystals": 25,
+        "essences": [
+          {"element": "shadow", "amount": 3},
+          {"element": "ghost", "amount": 3}
+        ]
+      }
+    },
+    {
+      "id": "payon_temple",
+      "name": "Temple de Payon",
+      "zone_id": "payon",
+      "level_range": [15, 22],
+      "required_elements": ["holy", "water"],
+      "capturable_species": ["sohee", "whisper"],
+      "base_rewards": {
+        "crystals": 30,
+        "essences": [
+          {"element": "holy", "amount": 3},
+          {"element": "water", "amount": 3}
+        ]
+      }
+    },
+    {
+      "id": "payon_summit",
+      "name": "Sommet de Payon",
+      "zone_id": "payon",
+      "level_range": [18, 25],
+      "required_elements": ["wind", "fire"],
+      "capturable_species": ["nine_tail", "wolf"],
+      "base_rewards": {
+        "crystals": 35,
+        "essences": [
+          {"element": "wind", "amount": 4},
+          {"element": "fire", "amount": 4}
+        ]
+      }
+    },
+    {
+      "id": "geffen_field",
+      "name": "Champs de Geffen",
+      "zone_id": "geffen",
+      "level_range": [20, 25],
+      "required_elements": ["earth", "wind"],
+      "capturable_species": ["hunter_fly"],
+      "base_rewards": {
+        "crystals": 40,
+        "essences": [
+          {"element": "wind", "amount": 5}
+        ]
+      }
+    },
+    {
+      "id": "geffen_ruins",
+      "name": "Ruines de Geffen",
+      "zone_id": "geffen",
+      "level_range": [23, 30],
+      "required_elements": ["shadow", "ghost"],
+      "capturable_species": ["archer_skeleton", "marionette"],
+      "base_rewards": {
+        "crystals": 45,
+        "essences": [
+          {"element": "shadow", "amount": 5},
+          {"element": "ghost", "amount": 3}
+        ]
+      }
+    },
+    {
+      "id": "morroc_desert",
+      "name": "Désert de Morroc",
+      "zone_id": "morroc",
+      "level_range": [30, 35],
+      "required_elements": ["fire", "earth"],
+      "capturable_species": ["mummy"],
+      "base_rewards": {
+        "crystals": 50,
+        "essences": [
+          {"element": "fire", "amount": 5},
+          {"element": "earth", "amount": 5}
+        ]
+      }
+    },
+    {
+      "id": "morroc_oasis",
+      "name": "Oasis de Morroc",
+      "zone_id": "morroc",
+      "level_range": [32, 38],
+      "required_elements": ["water", "holy"],
+      "capturable_species": ["isis"],
+      "base_rewards": {
+        "crystals": 55,
+        "essences": [
+          {"element": "water", "amount": 5},
+          {"element": "holy", "amount": 3}
+        ]
+      }
+    },
+    {
+      "id": "morroc_pyramid_entrance",
+      "name": "Entrée des Pyramides",
+      "zone_id": "morroc",
+      "level_range": [35, 42],
+      "required_elements": ["shadow", "fire"],
+      "capturable_species": ["isis", "mummy", "minorous"],
+      "base_rewards": {
+        "crystals": 60,
+        "essences": [
+          {"element": "shadow", "amount": 6},
+          {"element": "fire", "amount": 4}
+        ]
+      }
+    }
+  ]
+}
