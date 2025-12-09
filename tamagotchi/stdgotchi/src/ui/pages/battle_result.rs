@@ -3,7 +3,7 @@
 //! NOTE: This is a placeholder for Phase 1 migration.
 //! Will be replaced with proper battle result screen in Phase 2.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::GameData;
 use crate::ui::page::Page;
 use embedded_graphics::{
@@ -52,7 +52,7 @@ impl BattleResultPage {
 }
 
 impl Page for BattleResultPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
         if full_redraw {
             // Clear screen
             let bg_color = if self.victory {

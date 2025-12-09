@@ -3,7 +3,7 @@
 //! Reusable sprite components for backgrounds and animated entities.
 
 use std::time::{Duration, Instant};
-use crate::display::{GifPlayer, Sh8601Driver, StaticImage};
+use crate::display::{GifPlayer, St7789pDriver, StaticImage};
 
 /// Global animation speed multiplier (higher = faster)
 /// 1.0 = normal speed, 2.0 = 2x speed, 0.5 = half speed
@@ -24,7 +24,7 @@ impl Background {
     }
 
     /// Draw the background
-    pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn draw(&self, display: &mut St7789pDriver) -> Result<(), Box<dyn std::error::Error>> {
         self.image.render(display, self.position)
     }
 
@@ -35,7 +35,7 @@ impl Background {
     /// * `region` - (x, y, width, height) region to render in screen coordinates
     pub fn draw_region(
         &self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         region: (i32, i32, u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.image.render_region(display, self.position, region)
@@ -157,7 +157,7 @@ impl AnimatedSprite {
     }
 
     /// Draw the current frame
-    pub fn draw(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn draw(&self, display: &mut St7789pDriver) -> Result<(), Box<dyn std::error::Error>> {
         self.player.render_frame_centered(display, self.current_frame, Some(self.position), self.flip_horizontal, self.center_positioned)
     }
 

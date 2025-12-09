@@ -2,7 +2,7 @@
 //!
 //! Displays when hero dies with 2-minute respawn timer
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::ui::page::Page;
 use crate::ui::sprite::AnimatedSprite;
 use embedded_graphics::{
@@ -70,7 +70,7 @@ impl DeathPage {
     /// Draw the death page
     pub fn draw_death_page(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         full_redraw: bool,
     ) -> Result<(), Box<dyn Error>> {
         if full_redraw || self.needs_full_redraw {
@@ -142,7 +142,7 @@ impl DeathPage {
     }
 
     /// Draw progress bar
-    fn draw_progress_bar(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+    fn draw_progress_bar(&self, display: &mut St7789pDriver) -> Result<(), Box<dyn Error>> {
         let bar_x = 35;
         let bar_y = 360;
         let bar_width = 300u32;
@@ -172,7 +172,7 @@ impl DeathPage {
     }
 
     /// Draw respawn button
-    fn draw_respawn_button(&self, display: &mut Sh8601Driver) -> Result<(), Box<dyn Error>> {
+    fn draw_respawn_button(&self, display: &mut St7789pDriver) -> Result<(), Box<dyn Error>> {
         let button_x = 90;
         let button_y = 390;
         let button_width = 190;
@@ -225,7 +225,7 @@ impl Page for DeathPage {
 
     fn draw(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         full_redraw: bool,
     ) -> Result<(), Box<dyn Error>> {
         self.draw_death_page(display, full_redraw)

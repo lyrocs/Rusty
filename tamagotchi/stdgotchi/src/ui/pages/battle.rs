@@ -4,7 +4,7 @@
 //! Will be replaced with new real-time combat system in Phase 2.
 
 use crate::assets::battle::load_enemy_sprites_embedded;
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::ecs::resources::SdCardWrapper;
 use crate::game::{Enemy as GameEnemy, GameData, KillTracker, BattleState};
 use crate::game::battle::DamageResult;
@@ -160,7 +160,7 @@ impl BattlePage {
 }
 
 impl Page for BattlePage {
-    fn draw(&mut self, display: &mut Sh8601Driver, _full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, _full_redraw: bool) -> Result<(), Box<dyn Error>> {
         // Always clear screen for real-time combat updates
         let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
         display.fill_solid(&bg, Rgb888::new(40, 50, 60))?;

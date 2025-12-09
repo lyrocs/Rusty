@@ -147,7 +147,7 @@ pub fn render_system(
 
 /// Draw loading screen
 fn draw_loading_screen(
-    display: &mut crate::display::Sh8601Driver,
+    display: &mut crate::display::St7789pDriver,
 ) -> Result<(), Box<dyn std::error::Error>> {
     display.clear(Rgb888::BLACK)?;
 

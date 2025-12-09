@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use std::collections::HashMap;
 
-use crate::display::{Ft3x68Driver, Sh8601Driver};
+use crate::display::{Cst816dDriver, St7789pDriver};
 use crate::game::{KillTracker, WorldMap};
 use crate::game::core::{Monster, Team, Player};
 use crate::game::data::TamerGameData;
@@ -23,13 +23,13 @@ use crate::ui::page::Page;
 use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, DungeonCombatPage, BetweenFloorsPage, DungeonDefeatPage, MonsterUpgradePage, InventoryPage, CollectionPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
-pub struct DisplayResource {
-    pub display: Sh8601Driver,
+pub struct DisplayResource<'a> {
+    pub display: St7789pDriver<'a>,
 }
 
 /// Touch controller resource - NonSend because it contains non-thread-safe I2C operations
 pub struct TouchResource {
-    pub touch: Ft3x68Driver,
+    pub touch: Cst816dDriver,
     pub last_touch_active: bool,
 }
 

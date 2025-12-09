@@ -5,14 +5,14 @@
 //! - Zone Detail (DÉTAIL ZONE)
 //! - Dungeon Selection
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::WorldMap;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{ascii::FONT_10X20, MonoTextStyle},
+    mono_font::{ascii::{FONT_6X10, FONT_7X13}, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::collections::HashMap;
@@ -101,7 +101,7 @@ impl MapPage {
         Self {
             world_map,
             touch_areas: Vec::new(),
-            background_color: Rgb888::new(20, 30, 40),
+            background_color: Rgb888::new(240, 240, 245), // Light theme
             needs_full_redraw: true,
             navigation_page: NavigationPage::ZoneList { scroll_offset: 0 },
             dungeon_progress: HashMap::new(),
@@ -175,7 +175,7 @@ impl MapPage {
     /// Draw Zone List page (CARTE DU MONDE - GDD 3.3.2)
     fn draw_zone_list(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         scroll_offset: usize,
     ) -> Result<(), Box<dyn Error>> {
         let zones = &self.zones;
@@ -184,95 +184,105 @@ impl MapPage {
 
         self.touch_areas.clear();
 
-        let margin = 15;
-        let color_yellow = Rgb888::new(255, 215, 0);
-        let color_gray = Rgb888::new(150, 150, 150);
-        let color_locked = Rgb888::new(80, 80, 80);
+        let margin = 10;
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let locked_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(150, 150, 150));
 
-        let text_style_header = MonoTextStyle::new(&FONT_10X20, color_yellow);
-        let text_style_name = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style_info = MonoTextStyle::new(&FONT_10X20, color_gray);
-        let text_style_locked = MonoTextStyle::new(&FONT_10X20, color_locked);
+        // Header with rounded background
+        let header_rect = Rectangle::new(Point::new(margin, 4), Size::new(220, 24));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 150, 200))
+            .build())
+            .draw(display)?;
 
-        // Header: "CARTE" with swipe hint
-        Text::new("CARTE", Point::new(margin, 30), text_style_header).draw(display)?;
-        Text::new("swipe >", Point::new(280, 30), text_style_info).draw(display)?;
+        Text::new("CARTE", Point::new(95, 20), title_style).draw(display)?;
 
         // Zone list
-        let zone_start_y = 55;
-        let zone_height = 75;
-        let zone_spacing = 8;
+        let zone_start_y = 32;
+        let zone_height = 58i32;
+        let zone_spacing = 4;
 
-        for (idx, zone) in zones.iter().skip(scroll_offset).take(5).enumerate() {
+        for (idx, zone) in zones.iter().skip(scroll_offset).take(4).enumerate() {
             let y = zone_start_y + (idx as i32 * (zone_height + zone_spacing));
-            let zone_rect_height = zone_height as u32;
 
             // Check if zone is unlocked
             let is_unlocked = zone.is_unlocked(&self.dungeon_progress);
 
-            // Zone background
-            let bg_color = if is_unlocked {
-                Rgb888::new(35, 45, 55)
+            // Zone card with rounded corners
+            let zone_rect = Rectangle::new(Point::new(margin, y), Size::new(220, zone_height as u32));
+            let zone_rounded = RoundedRectangle::new(zone_rect, CornerRadii::new(Size::new(8, 8)));
+
+            let (bg_color, border_color) = if is_unlocked {
+                (Rgb888::new(250, 250, 255), Rgb888::new(180, 185, 195))
             } else {
-                Rgb888::new(25, 30, 35)
+                (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
             };
-            Rectangle::new(Point::new(margin, y), Size::new(338, zone_rect_height))
-                .into_styled(PrimitiveStyle::with_fill(bg_color))
+
+            // Fill
+            zone_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(bg_color)
+                .build())
                 .draw(display)?;
 
             // Border
-            let border_color = if is_unlocked { color_gray } else { color_locked };
-            Rectangle::new(Point::new(margin, y), Size::new(338, zone_rect_height))
-                .into_styled(PrimitiveStyle::with_stroke(border_color, 1))
+            zone_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(border_color)
+                .stroke_width(1)
+                .build())
                 .draw(display)?;
 
             if is_unlocked {
-                // Zone name with arrow
-                let mut zone_name = heapless::String::<32>::new();
-                write!(zone_name, "> {}", zone.name).ok();
-                Text::new(&zone_name, Point::new(margin + 10, y + 22), text_style_name).draw(display)?;
+                // Zone name
+                let zone_name = if zone.name.len() > 18 { &zone.name[..18] } else { &zone.name };
+                let mut zone_text = heapless::String::<32>::new();
+                write!(zone_text, "> {}", zone_name).ok();
+                Text::new(&zone_text, Point::new(margin + 8, y + 14), text_style).draw(display)?;
 
                 // Count maps for this zone
                 let map_count = tamer_maps.iter().filter(|m| m.zone_id == zone.id).count();
 
                 // Maps info
                 let mut maps_text = heapless::String::<32>::new();
-                write!(maps_text, "{} maps (Niv.{}-{})", map_count, zone.level_range.0, zone.level_range.1).ok();
-                Text::new(&maps_text, Point::new(margin + 20, y + 42), text_style_info).draw(display)?;
+                write!(maps_text, "{} maps Lv.{}-{}", map_count, zone.level_range.0, zone.level_range.1).ok();
+                Text::new(&maps_text, Point::new(margin + 16, y + 28), dim_style).draw(display)?;
 
                 // Dungeon info with record
                 let record = self.dungeon_progress.get(&zone.dungeon_id).copied().unwrap_or(0);
-                let mut dungeon_text = heapless::String::<48>::new();
+                let mut dungeon_text = heapless::String::<32>::new();
                 if record > 0 {
-                    write!(dungeon_text, "Donjon: {} - Record: Et.{}", zone.dungeon_id, record).ok();
+                    write!(dungeon_text, "Donjon Rec:Et.{}", record).ok();
                 } else {
                     write!(dungeon_text, "Donjon: {}", zone.dungeon_id).ok();
                 }
-                Text::new(&dungeon_text, Point::new(margin + 20, y + 62), text_style_info).draw(display)?;
+                Text::new(&dungeon_text, Point::new(margin + 16, y + 42), dim_style).draw(display)?;
 
                 // Add touch area
                 self.touch_areas.push(TouchArea::new(
-                    margin, y, 338, zone_rect_height,
+                    margin, y, 220, zone_height as u32,
                     TouchAreaAction::SelectZone(zone.id.clone()),
                 ));
             } else {
                 // Locked zone
-                let mut zone_name = heapless::String::<32>::new();
-                write!(zone_name, "> {} [LOCKED]", zone.name).ok();
-                Text::new(&zone_name, Point::new(margin + 10, y + 22), text_style_locked).draw(display)?;
+                let zone_name = if zone.name.len() > 12 { &zone.name[..12] } else { &zone.name };
+                let mut zone_text = heapless::String::<32>::new();
+                write!(zone_text, "{} [LOCKED]", zone_name).ok();
+                Text::new(&zone_text, Point::new(margin + 8, y + 18), locked_style).draw(display)?;
 
                 // Unlock condition
                 if let Some(crate::game::core::UnlockCondition::DungeonFloor { dungeon_id, floor }) = &zone.unlock_condition {
-                    let mut unlock_text = heapless::String::<48>::new();
-                    write!(unlock_text, "Debloquer: {} Et.{}", dungeon_id, floor).ok();
-                    Text::new(&unlock_text, Point::new(margin + 20, y + 45), text_style_locked).draw(display)?;
+                    let mut unlock_text = heapless::String::<32>::new();
+                    write!(unlock_text, "Need {} Et.{}", dungeon_id, floor).ok();
+                    Text::new(&unlock_text, Point::new(margin + 16, y + 36), locked_style).draw(display)?;
                 }
             }
         }
 
         // Scroll indicator
-        if zones.len() > 5 {
-            Text::new("scroll", Point::new(160, 430), text_style_info).draw(display)?;
+        if zones.len() > 4 {
+            Text::new("swipe to scroll", Point::new(75, 278), dim_style).draw(display)?;
         }
 
         Ok(())
@@ -281,7 +291,7 @@ impl MapPage {
     /// Draw Zone Detail page (DÉTAIL ZONE - GDD 3.3.3)
     fn draw_zone_detail(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         zone_id: &str,
         scroll_offset: usize,
     ) -> Result<(), Box<dyn Error>> {
@@ -291,25 +301,29 @@ impl MapPage {
 
         self.touch_areas.clear();
 
-        let margin = 15;
-        let color_yellow = Rgb888::new(255, 215, 0);
-        let color_gray = Rgb888::new(150, 150, 150);
-
-        let text_style_header = MonoTextStyle::new(&FONT_10X20, color_yellow);
-        let text_style_section = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style_info = MonoTextStyle::new(&FONT_10X20, color_gray);
+        let margin = 10;
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
 
         // Find the zone
         let zone = zones.iter().find(|z| z.id == zone_id);
         let zone_name = zone.map(|z| z.name.as_str()).unwrap_or("Unknown");
+        let zone_name = if zone_name.len() > 16 { &zone_name[..16] } else { zone_name };
         let dungeon_id = zone.map(|z| z.dungeon_id.as_str()).unwrap_or("");
 
-        // Header with zone name and swipe hint
-        Text::new(zone_name, Point::new(margin, 30), text_style_header).draw(display)?;
-        Text::new("swipe >", Point::new(280, 30), text_style_info).draw(display)?;
+        // Header with zone name
+        let header_rect = Rectangle::new(Point::new(margin, 4), Size::new(220, 24));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 150, 200))
+            .build())
+            .draw(display)?;
+
+        Text::new(zone_name, Point::new(margin + 8, 20), title_style).draw(display)?;
 
         // EXPEDITIONS section
-        Text::new("EXPEDITIONS", Point::new(margin, 60), text_style_section).draw(display)?;
+        Text::new("EXPEDITIONS", Point::new(margin, 40), dim_style).draw(display)?;
 
         // Get maps for this zone
         let zone_maps: Vec<&crate::game::core::TamerMap> = tamer_maps
@@ -317,86 +331,94 @@ impl MapPage {
             .filter(|m| m.zone_id == zone_id)
             .collect();
 
-        let map_start_y = 80;
-        let map_height = 60;
-        let map_spacing = 5;
+        let map_start_y = 48;
+        let map_height = 42i32;
+        let map_spacing = 4;
 
-        for (idx, map) in zone_maps.iter().skip(scroll_offset).take(4).enumerate() {
+        for (idx, map) in zone_maps.iter().skip(scroll_offset).take(3).enumerate() {
             let y = map_start_y + (idx as i32 * (map_height + map_spacing));
 
-            // Map background
-            Rectangle::new(Point::new(margin, y), Size::new(338, map_height as u32))
-                .into_styled(PrimitiveStyle::with_fill(Rgb888::new(35, 45, 55)))
+            // Map card with rounded corners
+            let map_rect = Rectangle::new(Point::new(margin, y), Size::new(220, map_height as u32));
+            let map_rounded = RoundedRectangle::new(map_rect, CornerRadii::new(Size::new(6, 6)));
+
+            map_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(250, 250, 255))
+                .build())
+                .draw(display)?;
+            map_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(180, 185, 195))
+                .stroke_width(1)
+                .build())
                 .draw(display)?;
 
-            // Map name with arrow
-            let mut map_name = heapless::String::<32>::new();
-            write!(map_name, "> {}", map.name).ok();
-            Text::new(&map_name, Point::new(margin + 10, y + 20), text_style_section).draw(display)?;
+            // Map name
+            let map_name = if map.name.len() > 20 { &map.name[..20] } else { &map.name };
+            let mut name_text = heapless::String::<32>::new();
+            write!(name_text, "> {}", map_name).ok();
+            Text::new(&name_text, Point::new(margin + 8, y + 14), text_style).draw(display)?;
 
-            // Level range
-            let mut info_text = heapless::String::<48>::new();
-            write!(info_text, "Niv.{}-{}", map.level_range.0, map.level_range.1).ok();
-            Text::new(&info_text, Point::new(margin + 20, y + 38), text_style_info).draw(display)?;
+            // Level range and required elements
+            let mut info_text = heapless::String::<32>::new();
+            write!(info_text, "Lv.{}-{}", map.level_range.0, map.level_range.1).ok();
+            Text::new(&info_text, Point::new(margin + 16, y + 28), dim_style).draw(display)?;
 
-            // Required elements on separate line
-            let mut elem_x = margin + 20;
+            // Required elements
+            let mut elem_x = margin + 70;
             for elem in &map.required_elements {
                 let elem_icon = Self::element_icon(elem);
                 let elem_color = Self::element_color(elem);
-                let elem_style = MonoTextStyle::new(&FONT_10X20, elem_color);
-                Text::new(elem_icon, Point::new(elem_x, y + 55), elem_style).draw(display)?;
-                elem_x += 18;
-            }
-            if !map.required_elements.is_empty() {
-                Text::new("requis", Point::new(elem_x + 5, y + 55), text_style_info).draw(display)?;
+                let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
+                Text::new(elem_icon, Point::new(elem_x, y + 28), elem_style).draw(display)?;
+                elem_x += 10;
             }
 
             // Add touch area
             self.touch_areas.push(TouchArea::new(
-                margin, y, 338, map_height as u32,
+                margin, y, 220, map_height as u32,
                 TouchAreaAction::SelectMap(map.id.clone()),
             ));
         }
 
-        // Separator
-        let separator_y = map_start_y + (zone_maps.len().min(4) as i32 * (map_height + map_spacing)) + 10;
-        Rectangle::new(Point::new(margin, separator_y), Size::new(338, 2))
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(60, 70, 80)))
-            .draw(display)?;
-
         // DONJON section
-        let dungeon_section_y = separator_y + 20;
-        Text::new("DONJON", Point::new(margin, dungeon_section_y), text_style_section).draw(display)?;
+        let dungeon_section_y = map_start_y + (zone_maps.len().min(3) as i32 * (map_height + map_spacing)) + 8;
+        Text::new("DONJON", Point::new(margin, dungeon_section_y), dim_style).draw(display)?;
 
         // Dungeon entry button
-        let dungeon_y = dungeon_section_y + 25;
-        let dungeon_height = 55u32;
+        let dungeon_y = dungeon_section_y + 8;
+        let dungeon_height = 40u32;
 
-        Rectangle::new(Point::new(margin, dungeon_y), Size::new(338, dungeon_height))
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(100, 50, 50)))
+        let dungeon_rect = Rectangle::new(Point::new(margin, dungeon_y), Size::new(220, dungeon_height));
+        let dungeon_rounded = RoundedRectangle::new(dungeon_rect, CornerRadii::new(Size::new(8, 8)));
+
+        dungeon_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(240, 200, 200))
+            .build())
             .draw(display)?;
-        Rectangle::new(Point::new(margin, dungeon_y), Size::new(338, dungeon_height))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(200, 100, 100), 2))
+        dungeon_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(200, 120, 120))
+            .stroke_width(2)
+            .build())
             .draw(display)?;
 
         // Dungeon name
+        let dungeon_name = if dungeon_id.len() > 12 { &dungeon_id[..12] } else { dungeon_id };
         let mut dungeon_text = heapless::String::<32>::new();
-        write!(dungeon_text, "Donjon: {}", dungeon_id).ok();
-        Text::new(&dungeon_text, Point::new(margin + 20, dungeon_y + 25), text_style_section).draw(display)?;
+        write!(dungeon_text, "Donjon: {}", dungeon_name).ok();
+        Text::new(&dungeon_text, Point::new(margin + 12, dungeon_y + 16), text_style).draw(display)?;
 
         // Record
         let record = self.dungeon_progress.get(dungeon_id).copied().unwrap_or(0);
         let mut record_text = heapless::String::<32>::new();
         if record > 0 {
-            write!(record_text, "Record: Etage {}", record).ok();
+            write!(record_text, "Record: Et.{}", record).ok();
         } else {
             write!(record_text, "Non explore").ok();
         }
-        Text::new(&record_text, Point::new(margin + 20, dungeon_y + 45), text_style_info).draw(display)?;
+        Text::new(&record_text, Point::new(margin + 12, dungeon_y + 30), dim_style).draw(display)?;
 
         self.touch_areas.push(TouchArea::new(
-            margin, dungeon_y, 338, dungeon_height,
+            margin, dungeon_y, 220, dungeon_height,
             TouchAreaAction::EnterDungeon(dungeon_id.to_string()),
         ));
 
@@ -406,7 +428,7 @@ impl MapPage {
     /// Draw Dungeon Selection page (GDD 3.3.8)
     fn draw_dungeon_select(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         zone_id: &str,
     ) -> Result<(), Box<dyn Error>> {
         let zones = &self.zones;
@@ -414,87 +436,101 @@ impl MapPage {
 
         self.touch_areas.clear();
 
-        let margin = 15;
-        let color_yellow = Rgb888::new(255, 215, 0);
-        let color_gray = Rgb888::new(150, 150, 150);
-
-        let text_style_header = MonoTextStyle::new(&FONT_10X20, color_yellow);
-        let text_style_section = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style_info = MonoTextStyle::new(&FONT_10X20, color_gray);
+        let margin = 10;
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let locked_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(150, 150, 150));
 
         // Find zone
         let zone = zones.iter().find(|z| z.id == zone_id);
         let dungeon_id = zone.map(|z| z.dungeon_id.as_str()).unwrap_or("Unknown");
+        let dungeon_name = if dungeon_id.len() > 12 { &dungeon_id[..12] } else { dungeon_id };
         let record = self.dungeon_progress.get(dungeon_id).copied().unwrap_or(0);
 
         // Header
+        let header_rect = Rectangle::new(Point::new(margin, 4), Size::new(220, 24));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(200, 120, 120))
+            .build())
+            .draw(display)?;
+
         let mut header = heapless::String::<32>::new();
-        write!(header, "DONJON: {}", dungeon_id).ok();
-        Text::new(&header, Point::new(margin, 30), text_style_header).draw(display)?;
+        write!(header, "DONJON: {}", dungeon_name).ok();
+        Text::new(&header, Point::new(margin + 8, 20), title_style).draw(display)?;
 
         // Record display
         let mut record_text = heapless::String::<32>::new();
         write!(record_text, "Record: Etage {}", record).ok();
-        Text::new(&record_text, Point::new(margin, 55), text_style_info).draw(display)?;
+        Text::new(&record_text, Point::new(margin, 38), dim_style).draw(display)?;
 
         // Checkpoint selection
-        Text::new("Commencer depuis:", Point::new(margin, 90), text_style_section).draw(display)?;
+        Text::new("Commencer depuis:", Point::new(margin, 54), text_style).draw(display)?;
 
         let checkpoints = [1, 10, 20, 30, 40, 50];
-        let checkpoint_y_start = 115;
-        let checkpoint_height = 40;
-        let checkpoint_spacing = 8;
+        let checkpoint_y_start = 62;
+        let checkpoint_height = 26i32;
+        let checkpoint_spacing = 4;
 
         for (idx, &checkpoint) in checkpoints.iter().enumerate() {
             let y = checkpoint_y_start + (idx as i32 * (checkpoint_height + checkpoint_spacing));
             let is_unlocked = checkpoint <= record || checkpoint == 1;
 
-            let bg_color = if is_unlocked {
+            let cp_rect = Rectangle::new(Point::new(margin, y), Size::new(220, checkpoint_height as u32));
+            let cp_rounded = RoundedRectangle::new(cp_rect, CornerRadii::new(Size::new(6, 6)));
+
+            let (bg_color, border_color) = if is_unlocked {
                 if checkpoint == 1 {
-                    Rgb888::new(60, 80, 60) // Selected/default
+                    (Rgb888::new(200, 230, 200), Rgb888::new(100, 180, 100)) // Selected/default
                 } else {
-                    Rgb888::new(40, 50, 60)
+                    (Rgb888::new(250, 250, 255), Rgb888::new(180, 185, 195))
                 }
             } else {
-                Rgb888::new(30, 35, 40)
+                (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
             };
 
-            Rectangle::new(Point::new(margin, y), Size::new(338, checkpoint_height as u32))
-                .into_styled(PrimitiveStyle::with_fill(bg_color))
+            cp_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(bg_color)
+                .build())
+                .draw(display)?;
+            cp_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(border_color)
+                .stroke_width(1)
+                .build())
                 .draw(display)?;
 
             let mut cp_text = heapless::String::<32>::new();
             if is_unlocked {
-                let stars = match checkpoint {
-                    1 => "***",
-                    10 => "** ",
-                    20 => "***",
-                    30 => "***",
-                    _ => "***",
-                };
-                write!(cp_text, "> Etage {}   {}", checkpoint, stars).ok();
-                Text::new(&cp_text, Point::new(margin + 15, y + 27), text_style_section).draw(display)?;
+                write!(cp_text, "> Etage {}", checkpoint).ok();
+                Text::new(&cp_text, Point::new(margin + 12, y + 17), text_style).draw(display)?;
             } else {
-                write!(cp_text, "  Etage {}   [LOCKED]", checkpoint).ok();
-                Text::new(&cp_text, Point::new(margin + 15, y + 27), text_style_info).draw(display)?;
+                write!(cp_text, "Etage {} [LOCKED]", checkpoint).ok();
+                Text::new(&cp_text, Point::new(margin + 12, y + 17), locked_style).draw(display)?;
             }
         }
 
         // ENTER button at bottom
-        let enter_y = 395;
-        let enter_height = 45u32;
+        let enter_y = 248;
+        let enter_height = 30u32;
 
-        Rectangle::new(Point::new(margin, enter_y), Size::new(338, enter_height))
-            .into_styled(PrimitiveStyle::with_fill(Rgb888::new(150, 60, 60)))
+        let enter_rect = Rectangle::new(Point::new(margin, enter_y), Size::new(220, enter_height));
+        let enter_rounded = RoundedRectangle::new(enter_rect, CornerRadii::new(Size::new(8, 8)));
+
+        enter_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(240, 150, 150))
+            .build())
             .draw(display)?;
-        Rectangle::new(Point::new(margin, enter_y), Size::new(338, enter_height))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(255, 100, 100), 2))
+        enter_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(200, 100, 100))
+            .stroke_width(2)
+            .build())
             .draw(display)?;
 
-        Text::new("ENTRER", Point::new(150, enter_y + 30), text_style_header).draw(display)?;
+        Text::new("ENTRER", Point::new(95, enter_y + 20), title_style).draw(display)?;
 
         self.touch_areas.push(TouchArea::new(
-            margin, enter_y, 338, enter_height,
+            margin, enter_y, 220, enter_height,
             TouchAreaAction::StartDungeonCombat,
         ));
 
@@ -592,7 +628,7 @@ impl Page for MapPage {
 
     fn draw(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         full_redraw: bool,
     ) -> Result<(), Box<dyn Error>> {
         if full_redraw || self.needs_full_redraw {

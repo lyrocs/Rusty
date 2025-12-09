@@ -3,15 +3,15 @@
 //! Real-time combat UI for dungeon battles.
 //! Displays enemy, player monster, bars, and action buttons.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::core::Element;
 use crate::game::systems::combat::{CombatState, CombatEvent};
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -187,288 +187,241 @@ impl DungeonCombatPage {
 }
 
 impl Page for DungeonCombatPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
 
         if full_redraw {
-            // Clear screen
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(15, 18, 25))?;
+            // Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        // ═══════════════════════════════════════
-        // HEADER: Dungeon name, floor, wave, crystals
-        // ═══════════════════════════════════════
-        let header_text = format!(
-            "{} Fl.{}",
-            self.dungeon_name,
-            self.combat_state.current_floor,
-        );
-        Text::new(&header_text, Point::new(15, 25), dim_style).draw(display)?;
+        // Header card
+        let header_rect = Rectangle::new(Point::new(5, 2), Size::new(230, 20));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(4, 4)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(180, 140, 140))
+            .build())
+            .draw(display)?;
 
-        // Wave indicator (show wave N/M)
-        let wave_text = format!(
-            "Wave {}/{}  +{}",
-            self.combat_state.current_wave,
-            self.combat_state.total_waves,
-            self.combat_state.crystals_earned,
-        );
-        Text::new(&wave_text, Point::new(200, 25), dim_style).draw(display)?;
+        let dungeon_name = if self.dungeon_name.len() > 10 { &self.dungeon_name[..10] } else { &self.dungeon_name };
+        let header_text = format!("{} Fl.{}", dungeon_name, self.combat_state.current_floor);
+        Text::new(&header_text, Point::new(10, 16), text_style).draw(display)?;
 
-        // ═══════════════════════════════════════
-        // ENEMY SECTION
-        // ═══════════════════════════════════════
+        let wave_text = format!("W{}/{} +{}", self.combat_state.current_wave, self.combat_state.total_waves, self.combat_state.crystals_earned);
+        Text::new(&wave_text, Point::new(160, 16), text_style).draw(display)?;
+
+        // Enemy section card
         let enemy = &self.combat_state.enemy;
-        let enemy_y = 50;
+        let enemy_y = 26;
 
-        // Enemy name and element
+        let enemy_card = Rectangle::new(Point::new(5, enemy_y), Size::new(230, 50));
+        let enemy_rounded = RoundedRectangle::new(enemy_card, CornerRadii::new(Size::new(6, 6)));
+        enemy_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(255, 235, 235))
+            .build())
+            .draw(display)?;
+        enemy_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(200, 150, 150))
+            .stroke_width(1)
+            .build())
+            .draw(display)?;
+
+        // Enemy name
         let elem_color = Self::element_color(enemy.element);
-        let elem_style = MonoTextStyle::new(&FONT_9X15, elem_color);
-        let enemy_info = format!(
-            "{} {} Lv.{}",
-            Self::element_char(enemy.element),
-            enemy.name,
-            enemy.level
-        );
-        Text::new(&enemy_info, Point::new(15, enemy_y + 20), elem_style).draw(display)?;
+        let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
+        let enemy_name = if enemy.name.len() > 12 { &enemy.name[..12] } else { &enemy.name };
+        let enemy_info = format!("{} {} Lv.{}", Self::element_char(enemy.element), enemy_name, enemy.level);
+        Text::new(&enemy_info, Point::new(12, enemy_y + 14), elem_style).draw(display)?;
 
         // Enemy HP bar
-        let hp_bar_x = 15;
-        let hp_bar_y = enemy_y + 30;
-        let bar_width = 250u32;
-        let bar_height = 15u32;
+        let hp_bar_x = 12;
+        let hp_bar_y = enemy_y + 20;
+        let bar_width = 150u32;
+        let bar_height = 10u32;
 
-        // HP bar background
         let hp_bg = Rectangle::new(Point::new(hp_bar_x, hp_bar_y), Size::new(bar_width, bar_height));
-        display.fill_solid(&hp_bg, Rgb888::new(60, 30, 30))?;
+        display.fill_solid(&hp_bg, Rgb888::new(200, 180, 180))?;
 
-        // HP bar fill
         let hp_percent = enemy.hp_current as f32 / enemy.hp_max as f32;
         let hp_fill_width = ((bar_width as f32) * hp_percent) as u32;
         if hp_fill_width > 0 {
             let hp_fill = Rectangle::new(Point::new(hp_bar_x, hp_bar_y), Size::new(hp_fill_width, bar_height));
-            display.fill_solid(&hp_fill, Rgb888::new(200, 60, 60))?;
+            display.fill_solid(&hp_fill, Rgb888::new(220, 80, 80))?;
         }
 
-        // HP text
         let hp_text = format!("{}/{}", enemy.hp_current, enemy.hp_max);
-        Text::new(&hp_text, Point::new(hp_bar_x + bar_width as i32 + 10, hp_bar_y + 12), dim_style).draw(display)?;
+        Text::new(&hp_text, Point::new(hp_bar_x + bar_width as i32 + 5, hp_bar_y + 8), dim_style).draw(display)?;
 
         // Enemy SKL bar
-        let skl_bar_y = enemy_y + 50;
-        let skl_bg = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(150, 8));
-        display.fill_solid(&skl_bg, Rgb888::new(40, 40, 60))?;
+        let skl_bar_y = enemy_y + 34;
+        let skl_bg = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(100, 6));
+        display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
 
-        let skl_fill_width = (150.0 * self.combat_state.enemy_skl_bar) as u32;
+        let skl_fill_width = (100.0 * self.combat_state.enemy_skl_bar) as u32;
         if skl_fill_width > 0 {
-            let skl_fill = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(skl_fill_width, 8));
+            let skl_fill = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(skl_fill_width, 6));
             display.fill_solid(&skl_fill, Rgb888::new(150, 100, 200))?;
         }
-        Text::new("SKL", Point::new(hp_bar_x + 155, skl_bar_y + 7), dim_style).draw(display)?;
+        Text::new("SKL", Point::new(hp_bar_x + 105, skl_bar_y + 5), dim_style).draw(display)?;
 
-        // Enemy aura indicator
+        // Enemy aura
         if let Some((aura_elem, _)) = self.combat_state.enemy_aura {
             let aura_color = Self::element_color(aura_elem);
-            let aura_style = MonoTextStyle::new(&FONT_9X15, aura_color);
-            Text::new(&format!("[{}]", Self::element_char(aura_elem)), Point::new(280, enemy_y + 20), aura_style).draw(display)?;
+            let aura_style = MonoTextStyle::new(&FONT_6X10, aura_color);
+            Text::new(&format!("[{}]", Self::element_char(aura_elem)), Point::new(200, enemy_y + 14), aura_style).draw(display)?;
         }
 
-        // ═══════════════════════════════════════
-        // PLAYER SECTION
-        // ═══════════════════════════════════════
-        let player_y = 180;
+        // Player section card
+        let player_y = 80;
 
         if let Some(monster) = self.combat_state.active_monster() {
-            // Player monster name and element
+            let player_card = Rectangle::new(Point::new(5, player_y), Size::new(230, 58));
+            let player_rounded = RoundedRectangle::new(player_card, CornerRadii::new(Size::new(6, 6)));
+            player_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(235, 255, 235))
+                .build())
+                .draw(display)?;
+            player_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(150, 200, 150))
+                .stroke_width(1)
+                .build())
+                .draw(display)?;
+
             let elem_color = Self::element_color(monster.element);
-            let elem_style = MonoTextStyle::new(&FONT_9X15, elem_color);
-            let player_info = format!(
-                "{} {} Lv.{}",
-                Self::element_char(monster.element),
-                monster.name,
-                monster.level
-            );
-            Text::new(&player_info, Point::new(15, player_y + 20), elem_style).draw(display)?;
+            let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
+            let monster_name = if monster.name.len() > 12 { &monster.name[..12] } else { &monster.name };
+            let player_info = format!("{} {} Lv.{}", Self::element_char(monster.element), monster_name, monster.level);
+            Text::new(&player_info, Point::new(12, player_y + 14), elem_style).draw(display)?;
 
             // Player HP bar
-            let hp_bar_y = player_y + 30;
+            let hp_bar_y = player_y + 20;
             let hp_bg = Rectangle::new(Point::new(hp_bar_x, hp_bar_y), Size::new(bar_width, bar_height));
-            display.fill_solid(&hp_bg, Rgb888::new(30, 60, 30))?;
+            display.fill_solid(&hp_bg, Rgb888::new(180, 200, 180))?;
 
             let hp_percent = monster.hp_current as f32 / monster.hp_max as f32;
             let hp_fill_width = ((bar_width as f32) * hp_percent) as u32;
             if hp_fill_width > 0 {
                 let hp_fill = Rectangle::new(Point::new(hp_bar_x, hp_bar_y), Size::new(hp_fill_width, bar_height));
-                display.fill_solid(&hp_fill, Rgb888::new(60, 200, 60))?;
+                display.fill_solid(&hp_fill, Rgb888::new(80, 200, 80))?;
             }
 
             let hp_text = format!("{}/{}", monster.hp_current, monster.hp_max);
-            Text::new(&hp_text, Point::new(hp_bar_x + bar_width as i32 + 10, hp_bar_y + 12), dim_style).draw(display)?;
+            Text::new(&hp_text, Point::new(hp_bar_x + bar_width as i32 + 5, hp_bar_y + 8), dim_style).draw(display)?;
 
-            // Player ATK bar
-            let atk_bar_y = player_y + 50;
-            let atk_bg = Rectangle::new(Point::new(hp_bar_x, atk_bar_y), Size::new(200, 10));
-            display.fill_solid(&atk_bg, Rgb888::new(40, 40, 40))?;
+            // ATK bar
+            let atk_bar_y = player_y + 34;
+            let atk_bg = Rectangle::new(Point::new(hp_bar_x, atk_bar_y), Size::new(130, 6));
+            display.fill_solid(&atk_bg, Rgb888::new(200, 200, 200))?;
 
-            let atk_fill_width = (200.0 * self.combat_state.player_atk_bar) as u32;
+            let atk_fill_width = (130.0 * self.combat_state.player_atk_bar) as u32;
             if atk_fill_width > 0 {
-                let atk_fill = Rectangle::new(Point::new(hp_bar_x, atk_bar_y), Size::new(atk_fill_width, 10));
-                display.fill_solid(&atk_fill, Rgb888::new(255, 200, 100))?;
+                let atk_fill = Rectangle::new(Point::new(hp_bar_x, atk_bar_y), Size::new(atk_fill_width, 6));
+                display.fill_solid(&atk_fill, Rgb888::new(255, 180, 80))?;
             }
-            Text::new("ATK", Point::new(hp_bar_x + 205, atk_bar_y + 9), dim_style).draw(display)?;
+            Text::new("ATK", Point::new(hp_bar_x + 135, atk_bar_y + 5), dim_style).draw(display)?;
 
-            // Player SKL bar
-            let skl_bar_y = player_y + 65;
-            let skl_bg = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(200, 10));
-            display.fill_solid(&skl_bg, Rgb888::new(40, 40, 60))?;
+            // SKL bar
+            let skl_bar_y = player_y + 44;
+            let skl_bg = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(130, 6));
+            display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
 
-            let skl_fill_width = (200.0 * self.combat_state.player_skl_bar) as u32;
+            let skl_fill_width = (130.0 * self.combat_state.player_skl_bar) as u32;
             if skl_fill_width > 0 {
                 let skl_color = if self.combat_state.player_skl_bar >= 1.0 {
-                    Rgb888::new(255, 200, 255) // Ready to use
+                    Rgb888::new(220, 150, 255)
                 } else {
                     Rgb888::new(150, 100, 200)
                 };
-                let skl_fill = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(skl_fill_width, 10));
+                let skl_fill = Rectangle::new(Point::new(hp_bar_x, skl_bar_y), Size::new(skl_fill_width, 6));
                 display.fill_solid(&skl_fill, skl_color)?;
             }
-            Text::new("SKL", Point::new(hp_bar_x + 205, skl_bar_y + 9), dim_style).draw(display)?;
+            Text::new("SKL", Point::new(hp_bar_x + 135, skl_bar_y + 5), dim_style).draw(display)?;
         }
 
-        // ═══════════════════════════════════════
-        // ACTION BUTTONS
-        // ═══════════════════════════════════════
-        let button_y = 320;
-        let button_width = 100u32;
-        let button_height = 40u32;
+        // Swap buttons
+        let button_y = 145;
+        let button_width = 70u32;
+        let button_height = 28u32;
 
-        // Swap buttons for team monsters
         for (i, monster) in self.combat_state.player_monsters.iter().take(3).enumerate() {
-            let x = 15 + (i as i32 * 115);
+            let x = 8 + (i as i32 * 76);
             let is_active = i == self.combat_state.active_index as usize;
             let is_dead = !monster.is_alive();
             let on_cooldown = self.combat_state.swap_cooldowns[i] > 0.0;
 
-            let bg_color = if is_active {
-                Rgb888::new(60, 100, 60) // Active
+            let (bg_color, border_color) = if is_active {
+                (Rgb888::new(180, 230, 180), Rgb888::new(100, 180, 100))
             } else if is_dead {
-                Rgb888::new(50, 30, 30) // Dead
+                (Rgb888::new(230, 200, 200), Rgb888::new(180, 140, 140))
             } else if on_cooldown {
-                Rgb888::new(50, 50, 50) // Cooldown
+                (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
             } else {
-                Rgb888::new(40, 60, 80) // Available
+                (Rgb888::new(200, 220, 240), Rgb888::new(140, 170, 200))
             };
 
             let rect = Rectangle::new(Point::new(x, button_y), Size::new(button_width, button_height));
-            display.fill_solid(&rect, bg_color)?;
+            let rounded = RoundedRectangle::new(rect, CornerRadii::new(Size::new(6, 6)));
+            rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(bg_color).build()).draw(display)?;
+            rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(border_color).stroke_width(1).build()).draw(display)?;
 
-            // Element icon and name
             let elem_color = Self::element_color(monster.element);
-            let elem_style = MonoTextStyle::new(&FONT_9X15, elem_color);
-            Text::new(&Self::element_char(monster.element).to_string(), Point::new(x + 10, button_y + 25), elem_style).draw(display)?;
+            let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
+            Text::new(&Self::element_char(monster.element).to_string(), Point::new(x + 6, button_y + 18), elem_style).draw(display)?;
 
-            // Status text
-            let status = if is_active {
-                "ACTIVE"
-            } else if is_dead {
-                "DEAD"
-            } else if on_cooldown {
-                &format!("{:.0}s", self.combat_state.swap_cooldowns[i])
-            } else {
-                "SWAP"
-            };
-            Text::new(status, Point::new(x + 30, button_y + 25), dim_style).draw(display)?;
+            let status = if is_active { "ACT" } else if is_dead { "KO" } else if on_cooldown { &format!("{:.0}s", self.combat_state.swap_cooldowns[i]) } else { "SWAP" };
+            Text::new(status, Point::new(x + 20, button_y + 18), dim_style).draw(display)?;
 
-            if !is_active && !is_dead {
-                self.swap_button_areas[i] = Some(rect);
-            } else {
-                self.swap_button_areas[i] = None;
-            }
+            if !is_active && !is_dead { self.swap_button_areas[i] = Some(rect); } else { self.swap_button_areas[i] = None; }
         }
 
         // Skill button
-        let skill_x = 15;
-        let skill_y = 380;
+        let skill_y = 180;
         let skill_ready = self.combat_state.player_skl_bar >= 1.0;
 
-        let skill_color = if skill_ready {
-            Rgb888::new(100, 60, 150) // Ready
+        let (skill_bg, skill_border) = if skill_ready {
+            (Rgb888::new(220, 200, 240), Rgb888::new(150, 100, 200))
         } else {
-            Rgb888::new(40, 40, 50) // Not ready
+            (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
         };
 
-        let skill_rect = Rectangle::new(Point::new(skill_x, skill_y), Size::new(200, 45));
-        display.fill_solid(&skill_rect, skill_color)?;
+        let skill_rect = Rectangle::new(Point::new(8, skill_y), Size::new(224, 28));
+        let skill_rounded = RoundedRectangle::new(skill_rect, CornerRadii::new(Size::new(6, 6)));
+        skill_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(skill_bg).build()).draw(display)?;
+        skill_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(skill_border).stroke_width(2).build()).draw(display)?;
 
         let skill_text = if let Some(monster) = self.combat_state.active_monster() {
-            if skill_ready {
-                format!("SKILL: {}", monster.skill.name)
-            } else {
-                format!("{} ({}%)", monster.skill.name, (self.combat_state.player_skl_bar * 100.0) as u8)
-            }
-        } else {
-            "NO SKILL".to_string()
-        };
-        Text::new(&skill_text, Point::new(skill_x + 10, skill_y + 28), text_style).draw(display)?;
+            let skill_name = if monster.skill.name.len() > 14 { &monster.skill.name[..14] } else { &monster.skill.name };
+            if skill_ready { format!("SKILL: {}", skill_name) } else { format!("{} ({}%)", skill_name, (self.combat_state.player_skl_bar * 100.0) as u8) }
+        } else { "NO SKILL".to_string() };
+        Text::new(&skill_text, Point::new(16, skill_y + 18), text_style).draw(display)?;
 
         self.skill_button_area = Some(skill_rect);
 
-        // Draw damage/heal popups
+        // Damage popups
         for popup in &self.damage_popups {
-            let popup_color = if popup.is_heal {
-                Rgb888::new(100, 255, 100) // Green for heal
-            } else if popup.is_player_damage {
-                Rgb888::WHITE // White for damage to enemy
-            } else {
-                Rgb888::new(255, 100, 100) // Red for damage to player
-            };
-
-            let popup_style = MonoTextStyle::new(&FONT_10X20, popup_color);
-            let popup_x = if popup.is_player_damage { 280 } else { 200 }; // Enemy side vs player side
-            let popup_y = if popup.is_player_damage {
-                (80.0 - popup.y_offset) as i32 // Enemy area
-            } else {
-                (220.0 - popup.y_offset) as i32 // Player area
-            };
-
-            let popup_text = if popup.is_heal {
-                format!("+{}", popup.damage)
-            } else {
-                format!("-{}", popup.damage)
-            };
+            let popup_color = if popup.is_heal { Rgb888::new(50, 200, 50) } else if popup.is_player_damage { Rgb888::new(50, 50, 50) } else { Rgb888::new(220, 80, 80) };
+            let popup_style = MonoTextStyle::new(&FONT_7X13, popup_color);
+            let popup_x = if popup.is_player_damage { 180 } else { 140 };
+            let popup_y = if popup.is_player_damage { (55.0 - popup.y_offset) as i32 } else { (115.0 - popup.y_offset) as i32 };
+            let popup_text = if popup.is_heal { format!("+{}", popup.damage) } else { format!("-{}", popup.damage) };
             Text::new(&popup_text, Point::new(popup_x, popup_y), popup_style).draw(display)?;
         }
 
-        // Wave transition message
+        // Wave transition
         if self.combat_state.is_wave_transitioning {
-            let wave_msg = format!(
-                "Wave {} cleared!",
-                self.combat_state.current_wave
-            );
-            let wave_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 220, 100));
-            Text::new(&wave_msg, Point::new(100, 130), wave_style).draw(display)?;
-
-            let next_msg = "Next wave incoming...";
-            let next_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(180, 180, 180));
-            Text::new(next_msg, Point::new(100, 155), next_style).draw(display)?;
+            let wave_style = MonoTextStyle::new(&FONT_7X13, Rgb888::new(200, 150, 50));
+            Text::new(&format!("Wave {} cleared!", self.combat_state.current_wave), Point::new(60, 220), wave_style).draw(display)?;
+            Text::new("Next wave...", Point::new(80, 240), dim_style).draw(display)?;
         }
 
-        // Combat ended message
+        // Combat ended
         if self.combat_state.combat_ended {
-            let msg = if self.combat_state.player_won {
-                "VICTORY!"
-            } else {
-                "DEFEAT"
-            };
-            let msg_color = if self.combat_state.player_won {
-                Rgb888::new(100, 255, 100)
-            } else {
-                Rgb888::new(255, 100, 100)
-            };
-            let msg_style = MonoTextStyle::new(&FONT_10X20, msg_color);
-            Text::new(msg, Point::new(140, 150), msg_style).draw(display)?;
+            let (msg, msg_color) = if self.combat_state.player_won { ("VICTORY!", Rgb888::new(50, 180, 50)) } else { ("DEFEAT", Rgb888::new(200, 80, 80)) };
+            let msg_style = MonoTextStyle::new(&FONT_7X13, msg_color);
+            Text::new(msg, Point::new(90, 230), msg_style).draw(display)?;
         }
 
         display.flush()?;

@@ -7,6 +7,7 @@ use bevy_ecs::prelude::*;
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
 use crate::game::systems::combat::CombatState;
 use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
+use crate::game::systems::progression::leveling::apply_xp_to_monster;
 use crate::input_thread::{InputEvent, SwipeDirection};
 use crate::ui::pages::{BetweenFloorsPage, BetweenFloorsAction, MonsterStatusData, DungeonCombatPage, DungeonDefeatPage, DungeonDefeatAction};
 
@@ -319,8 +320,26 @@ pub fn dungeon_defeat_navigation_system(
                             .as_ref()
                             .map(|p| p.crystals_earned())
                             .unwrap_or(0);
+                        let xp_earned = game_manager.dungeon_defeat_page
+                            .as_ref()
+                            .map(|p| p.xp_earned())
+                            .unwrap_or(0);
 
                         game_manager.player.crystals += crystals;
+
+                        // Apply XP to team monsters before retrying
+                        let team_ids = game_manager.team.monster_ids().to_vec();
+                        for monster_id in team_ids {
+                            if let Some(monster) = game_manager.monsters.iter_mut()
+                                .find(|m| m.id == monster_id)
+                            {
+                                let levels_gained = apply_xp_to_monster(monster, xp_earned);
+                                if levels_gained > 0 {
+                                    log::info!("{} gained {} XP and leveled up to level {}!",
+                                        monster.name, xp_earned, monster.level);
+                                }
+                            }
+                        }
 
                         // Update record if we beat our previous best
                         let is_new_record = game_manager.dungeon_defeat_page
@@ -408,8 +427,27 @@ pub fn dungeon_defeat_navigation_system(
 /// End dungeon run and apply rewards
 fn end_dungeon_run(game_manager: &mut GameManager) {
     if let Some(ref run) = game_manager.active_dungeon_run {
-        // Apply rewards to player
+        // Apply crystal rewards to player
         game_manager.player.crystals += run.crystals_earned;
+
+        // Apply XP rewards to team monsters
+        let xp_earned = run.xp_earned;
+        let team_ids = game_manager.team.monster_ids().to_vec();
+
+        for monster_id in team_ids {
+            if let Some(monster) = game_manager.monsters.iter_mut()
+                .find(|m| m.id == monster_id)
+            {
+                let levels_gained = apply_xp_to_monster(monster, xp_earned);
+                if levels_gained > 0 {
+                    log::info!("{} gained {} XP and leveled up {} times to level {}!",
+                        monster.name, xp_earned, levels_gained, monster.level);
+                } else {
+                    log::info!("{} gained {} XP ({}/{})",
+                        monster.name, xp_earned, monster.xp, monster.xp_to_next);
+                }
+            }
+        }
 
         // Update dungeon progress if we set a new record
         let dungeon_id = run.dungeon_id.clone();
@@ -420,7 +458,8 @@ fn end_dungeon_run(game_manager: &mut GameManager) {
             log::info!("New dungeon record! {} floor {}", dungeon_id, highest_floor);
         }
 
-        log::info!("Dungeon run ended: +{} crystals, floor {} reached", run.crystals_earned, run.current_floor);
+        log::info!("Dungeon run ended: +{} crystals, +{} XP, floor {} reached",
+            run.crystals_earned, xp_earned, run.current_floor);
     }
 
     // Clean up

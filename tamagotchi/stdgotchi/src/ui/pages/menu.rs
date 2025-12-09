@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 use std::error::Error;
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::ui::page::Page;
 
 /// Menu button action
@@ -76,13 +76,13 @@ impl MenuPage {
     }
 
     /// Draw the menu
-    pub fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    pub fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
         // Default to no active battle - use draw_with_battle_state for conditional battle button
         self.draw_with_battle_state(display, full_redraw, false)
     }
 
     /// Draw the menu with battle state information
-    pub fn draw_with_battle_state(&mut self, display: &mut Sh8601Driver, full_redraw: bool, has_active_battle: bool) -> Result<(), Box<dyn Error>> {
+    pub fn draw_with_battle_state(&mut self, display: &mut St7789pDriver, full_redraw: bool, has_active_battle: bool) -> Result<(), Box<dyn Error>> {
         if full_redraw || self.needs_full_redraw {
             display.clear(self.background_color)?;
             self.needs_full_redraw = false;
@@ -181,7 +181,7 @@ impl MenuPage {
     /// Draw a menu button
     fn draw_button(
         &mut self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         x: i32,
         y: i32,
         width: u32,
@@ -225,7 +225,7 @@ impl Page for MenuPage {
         true // Always active
     }
 
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
         self.draw_with_battle_state(display, full_redraw, self.has_active_battle)
     }
 

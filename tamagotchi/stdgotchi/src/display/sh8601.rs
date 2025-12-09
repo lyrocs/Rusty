@@ -16,10 +16,10 @@
 //!
 //! # Example
 //! ```no_run
-//! use display::{Sh8601Driver, ColorMode};
+//! use display::{St7789pDriver, ColorMode};
 //! use embedded_graphics::prelude::*;
 //!
-//! let mut display = Sh8601Driver::new(
+//! let mut display = St7789pDriver::new(
 //!     spi_host_device_t_SPI2_HOST,
 //!     12,  // CS pin
 //!     368, // width
@@ -87,14 +87,14 @@ impl ColorMode {
 }
 
 /// SH8601 Driver for ESP-IDF with proper QSPI support
-pub struct Sh8601Driver {
+pub struct St7789pDriver {
     spi_device: spi_device_handle_t,
     framebuffer: Vec<u8>,
     width: u16,
     height: u16,
 }
 
-impl Sh8601Driver {
+impl St7789pDriver {
     /// Create a new SH8601 driver instance
     ///
     /// # Arguments
@@ -309,7 +309,7 @@ impl Sh8601Driver {
     }
 }
 
-impl Drop for Sh8601Driver {
+impl Drop for St7789pDriver {
     fn drop(&mut self) {
         unsafe {
             if !self.spi_device.is_null() {
@@ -319,7 +319,7 @@ impl Drop for Sh8601Driver {
     }
 }
 
-impl DrawTarget for Sh8601Driver {
+impl DrawTarget for St7789pDriver {
     type Color = Rgb888;
     type Error = Box<dyn std::error::Error>;
 
@@ -344,7 +344,7 @@ impl DrawTarget for Sh8601Driver {
     }
 }
 
-impl OriginDimensions for Sh8601Driver {
+impl OriginDimensions for St7789pDriver {
     fn size(&self) -> Size {
         Size::new(self.width as u32, self.height as u32)
     }

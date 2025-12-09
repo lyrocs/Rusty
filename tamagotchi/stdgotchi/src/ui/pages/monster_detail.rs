@@ -2,15 +2,15 @@
 //!
 //! Displays detailed information about a single monster including stats, skill, and actions.
 
-use crate::display::Sh8601Driver;
-use crate::game::core::{Monster, Skill};
+use crate::display::St7789pDriver;
+use crate::game::core::Monster;
 use crate::game::systems::progression::fusion::format_fusion;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -117,147 +117,179 @@ impl MonsterDetailPage {
 }
 
 impl Page for MonsterDetailPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let stat_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 80, 150));
+
         if full_redraw {
-            // Clear screen
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(20, 25, 35))?;
+            // Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let stat_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(180, 200, 255));
+        // Header card with name and level
+        let header_rect = Rectangle::new(Point::new(10, 4), Size::new(220, 28));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 150, 200))
+            .build())
+            .draw(display)?;
 
-        // Draw header with name and level
         let fusion_str = format_fusion(self.fusion_count);
+        let name = if self.name.len() > 12 { &self.name[..12] } else { &self.name };
         let header = if fusion_str.is_empty() {
-            format!("{} Lv.{}", self.name, self.level)
+            format!("{} Lv.{}", name, self.level)
         } else {
-            format!("{} {} Lv.{}", self.name, fusion_str, self.level)
+            format!("{} {} Lv.{}", name, fusion_str, self.level)
         };
-        Text::new(&header, Point::new(20, 35), title_style).draw(display)?;
+        Text::new(&header, Point::new(20, 22), title_style).draw(display)?;
 
-        // Element and power
-        Text::new(&format!("{} | PWR: {}", self.element_name, self.power), Point::new(20, 55), dim_style).draw(display)?;
+        // Element and power on header
+        let info_text = format!("{} PWR:{}", self.element_name, self.power);
+        Text::new(&info_text, Point::new(150, 22), text_style).draw(display)?;
 
-        // Stats section
-        let stats_y = 85;
-        Text::new("--- STATS ---", Point::new(20, stats_y), dim_style).draw(display)?;
+        // Stats card
+        let stats_rect = Rectangle::new(Point::new(10, 36), Size::new(220, 70));
+        let stats_rounded = RoundedRectangle::new(stats_rect, CornerRadii::new(Size::new(8, 8)));
+        stats_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(250, 250, 255))
+            .build())
+            .draw(display)?;
+        stats_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(180, 185, 195))
+            .stroke_width(1)
+            .build())
+            .draw(display)?;
 
-        let stat_col1_x = 30;
-        let stat_col2_x = 180;
+        Text::new("STATS", Point::new(100, 48), dim_style).draw(display)?;
 
-        // HP
-        Text::new(&format!("HP: {}/{}", self.hp_current, self.hp_max), Point::new(stat_col1_x, stats_y + 20), stat_style).draw(display)?;
-
-        // Draw HP bar
-        let hp_bar_y = stats_y + 30;
-        let bar_width = 120u32;
-        let bar_height = 10u32;
-        let hp_bg = Rectangle::new(Point::new(stat_col1_x, hp_bar_y), Size::new(bar_width, bar_height));
-        display.fill_solid(&hp_bg, Rgb888::new(60, 60, 60))?;
+        // HP bar
+        let bar_width = 90u32;
+        let bar_height = 8u32;
+        Text::new(&format!("HP {}/{}", self.hp_current, self.hp_max), Point::new(18, 62), stat_style).draw(display)?;
+        let hp_bar_y = 66;
+        let hp_bg = Rectangle::new(Point::new(18, hp_bar_y), Size::new(bar_width, bar_height));
+        display.fill_solid(&hp_bg, Rgb888::new(200, 205, 215))?;
 
         let hp_percent = self.hp_current as f32 / self.hp_max as f32;
         let hp_fill_width = ((bar_width as f32) * hp_percent) as u32;
         if hp_fill_width > 0 {
-            let hp_fill = Rectangle::new(Point::new(stat_col1_x, hp_bar_y), Size::new(hp_fill_width, bar_height));
+            let hp_fill = Rectangle::new(Point::new(18, hp_bar_y), Size::new(hp_fill_width, bar_height));
             let hp_color = if hp_percent > 0.5 {
-                Rgb888::new(80, 200, 80)
+                Rgb888::new(80, 180, 80)
             } else if hp_percent > 0.25 {
                 Rgb888::new(200, 180, 60)
             } else {
-                Rgb888::new(200, 60, 60)
+                Rgb888::new(200, 80, 80)
             };
             display.fill_solid(&hp_fill, hp_color)?;
         }
 
-        // XP
-        Text::new(&format!("XP: {}/{}", self.xp, self.xp_to_next), Point::new(stat_col2_x, stats_y + 20), stat_style).draw(display)?;
-
-        // Draw XP bar
-        let xp_bg = Rectangle::new(Point::new(stat_col2_x, hp_bar_y), Size::new(bar_width, bar_height));
-        display.fill_solid(&xp_bg, Rgb888::new(40, 40, 60))?;
+        // XP bar
+        Text::new(&format!("XP {}/{}", self.xp, self.xp_to_next), Point::new(125, 62), stat_style).draw(display)?;
+        let xp_bg = Rectangle::new(Point::new(125, hp_bar_y), Size::new(bar_width, bar_height));
+        display.fill_solid(&xp_bg, Rgb888::new(200, 205, 215))?;
 
         let xp_percent = if self.xp_to_next > 0 { self.xp as f32 / self.xp_to_next as f32 } else { 0.0 };
         let xp_fill_width = ((bar_width as f32) * xp_percent) as u32;
         if xp_fill_width > 0 {
-            let xp_fill = Rectangle::new(Point::new(stat_col2_x, hp_bar_y), Size::new(xp_fill_width, bar_height));
-            display.fill_solid(&xp_fill, Rgb888::new(100, 150, 255))?;
+            let xp_fill = Rectangle::new(Point::new(125, hp_bar_y), Size::new(xp_fill_width, bar_height));
+            display.fill_solid(&xp_fill, Rgb888::new(100, 150, 220))?;
         }
 
-        // Combat stats
-        let combat_y = stats_y + 60;
-        Text::new(&format!("ATK: {}", self.atk), Point::new(stat_col1_x, combat_y), stat_style).draw(display)?;
-        Text::new(&format!("DEF: {}", self.def), Point::new(stat_col1_x + 80, combat_y), stat_style).draw(display)?;
-        Text::new(&format!("SPD: {}", self.spd), Point::new(stat_col2_x, combat_y), stat_style).draw(display)?;
+        // Combat stats row
+        let combat_y = 88;
+        Text::new(&format!("ATK:{}", self.atk), Point::new(18, combat_y), stat_style).draw(display)?;
+        Text::new(&format!("DEF:{}", self.def), Point::new(75, combat_y), stat_style).draw(display)?;
+        Text::new(&format!("SPD:{}", self.spd), Point::new(132, combat_y), stat_style).draw(display)?;
 
         // Fusion bonus
         if self.fusion_count > 0 {
             let bonus = self.fusion_count * 5;
-            Text::new(&format!("Fusion Bonus: +{}%", bonus), Point::new(stat_col1_x, combat_y + 20), dim_style).draw(display)?;
+            Text::new(&format!("+{}%", bonus), Point::new(190, combat_y), dim_style).draw(display)?;
         }
 
-        // Skill section
-        let skill_y = 210;
-        Text::new("--- SKILL ---", Point::new(20, skill_y), dim_style).draw(display)?;
+        // Skill card
+        let skill_rect = Rectangle::new(Point::new(10, 110), Size::new(220, 55));
+        let skill_rounded = RoundedRectangle::new(skill_rect, CornerRadii::new(Size::new(8, 8)));
+        skill_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(250, 250, 255))
+            .build())
+            .draw(display)?;
+        skill_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(180, 185, 195))
+            .stroke_width(1)
+            .build())
+            .draw(display)?;
 
-        Text::new(&self.skill_name, Point::new(30, skill_y + 20), title_style).draw(display)?;
+        Text::new("SKILL", Point::new(100, 122), dim_style).draw(display)?;
 
-        // Skill description (may need word wrap)
-        let desc_y = skill_y + 45;
-        // Simple word wrap - split at ~40 chars
+        // Skill name
+        let skill_name = if self.skill_name.len() > 25 { &self.skill_name[..25] } else { &self.skill_name };
+        Text::new(skill_name, Point::new(18, 138), title_style).draw(display)?;
+
+        // Skill description (word wrap for small screen)
         let desc = &self.skill_description;
-        if desc.len() <= 45 {
-            Text::new(desc, Point::new(30, desc_y), text_style).draw(display)?;
+        let desc_y = 152;
+        if desc.len() <= 35 {
+            Text::new(desc, Point::new(18, desc_y), text_style).draw(display)?;
         } else {
-            // Split description
             let mid = desc.char_indices()
-                .take(45)
+                .take(35)
                 .filter(|(_, c)| *c == ' ')
                 .last()
                 .map(|(i, _)| i)
-                .unwrap_or(45);
-            Text::new(&desc[..mid], Point::new(30, desc_y), text_style).draw(display)?;
-            Text::new(&desc[mid..].trim(), Point::new(30, desc_y + 15), text_style).draw(display)?;
+                .unwrap_or(35);
+            Text::new(&desc[..mid], Point::new(18, desc_y), text_style).draw(display)?;
         }
 
-        // Team status section
-        let team_y = 320;
-        let team_button_width = 150u32;
-        let team_button_height = 35u32;
+        // Buttons section
+        let button_width = 100u32;
+        let button_height = 28u32;
 
-        let (button_text, button_color) = if self.is_in_team {
-            ("REMOVE FROM TEAM", Rgb888::new(120, 60, 60))
+        // Team button
+        let team_y = 172;
+        let (button_text, bg_color, border_color) = if self.is_in_team {
+            ("REMOVE", Rgb888::new(240, 180, 180), Rgb888::new(200, 100, 100))
         } else {
-            ("ADD TO TEAM", Rgb888::new(60, 100, 60))
+            ("ADD TEAM", Rgb888::new(180, 230, 180), Rgb888::new(100, 180, 100))
         };
 
-        let team_btn = Rectangle::new(
-            Point::new(184 - (team_button_width as i32 / 2), team_y),
-            Size::new(team_button_width, team_button_height)
-        );
-        display.fill_solid(&team_btn, button_color)?;
-        self.team_button_area = Some(team_btn);
+        let team_rect = Rectangle::new(Point::new(15, team_y), Size::new(button_width, button_height));
+        let team_rounded = RoundedRectangle::new(team_rect, CornerRadii::new(Size::new(8, 8)));
+        team_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(bg_color)
+            .build())
+            .draw(display)?;
+        team_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(border_color)
+            .stroke_width(2)
+            .build())
+            .draw(display)?;
+        self.team_button_area = Some(team_rect);
 
-        let text_x = 184 - ((button_text.len() as i32 * 6) / 2);
-        Text::new(button_text, Point::new(text_x, team_y + 22), text_style).draw(display)?;
+        let text_x = 15 + (button_width as i32 - (button_text.len() as i32 * 6)) / 2;
+        Text::new(button_text, Point::new(text_x, team_y + 18), text_style).draw(display)?;
 
         // Upgrade button
-        let upgrade_y = team_y + team_button_height as i32 + 10;
-        let upgrade_btn = Rectangle::new(
-            Point::new(184 - (team_button_width as i32 / 2), upgrade_y),
-            Size::new(team_button_width, team_button_height)
-        );
-        display.fill_solid(&upgrade_btn, Rgb888::new(100, 80, 50))?;
-        self.upgrade_button_area = Some(upgrade_btn);
-        Text::new("UPGRADE", Point::new(143, upgrade_y + 22), text_style).draw(display)?;
+        let upgrade_rect = Rectangle::new(Point::new(125, team_y), Size::new(button_width, button_height));
+        let upgrade_rounded = RoundedRectangle::new(upgrade_rect, CornerRadii::new(Size::new(8, 8)));
+        upgrade_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(230, 210, 170))
+            .build())
+            .draw(display)?;
+        upgrade_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(180, 150, 100))
+            .stroke_width(2)
+            .build())
+            .draw(display)?;
+        self.upgrade_button_area = Some(upgrade_rect);
+        Text::new("UPGRADE", Point::new(147, team_y + 18), text_style).draw(display)?;
 
-        // Back button
-        let back_rect = Rectangle::new(Point::new(15, 410), Size::new(80, 30));
-        display.fill_solid(&back_rect, Rgb888::new(80, 60, 60))?;
-        Text::new("< BACK", Point::new(25, 430), text_style).draw(display)?;
-        self.back_area = Some(back_rect);
+        // No back button (use BOOT)
+        self.back_area = None;
 
         display.flush()?;
         self.dirty = false;

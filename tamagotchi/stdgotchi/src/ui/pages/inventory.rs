@@ -2,7 +2,7 @@
 //!
 //! Shows player resources: crystals and elemental essences.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::core::Element;
 use crate::ui::page::Page;
 use embedded_graphics::{
@@ -112,7 +112,7 @@ impl InventoryPage {
 }
 
 impl Page for InventoryPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
         let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
         let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
         let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));

@@ -8,7 +8,7 @@ use gif::ColorOutput;
 use std::error::Error;
 use std::io::Cursor;
 
-use super::Sh8601Driver;
+use super::St7789pDriver;
 
 /// Static image loaded from first frame of a GIF
 pub struct StaticImage {
@@ -73,7 +73,7 @@ impl StaticImage {
     /// # Arguments
     /// * `display` - Display driver instance
     /// * `position` - (x, y) position for the image's top-left corner
-    pub fn render(&self, display: &mut Sh8601Driver, position: (i32, i32)) -> Result<(), Box<dyn Error>> {
+    pub fn render(&self, display: &mut St7789pDriver, position: (i32, i32)) -> Result<(), Box<dyn Error>> {
         let display_size = display.size();
         let (base_x, base_y) = position;
 
@@ -99,7 +99,8 @@ impl StaticImage {
                     if px >= 0 && px < display_size.width as i32 &&
                        py >= 0 && py < display_size.height as i32 {
                         let point = Point::new(px, py);
-                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(r, g, b))))?;
+                        // Swap R and B for BGR display format
+                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(b, g, r))))?;
                     }
                 }
             }
@@ -116,7 +117,7 @@ impl StaticImage {
     /// * `region` - (x, y, width, height) region to render in screen coordinates
     pub fn render_region(
         &self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         position: (i32, i32),
         region: (i32, i32, u32, u32),
     ) -> Result<(), Box<dyn Error>> {
@@ -155,7 +156,8 @@ impl StaticImage {
                        px >= 0 && px < display_size.width as i32 &&
                        py >= 0 && py < display_size.height as i32 {
                         let point = Point::new(px, py);
-                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(r, g, b))))?;
+                        // Swap R and B for BGR display format
+                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(b, g, r))))?;
                     }
                 }
             }

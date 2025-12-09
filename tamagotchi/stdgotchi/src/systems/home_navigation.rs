@@ -118,14 +118,6 @@ pub fn home_navigation_system(
                         app_state.current_mode = AppMode::Map;
                         app_state.needs_redraw = true;
                     }
-                    SwipeDirection::Right => {
-                        // Swipe right -> Collection
-                        log::info!("Swipe right: Home -> Collection");
-                        let collection_page = create_collection_page(game_manager);
-                        game_manager.collection_page = Some(collection_page);
-                        app_state.current_mode = AppMode::Collection;
-                        app_state.needs_redraw = true;
-                    }
                     _ => {}
                 }
             }

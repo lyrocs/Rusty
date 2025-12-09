@@ -2,15 +2,15 @@
 //!
 //! Allows upgrading monster stats using crystals and essences.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::core::{Element, Monster};
 use crate::game::systems::progression::upgrade::{upgrade_cost_crystals, major_upgrade_cost, MAX_STAT};
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -190,30 +190,38 @@ impl MonsterUpgradePage {
 }
 
 impl Page for MonsterUpgradePage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let green_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 100));
-        let red_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(200, 100, 100));
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let green_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 150, 50));
 
         if full_redraw {
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(20, 25, 35))?;
+            // Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        // Header
-        Text::new("UPGRADE", Point::new(140, 35), title_style).draw(display)?;
+        // Header with rounded background
+        let header_rect = Rectangle::new(Point::new(10, 4), Size::new(220, 24));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(180, 150, 100))
+            .build())
+            .draw(display)?;
+
+        Text::new("UPGRADE", Point::new(90, 20), title_style).draw(display)?;
 
         // Monster name with element
-        let elem_style = MonoTextStyle::new(&FONT_10X20, self.element_color());
-        let monster_text = format!("[{}] {}", self.element_char(), self.name);
-        Text::new(&monster_text, Point::new(100, 65), elem_style).draw(display)?;
+        let elem_style = MonoTextStyle::new(&FONT_6X10, self.element_color());
+        let name = if self.name.len() > 14 { &self.name[..14] } else { &self.name };
+        let monster_text = format!("[{}] {}", self.element_char(), name);
+        Text::new(&monster_text, Point::new(70, 20), elem_style).draw(display)?;
 
-        // Stat upgrade buttons
-        let button_y_start = 100;
-        let button_height = 45u32;
-        let button_spacing = 10;
+        // Stat upgrade buttons - compact layout
+        let button_y_start = 32;
+        let button_height = 28u32;
+        let button_spacing = 4;
 
         // ATK upgrade
         let atk_y = button_y_start;
@@ -243,58 +251,70 @@ impl Page for MonsterUpgradePage {
             display, "HP", self.hp_max, 10, self.hp_cost, can_hp, hp_y
         )?);
 
-        // Separator
-        let sep_y = hp_y + button_height as i32 + 15;
-        Text::new("--- Major Upgrade ---", Point::new(90, sep_y), dim_style).draw(display)?;
+        // Major upgrade section
+        let sep_y = hp_y + button_height as i32 + 8;
+        Text::new("MAJOR UPGRADE", Point::new(80, sep_y), dim_style).draw(display)?;
 
         // Major ATK upgrade
-        let major_y = sep_y + 20;
+        let major_y = sep_y + 6;
         let (major_crystals, major_essence) = self.major_atk_cost;
         let can_major = self.crystals >= major_crystals
             && self.essence_count >= major_essence as u16
             && self.atk + 10 <= MAX_STAT;
 
-        let major_color = if can_major {
-            Rgb888::new(50, 80, 50)
+        let (major_bg, major_border) = if can_major {
+            (Rgb888::new(200, 230, 200), Rgb888::new(100, 180, 100))
         } else {
-            Rgb888::new(40, 40, 40)
+            (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
         };
 
-        let major_rect = Rectangle::new(Point::new(30, major_y), Size::new(308, 50));
-        display.fill_solid(&major_rect, major_color)?;
-        Rectangle::new(Point::new(30, major_y), Size::new(308, 50))
-            .into_styled(PrimitiveStyle::with_stroke(
-                if can_major { Rgb888::new(100, 180, 100) } else { Rgb888::new(80, 80, 80) },
-                2
-            ))
+        let major_rect = Rectangle::new(Point::new(10, major_y), Size::new(220, 32));
+        let major_rounded = RoundedRectangle::new(major_rect, CornerRadii::new(Size::new(8, 8)));
+        major_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(major_bg)
+            .build())
+            .draw(display)?;
+        major_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(major_border)
+            .stroke_width(2)
+            .build())
             .draw(display)?;
 
         let major_text = format!("ATK {} -> {} [+10]", self.atk, self.atk + 10);
         let major_style = if can_major { text_style } else { dim_style };
-        Text::new(&major_text, Point::new(45, major_y + 22), major_style).draw(display)?;
+        Text::new(&major_text, Point::new(18, major_y + 14), major_style).draw(display)?;
 
         let cost_text = format!("{} + {}x{}", major_crystals, self.element_char(), major_essence);
-        Text::new(&cost_text, Point::new(220, major_y + 22), dim_style).draw(display)?;
+        Text::new(&cost_text, Point::new(140, major_y + 14), dim_style).draw(display)?;
 
         self.major_atk_button = Some(major_rect);
 
-        // Resources section
-        let res_y = major_y + 70;
-        Text::new("Your Resources:", Point::new(30, res_y), text_style).draw(display)?;
+        // Resources card
+        let res_y = major_y + 40;
+        let res_rect = Rectangle::new(Point::new(10, res_y), Size::new(220, 36));
+        let res_rounded = RoundedRectangle::new(res_rect, CornerRadii::new(Size::new(8, 8)));
+        res_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(250, 250, 255))
+            .build())
+            .draw(display)?;
+        res_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(180, 185, 195))
+            .stroke_width(1)
+            .build())
+            .draw(display)?;
+
+        Text::new("Resources:", Point::new(18, res_y + 12), dim_style).draw(display)?;
 
         let crystal_text = format!("Crystals: {}", self.crystals);
-        Text::new(&crystal_text, Point::new(45, res_y + 25), green_style).draw(display)?;
+        Text::new(&crystal_text, Point::new(18, res_y + 26), green_style).draw(display)?;
 
-        let essence_text = format!("{} Essence: {}", self.element_char(), self.essence_count);
-        Text::new(&essence_text, Point::new(200, res_y + 25),
-            MonoTextStyle::new(&FONT_9X15, self.element_color())
+        let essence_text = format!("{} Ess: {}", self.element_char(), self.essence_count);
+        Text::new(&essence_text, Point::new(120, res_y + 26),
+            MonoTextStyle::new(&FONT_6X10, self.element_color())
         ).draw(display)?;
 
-        // Back button
-        let back_rect = Rectangle::new(Point::new(15, 405), Size::new(80, 35));
-        display.fill_solid(&back_rect, Rgb888::new(80, 60, 60))?;
-        Text::new("< BACK", Point::new(25, 428), text_style).draw(display)?;
-        self.back_area = Some(back_rect);
+        // No back button (use BOOT)
+        self.back_area = None;
 
         display.flush()?;
         self.dirty = false;
@@ -321,7 +341,7 @@ impl Page for MonsterUpgradePage {
 impl MonsterUpgradePage {
     fn draw_stat_button(
         &self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         stat_name: &str,
         current: u16,
         increase: u16,
@@ -329,36 +349,41 @@ impl MonsterUpgradePage {
         can_afford: bool,
         y: i32,
     ) -> Result<Rectangle, Box<dyn Error>> {
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let green_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 100));
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(120, 120, 120));
+        let green_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 150, 50));
 
-        let button_color = if can_afford {
-            Rgb888::new(50, 60, 50)
+        let (bg_color, border_color) = if can_afford {
+            (Rgb888::new(200, 230, 200), Rgb888::new(100, 180, 100))
         } else {
-            Rgb888::new(40, 40, 40)
+            (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
         };
 
-        let rect = Rectangle::new(Point::new(30, y), Size::new(308, 45));
-        display.fill_solid(&rect, button_color)?;
+        let rect = Rectangle::new(Point::new(10, y), Size::new(220, 28));
+        let rounded = RoundedRectangle::new(rect, CornerRadii::new(Size::new(6, 6)));
+
+        // Fill
+        rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(bg_color)
+            .build())
+            .draw(display)?;
 
         // Border
-        Rectangle::new(Point::new(30, y), Size::new(308, 45))
-            .into_styled(PrimitiveStyle::with_stroke(
-                if can_afford { Rgb888::new(100, 150, 100) } else { Rgb888::new(80, 80, 80) },
-                2
-            ))
+        rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(border_color)
+            .stroke_width(1)
+            .build())
             .draw(display)?;
 
         // Stat name and values
         let style = if can_afford { text_style } else { dim_style };
         let stat_text = format!("{}: {} -> {} [+{}]", stat_name, current, current + increase, increase);
-        Text::new(&stat_text, Point::new(45, y + 28), style).draw(display)?;
+        Text::new(&stat_text, Point::new(18, y + 18), style).draw(display)?;
 
         // Cost
         let cost_text = format!("{}", cost);
         let cost_style = if can_afford { green_style } else { dim_style };
-        Text::new(&cost_text, Point::new(280, y + 28), cost_style).draw(display)?;
+        Text::new(&cost_text, Point::new(190, y + 18), cost_style).draw(display)?;
 
         Ok(rect)
     }

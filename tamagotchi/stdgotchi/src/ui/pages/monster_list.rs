@@ -4,15 +4,15 @@
 //! Unowned species are shown as disabled/grayed out.
 
 use crate::assets::get_monster_icon;
-use crate::display::{Sh8601Driver, StaticImage};
+use crate::display::{St7789pDriver, StaticImage};
 use crate::game::core::{Element, Monster, MonsterStatus};
 use crate::game::systems::progression::fusion::format_fusion;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -194,12 +194,12 @@ impl MonsterListPage {
 
     /// Handle swipe for scrolling (2 items per swipe)
     pub fn handle_swipe(&mut self, is_up: bool) {
-        const SCROLL_AMOUNT: i32 = 150; // 2 items * 75 pixels each
-        const ITEM_HEIGHT: i32 = 75;
+        const SCROLL_AMOUNT: i32 = 110; // ~2 items * 55 pixels each
+        const ITEM_HEIGHT: i32 = 52;
 
         if is_up {
             // Swipe up = scroll down (show more content below)
-            let max_scroll = ((self.total_items as i32) * ITEM_HEIGHT).saturating_sub(300);
+            let max_scroll = ((self.total_items as i32) * ITEM_HEIGHT).saturating_sub(200);
             if self.scroll_offset < max_scroll {
                 self.scroll_offset = (self.scroll_offset + SCROLL_AMOUNT).min(max_scroll);
                 self.dirty = true;
@@ -241,46 +241,59 @@ impl MonsterListPage {
 }
 
 impl Page for MonsterListPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let disabled_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(150, 150, 150));
+
         if full_redraw {
-            // Clear screen
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(20, 25, 35))?;
+            // Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let disabled_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(80, 80, 80));
+        // Header with rounded background
+        let header_rect = Rectangle::new(Point::new(10, 4), Size::new(220, 24));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 150, 200))
+            .build())
+            .draw(display)?;
 
-        // Draw header
-        let title_x = if self.title.len() > 10 { 80 } else { 130 };
-        Text::new(&self.title, Point::new(title_x, 30), title_style).draw(display)?;
+        // Truncate title if needed
+        let title = if self.title.len() > 18 {
+            &self.title[..18]
+        } else {
+            &self.title
+        };
+        let title_x = 120 - ((title.len() as i32 * 7) / 2);
+        Text::new(title, Point::new(title_x, 20), title_style).draw(display)?;
 
         // Draw monster count
         let owned_count = self.monsters.iter().filter(|m| m.is_owned).count();
         let count_text = format!("{}/{}", owned_count, self.total_items);
-        Text::new(&count_text, Point::new(300, 30), dim_style).draw(display)?;
+        Text::new(&count_text, Point::new(185, 20), text_style).draw(display)?;
 
         // Clear and rebuild touch areas
         self.touch_areas.clear();
 
         // Content area
-        let content_y_start = 50;
-        let content_height = 350;
+        let content_y_start = 32;
+        let content_height = 240;
 
         // Clear content area
         let content_bg = Rectangle::new(
             Point::new(0, content_y_start),
-            Size::new(368, content_height as u32)
+            Size::new(240, content_height as u32)
         );
-        display.fill_solid(&content_bg, Rgb888::new(20, 25, 35))?;
+        display.fill_solid(&content_bg, Rgb888::new(240, 240, 245))?;
 
         // Draw monsters
-        let card_height = 70i32;
-        let card_spacing = 5i32;
-        let card_x = 15;
-        let card_width = 338u32;
+        let card_height = 48i32;
+        let card_spacing = 4i32;
+        let card_x = 10;
+        let card_width = 220u32;
 
         let mut y_pos = content_y_start - self.scroll_offset;
 
@@ -296,16 +309,30 @@ impl Page for MonsterListPage {
                 break;
             }
 
-            // Card background
-            let card_color = if !monster.is_owned {
-                Rgb888::new(25, 25, 30) // Disabled/unowned
-            } else if monster.is_in_team {
-                Rgb888::new(40, 50, 70) // Team member highlighted
-            } else {
-                Rgb888::new(30, 35, 45)
-            };
+            // Card with rounded corners
             let card_rect = Rectangle::new(Point::new(card_x, y_pos), Size::new(card_width, card_height as u32));
-            display.fill_solid(&card_rect, card_color)?;
+            let card_rounded = RoundedRectangle::new(card_rect, CornerRadii::new(Size::new(8, 8)));
+
+            let (bg_color, border_color) = if !monster.is_owned {
+                (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185)) // Disabled/unowned
+            } else if monster.is_in_team {
+                (Rgb888::new(200, 230, 255), Rgb888::new(100, 150, 200)) // Team member highlighted
+            } else {
+                (Rgb888::new(250, 250, 255), Rgb888::new(180, 185, 195))
+            };
+
+            // Fill
+            card_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(bg_color)
+                .build())
+                .draw(display)?;
+
+            // Border
+            card_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(border_color)
+                .stroke_width(1)
+                .build())
+                .draw(display)?;
 
             // Store touch area
             self.touch_areas.push(MonsterTouchArea {
@@ -314,107 +341,118 @@ impl Page for MonsterListPage {
             });
 
             // Draw monster icon on left side
-            let icon_x = card_x + 5;
-            let icon_y = y_pos + 5;
-            let icon_size = 40i32;
-            let text_x = card_x + icon_size + 15; // Text starts after icon
+            let icon_x = card_x + 4;
+            let icon_y = y_pos + 4;
+            let icon_size = 28i32;
+            let text_x = card_x + icon_size + 10; // Text starts after icon
 
             if let Some(icon_data) = get_monster_icon(&monster.species_id) {
                 if let Ok(icon) = StaticImage::new(icon_data) {
                     let _ = icon.render(display, (icon_x, icon_y));
                 }
             } else {
-                // Fallback: element colored square
+                // Fallback: element colored rounded square
                 let elem_color = if monster.is_owned {
                     Self::element_color(monster.element)
                 } else {
-                    Rgb888::new(50, 50, 50) // Gray for unowned
+                    Rgb888::new(180, 180, 185) // Gray for unowned
                 };
                 let icon_rect = Rectangle::new(Point::new(icon_x, icon_y), Size::new(icon_size as u32, icon_size as u32));
-                display.fill_solid(&icon_rect, elem_color)?;
+                let icon_rounded = RoundedRectangle::new(icon_rect, CornerRadii::new(Size::new(6, 6)));
+                icon_rounded.into_styled(PrimitiveStyleBuilder::new()
+                    .fill_color(elem_color)
+                    .build())
+                    .draw(display)?;
+
                 let elem_char = Self::element_char(monster.element);
                 let char_style = if monster.is_owned {
-                    MonoTextStyle::new(&FONT_10X20, Rgb888::BLACK)
+                    MonoTextStyle::new(&FONT_7X13, Rgb888::WHITE)
                 } else {
-                    MonoTextStyle::new(&FONT_10X20, Rgb888::new(80, 80, 80))
+                    MonoTextStyle::new(&FONT_7X13, Rgb888::new(120, 120, 120))
                 };
-                Text::new(&elem_char.to_string(), Point::new(icon_x + 12, icon_y + 28), char_style).draw(display)?;
+                Text::new(&elem_char.to_string(), Point::new(icon_x + 9, icon_y + 20), char_style).draw(display)?;
             }
 
             if monster.is_owned {
                 // Draw owned monster with full details
                 let elem_color = Self::element_color(monster.element);
-                let elem_style = MonoTextStyle::new(&FONT_9X15, elem_color);
+                let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
 
-                // Row 1: Name with element, fusion, level
-                let name_with_fusion = if monster.fusion.is_empty() {
-                    format!("{} {} Lv.{}", Self::element_char(monster.element), monster.name, monster.level)
+                // Row 1: Name with element, fusion, level (truncate name)
+                let name = if monster.name.len() > 10 {
+                    &monster.name[..10]
                 } else {
-                    format!("{} {} {} Lv.{}", Self::element_char(monster.element), monster.name, monster.fusion, monster.level)
+                    &monster.name
                 };
-                Text::new(&name_with_fusion, Point::new(text_x, y_pos + 18), elem_style).draw(display)?;
+                let name_with_fusion = if monster.fusion.is_empty() {
+                    format!("{} {} Lv.{}", Self::element_char(monster.element), name, monster.level)
+                } else {
+                    format!("{} {} {} Lv.{}", Self::element_char(monster.element), name, monster.fusion, monster.level)
+                };
+                Text::new(&name_with_fusion, Point::new(text_x, y_pos + 14), elem_style).draw(display)?;
 
-                // Row 2: PWR + [TEAM] + [EXP]/[DGN] status (same line)
+                // Row 2: PWR + status tags
                 let power_text = format!("PWR:{}", monster.power);
-                Text::new(&power_text, Point::new(text_x, y_pos + 38), dim_style).draw(display)?;
+                Text::new(&power_text, Point::new(text_x, y_pos + 26), dim_style).draw(display)?;
 
-                let mut status_x = text_x + 70;
+                let mut status_x = text_x + 48;
                 if monster.is_in_team {
-                    let team_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 255));
-                    Text::new("[TEAM]", Point::new(status_x, y_pos + 38), team_style).draw(display)?;
-                    status_x += 60;
+                    let team_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 120, 200));
+                    Text::new("[T]", Point::new(status_x, y_pos + 26), team_style).draw(display)?;
+                    status_x += 20;
                 }
 
                 let status_text = match monster.status {
                     MonsterStatus::Available => "",
-                    MonsterStatus::InExpedition => "[EXP]",
-                    MonsterStatus::InDungeon => "[DGN]",
+                    MonsterStatus::InExpedition => "[E]",
+                    MonsterStatus::InDungeon => "[D]",
                 };
                 if !status_text.is_empty() {
-                    let status_color = MonoTextStyle::new(&FONT_9X15, Rgb888::new(200, 180, 100));
-                    Text::new(status_text, Point::new(status_x, y_pos + 38), status_color).draw(display)?;
+                    let status_color = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 140, 50));
+                    Text::new(status_text, Point::new(status_x, y_pos + 26), status_color).draw(display)?;
                 }
 
-                // Row 3: Small XP bar (reduced size)
+                // Row 3: Small XP bar
                 let bar_x = text_x;
-                let bar_y = y_pos + 48;
-                let bar_width = 80u32;
-                let bar_height = 6u32;
+                let bar_y = y_pos + 34;
+                let bar_width = 100u32;
+                let bar_height = 5u32;
 
                 let xp_bg = Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_width, bar_height));
-                display.fill_solid(&xp_bg, Rgb888::new(40, 40, 60))?;
+                display.fill_solid(&xp_bg, Rgb888::new(200, 205, 215))?;
 
                 let xp_fill_width = ((bar_width as f32) * monster.xp_percent) as u32;
                 if xp_fill_width > 0 {
                     let xp_fill = Rectangle::new(Point::new(bar_x, bar_y), Size::new(xp_fill_width, bar_height));
-                    display.fill_solid(&xp_fill, Rgb888::new(100, 150, 255))?;
+                    display.fill_solid(&xp_fill, Rgb888::new(100, 150, 220))?;
                 }
-                Text::new("XP", Point::new(bar_x + bar_width as i32 + 5, bar_y + 5), dim_style).draw(display)?;
+                Text::new("XP", Point::new(bar_x + bar_width as i32 + 4, bar_y + 4), dim_style).draw(display)?;
             } else {
-                // Draw unowned species as disabled (no icon fallback already handled above)
+                // Draw unowned species as disabled
                 let elem_char = Self::element_char(monster.element);
-                let disabled_name = format!("{} {}", elem_char, monster.name);
-                Text::new(&disabled_name, Point::new(text_x, y_pos + 25), disabled_style).draw(display)?;
+                let name = if monster.name.len() > 14 {
+                    &monster.name[..14]
+                } else {
+                    &monster.name
+                };
+                let disabled_name = format!("{} {}", elem_char, name);
+                Text::new(&disabled_name, Point::new(text_x, y_pos + 18), disabled_style).draw(display)?;
 
                 // "Not captured" text
-                Text::new("Not captured", Point::new(text_x, y_pos + 45), disabled_style).draw(display)?;
+                Text::new("Not captured", Point::new(text_x, y_pos + 32), disabled_style).draw(display)?;
             }
 
             y_pos += card_height + card_spacing;
         }
 
-        // Draw back button
-        let back_rect = Rectangle::new(Point::new(15, 410), Size::new(80, 30));
-        display.fill_solid(&back_rect, Rgb888::new(80, 60, 60))?;
-        Text::new("< BACK", Point::new(25, 430), text_style).draw(display)?;
-        self.back_area = Some(back_rect);
-
-        // Hint text
+        // Hint text at bottom (no back button)
         if self.total_items > 4 {
-            Text::new("swipe to scroll", Point::new(230, 430), dim_style).draw(display)?;
+            Text::new("swipe to scroll", Point::new(75, 278), dim_style).draw(display)?;
         } else {
-            Text::new("Tap for details", Point::new(230, 430), dim_style).draw(display)?;
+            Text::new("Tap for details", Point::new(75, 278), dim_style).draw(display)?;
         }
+
+        self.back_area = None;
 
         display.flush()?;
         self.dirty = false;

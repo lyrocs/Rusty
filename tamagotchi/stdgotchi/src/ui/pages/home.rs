@@ -4,15 +4,15 @@
 //! Based on GDD section 3.3.1
 
 use crate::assets::get_monster_icon;
-use crate::display::{Sh8601Driver, StaticImage};
+use crate::display::{St7789pDriver, StaticImage};
 use crate::game::core::{Element, Monster, MonsterStatus};
 use crate::game::systems::expedition::Expedition;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13, FONT_9X15}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -211,7 +211,7 @@ impl HomePage {
     /// Draw progress bar
     fn draw_progress_bar(
         &self,
-        display: &mut Sh8601Driver,
+        display: &mut St7789pDriver,
         x: i32,
         y: i32,
         width: u32,
@@ -219,17 +219,17 @@ impl HomePage {
         progress: u8,
         is_complete: bool,
     ) -> Result<(), Box<dyn Error>> {
-        // Background
+        // Background - light gray for light theme
         let bg_rect = Rectangle::new(Point::new(x, y), Size::new(width, height));
-        display.fill_solid(&bg_rect, Rgb888::new(40, 40, 50))?;
+        display.fill_solid(&bg_rect, Rgb888::new(180, 180, 190))?;
 
         // Fill
         let fill_width = ((width as f32 * progress as f32) / 100.0) as u32;
         if fill_width > 0 {
             let fill_color = if is_complete {
-                Rgb888::new(100, 200, 100) // Green when complete
+                Rgb888::new(80, 180, 80) // Green when complete
             } else {
-                Rgb888::new(80, 150, 200) // Blue while in progress
+                Rgb888::new(60, 120, 200) // Blue while in progress
             };
             let fill_rect = Rectangle::new(Point::new(x, y), Size::new(fill_width, height));
             display.fill_solid(&fill_rect, fill_color)?;
@@ -240,72 +240,79 @@ impl HomePage {
 }
 
 impl Page for HomePage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
         if full_redraw || self.dirty {
-            // Clear screen
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(20, 25, 35))?;
+            // Clear screen - Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let gold_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(255, 215, 0));
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let gold_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 150, 0));
 
         // ═══════════════════════════════════════
         // HEADER - Time and Crystals
         // ═══════════════════════════════════════
-        let header_rect = Rectangle::new(Point::new(0, 0), Size::new(368, 40));
-        display.fill_solid(&header_rect, Rgb888::new(30, 35, 45))?;
+        // Add margin: start at y=2 instead of 0, reduced height to fit content better
+        let header_rect = Rectangle::new(Point::new(2, 2), Size::new(236, 24));
+        display.fill_solid(&header_rect, Rgb888::new(200, 210, 220))?;
 
         // Current time (simplified - just show static for now)
-        Text::new("HOME", Point::new(15, 28), title_style).draw(display)?;
+        // Move text away from left edge: x=10 instead of 8, y=20 for better vertical centering
+        Text::new("HOME", Point::new(10, 20), title_style).draw(display)?;
 
-        // Crystals
-        let crystal_text = format!("{} Crystals", self.crystals);
-        Text::new(&crystal_text, Point::new(250, 28), gold_style).draw(display)?;
+        // Crystals - move away from right edge to prevent cutoff
+        let crystal_text = format!("{} Cr", self.crystals);
+        Text::new(&crystal_text, Point::new(170, 20), gold_style).draw(display)?;
 
         // ═══════════════════════════════════════
         // EXPEDITIONS SECTION
         // ═══════════════════════════════════════
-        Text::new("Expeditions:", Point::new(15, 70), text_style).draw(display)?;
+        Text::new("Expeditions:", Point::new(10, 42), text_style).draw(display)?;
 
-        let slot_y_start = 85;
-        let slot_height = 50u32;
-        let slot_spacing = 60;
+        let slot_y_start = 50;
+        let slot_height = 35u32;
+        let slot_spacing = 40;
 
         for i in 0..2 {
             let y = slot_y_start + (i as i32 * slot_spacing);
-            let slot_rect = Rectangle::new(Point::new(15, y), Size::new(338, slot_height));
+            let slot_rect = Rectangle::new(Point::new(10, y), Size::new(220, slot_height));
 
             if let Some(ref exp_data) = self.expedition_slots[i] {
                 // Active expedition
                 let bg_color = if exp_data.is_complete {
-                    Rgb888::new(40, 60, 40) // Green tint when complete
+                    Rgb888::new(200, 240, 200) // Light green tint when complete
                 } else {
-                    Rgb888::new(35, 40, 50)
+                    Rgb888::new(220, 225, 235)
                 };
                 display.fill_solid(&slot_rect, bg_color)?;
 
-                // Slot number and map name
-                let slot_text = format!("{}. {}", i + 1, exp_data.map_name);
-                Text::new(&slot_text, Point::new(25, y + 18), text_style).draw(display)?;
+                // Slot number and map name (truncate if needed)
+                let map_name = if exp_data.map_name.len() > 15 {
+                    &exp_data.map_name[..15]
+                } else {
+                    &exp_data.map_name
+                };
+                let slot_text = format!("{}. {}", i + 1, map_name);
+                Text::new(&slot_text, Point::new(14, y + 12), text_style).draw(display)?;
 
                 // Progress bar
-                self.draw_progress_bar(display, 25, y + 25, 200, 8, exp_data.progress_percent, exp_data.is_complete)?;
+                self.draw_progress_bar(display, 14, y + 20, 140, 6, exp_data.progress_percent, exp_data.is_complete)?;
 
                 // Time remaining
                 let time_style = if exp_data.is_complete {
-                    MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 100))
+                    MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 150, 50))
                 } else {
                     dim_style
                 };
-                Text::new(&exp_data.time_remaining, Point::new(240, y + 33), time_style).draw(display)?;
+                Text::new(&exp_data.time_remaining, Point::new(160, y + 25), time_style).draw(display)?;
             } else {
                 // Empty slot
-                display.fill_solid(&slot_rect, Rgb888::new(30, 32, 38))?;
+                display.fill_solid(&slot_rect, Rgb888::new(210, 210, 215))?;
                 let slot_text = format!("{}. Available", i + 1);
-                Text::new(&slot_text, Point::new(25, y + 30), dim_style).draw(display)?;
+                Text::new(&slot_text, Point::new(14, y + 20), dim_style).draw(display)?;
             }
 
             self.expedition_areas[i] = Some(slot_rect);
@@ -314,85 +321,118 @@ impl Page for HomePage {
         // ═══════════════════════════════════════
         // ACTIVE TEAM SECTION
         // ═══════════════════════════════════════
-        Text::new("Active Team:", Point::new(15, 220), text_style).draw(display)?;
+        Text::new("Active Team:", Point::new(10, 144), text_style).draw(display)?;
 
         self.team_areas.clear();
-        let team_y = 240;
-        let monster_width = 100u32;
-        let monster_height = 80u32;
-        let monster_spacing = 110;
+        let team_y = 154;
+        let monster_width = 68u32;
+        let monster_height = 60u32;
+        let monster_spacing = 76;
 
         for (i, monster_data) in self.team_monsters.iter().take(3).enumerate() {
-            let x = 20 + (i as i32 * monster_spacing);
+            let x = 14 + (i as i32 * monster_spacing);
             let monster_rect = Rectangle::new(Point::new(x, team_y), Size::new(monster_width, monster_height));
-            display.fill_solid(&monster_rect, Rgb888::new(35, 40, 50))?;
+            display.fill_solid(&monster_rect, Rgb888::new(220, 225, 235))?;
 
             // Load and display monster icon from embedded assets
             if let Some(icon_data) = get_monster_icon(&monster_data.species_id) {
                 if let Ok(icon) = StaticImage::new(icon_data) {
-                    // Center the icon in the card area (icon area: 40x40 centered)
-                    let icon_x = x + 30;
+                    // Center the icon in the card area (icon area: 30x30 centered)
+                    let icon_x = x + 19;
                     let icon_y = team_y + 5;
                     let _ = icon.render(display, (icon_x, icon_y));
                 }
             } else {
-                // Fallback to element square if icon not found
+                // Fallback to element square if icon not found (keep element colors unchanged)
                 let elem_color = Self::element_color(&monster_data.element);
-                let elem_rect = Rectangle::new(Point::new(x + 30, team_y + 10), Size::new(40, 30));
+                let elem_rect = Rectangle::new(Point::new(x + 19, team_y + 8), Size::new(30, 24));
                 display.fill_solid(&elem_rect, elem_color)?;
                 let elem_char = Self::element_char(&monster_data.element);
-                let elem_text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::BLACK);
-                Text::new(&elem_char.to_string(), Point::new(x + 43, team_y + 32), elem_text_style).draw(display)?;
+                let elem_text_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+                Text::new(&elem_char.to_string(), Point::new(x + 30, team_y + 24), elem_text_style).draw(display)?;
             }
 
             // Level
             let level_text = format!("Lv.{}", monster_data.level);
-            Text::new(&level_text, Point::new(x + 30, team_y + 55), text_style).draw(display)?;
+            Text::new(&level_text, Point::new(x + 22, team_y + 42), text_style).draw(display)?;
 
             // Name (truncated)
-            let name = if monster_data.name.len() > 12 {
-                &monster_data.name[..12]
+            let name = if monster_data.name.len() > 10 {
+                &monster_data.name[..10]
             } else {
                 &monster_data.name
             };
-            Text::new(name, Point::new(x + 5, team_y + 72), dim_style).draw(display)?;
+            Text::new(name, Point::new(x + 4, team_y + 54), dim_style).draw(display)?;
 
             self.team_areas.push(monster_rect);
         }
 
         // Empty slots
         for i in self.team_monsters.len()..3 {
-            let x = 20 + (i as i32 * monster_spacing);
+            let x = 14 + (i as i32 * monster_spacing);
             let monster_rect = Rectangle::new(Point::new(x, team_y), Size::new(monster_width, monster_height));
-            display.fill_solid(&monster_rect, Rgb888::new(30, 32, 38))?;
-            Text::new("Empty", Point::new(x + 30, team_y + 45), dim_style).draw(display)?;
+            display.fill_solid(&monster_rect, Rgb888::new(210, 210, 215))?;
+            Text::new("Empty", Point::new(x + 20, team_y + 33), dim_style).draw(display)?;
             self.team_areas.push(monster_rect);
         }
 
         // ═══════════════════════════════════════
-        // NAVIGATION BUTTONS (2 buttons side by side)
+        // NAVIGATION BUTTONS (2 buttons side by side with rounded corners)
         // ═══════════════════════════════════════
-        let nav_y = 370;
-        let button_width = 160u32;
-        let button_height = 55u32;
-        let col_spacing = 175;
+        let nav_y = 222;  // Moved up to ensure visibility at bottom
+        let button_width = 106u32;
+        let button_height = 38u32;  // Reduced height slightly
+        let col_spacing = 116;
+        let corner_radius = 8u32;  // Rounded corner radius
 
-        // MAP button
-        let map_rect = Rectangle::new(Point::new(15, nav_y), Size::new(button_width, button_height));
-        display.fill_solid(&map_rect, Rgb888::new(60, 80, 100))?;
-        Rectangle::new(Point::new(15, nav_y), Size::new(button_width, button_height))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 2))
+        // MAP button - Blue themed with rounded corners
+        let map_rect = Rectangle::new(Point::new(10, nav_y), Size::new(button_width, button_height));
+        let map_rounded = RoundedRectangle::new(
+            map_rect,
+            CornerRadii::new(Size::new(corner_radius, corner_radius))
+        );
+
+        // Draw filled rounded button
+        map_rounded
+            .into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(100, 150, 220))
+                .build())
             .draw(display)?;
-        Text::new("MAP", Point::new(75, nav_y + 35), text_style).draw(display)?;
+
+        // Draw rounded border
+        map_rounded
+            .into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(60, 100, 180))
+                .stroke_width(2)
+                .build())
+            .draw(display)?;
+
+        Text::new("MAP", Point::new(46, nav_y + 24), text_style).draw(display)?;
         self.map_button = Some(map_rect);
 
-        // COLLECTION button
-        let coll_rect = Rectangle::new(Point::new(15 + col_spacing, nav_y), Size::new(button_width, button_height));
-        display.fill_solid(&coll_rect, Rgb888::new(60, 100, 80))?;
-        Rectangle::new(Point::new(15 + col_spacing, nav_y), Size::new(button_width, button_height))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 2))
+        // COLLECTION button - Green themed with rounded corners
+        let coll_rect = Rectangle::new(Point::new(10 + col_spacing, nav_y), Size::new(button_width, button_height));
+        let coll_rounded = RoundedRectangle::new(
+            coll_rect,
+            CornerRadii::new(Size::new(corner_radius, corner_radius))
+        );
+
+        // Draw filled rounded button
+        coll_rounded
+            .into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(100, 200, 150))
+                .build())
             .draw(display)?;
-        Text::new("COLLECTION", Point::new(15 + col_spacing + 25, nav_y + 35), text_style).draw(display)?;
+
+        // Draw rounded border
+        coll_rounded
+            .into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(60, 150, 100))
+                .stroke_width(2)
+                .build())
+            .draw(display)?;
+
+        Text::new("COLLECT", Point::new(10 + col_spacing + 24, nav_y + 24), text_style).draw(display)?;
         self.collection_button = Some(coll_rect);
 
         display.flush()?;

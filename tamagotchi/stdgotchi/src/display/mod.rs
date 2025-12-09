@@ -1,13 +1,17 @@
-pub mod sh8601;
-pub mod ft3x68;
+pub mod st7789p;
+pub mod cst816d;
 pub mod gif_player;
 pub mod static_image;
 
-pub use sh8601::{Sh8601Driver, ColorMode};
-pub use ft3x68::{Ft3x68Driver, FT3168_DEVICE_ADDRESS};
+pub use st7789p::ColorMode;
+pub use cst816d::{Cst816dDriver, CST816D_DEVICE_ADDRESS};
 pub use gif_player::GifPlayer;
 pub use static_image::StaticImage;
 
-// Display configuration for Waveshare ESP32-S3-Touch-AMOLED-1.8
-pub const LCD_H_RES: u16 = 368;
-pub const LCD_V_RES: u16 = 448;
+// Display configuration for Waveshare ESP32-C6-Touch-LCD-1.83
+pub const LCD_H_RES: u16 = 240;
+pub const LCD_V_RES: u16 = 284;
+
+// Type alias for the display driver with specific GPIO pins used on ESP32-C6-Touch-LCD-1.83
+// DC = GPIO3, RST = GPIO4
+pub type St7789pDriver<'a> = st7789p::St7789pDriver<'a, esp_idf_svc::hal::gpio::Gpio3, esp_idf_svc::hal::gpio::Gpio4>;

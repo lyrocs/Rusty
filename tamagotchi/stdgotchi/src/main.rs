@@ -1,17 +1,17 @@
-//! stdgotchi - ESP32-S3 AMOLED Touch Demo
+//! stdgotchi - ESP32-C6 LCD Touch Demo
 //!
-//! Interactive drawing demo for Waveshare ESP32-S3-Touch-AMOLED-1.8
+//! Interactive drawing demo for Waveshare ESP32-C6-Touch-LCD-1.83
 //!
 //! # Features
-//! - Touch drawing with multi-touch support
+//! - Touch drawing with single-touch support
 //! - Gesture recognition (swipes and double-tap)
-//! - QSPI AMOLED display with RGB888 color
+//! - SPI LCD display with RGB888 color
 //! - Animated GIF playback
 //!
 //! # Hardware
-//! - Board: ESP32-S3 with PSRAM
-//! - Display: 1.8" AMOLED (368x448) via QSPI
-//! - Touch: FT3168 capacitive touch via I2C
+//! - Board: ESP32-C6 with RISC-V processor
+//! - Display: 1.83" LCD (240x284) via SPI
+//! - Touch: CST816D capacitive touch via I2C
 //!
 //! # Controls
 //!
@@ -40,15 +40,15 @@ mod wifi;
 
 use bevy_ecs::prelude::*;
 use crossbeam_channel::unbounded;
-use display::{ColorMode, Ft3x68Driver, Sh8601Driver, FT3168_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
+use display::{ColorMode, Cst816dDriver, St7789pDriver, CST816D_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES};
 use ecs::resources::{AppState, ButtonResource, DisplayResource, GameManager, InputEventChannel, SharedI2cResource};
 use game::WorldMap;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
-use esp_idf_svc::hal::gpio::PinDriver;
 use esp_idf_svc::hal::{
+    gpio::PinDriver,
     i2c::{I2cConfig, I2cDriver},
     peripherals::Peripherals,
-    spi::{SpiBusDriver, SpiDriver, config::DriverConfig, Dma},
+    spi::{SpiBusDriver, SpiDeviceDriver, SpiDriver, SpiDriverConfig, config::{Config as SpiConfig, DriverConfig}, Dma},
     units::Hertz,
 };
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
@@ -57,56 +57,44 @@ use std::thread;
 use std::time::Duration;
 use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, dungeon_combat_navigation_system, between_floors_navigation_system, dungeon_defeat_navigation_system, expedition_navigation_system, fps_system, home_navigation_system, map_navigation_system, menu_system, monster_navigation_system, render_system, utility_navigation_system};
 
-/// TCA9554 GPIO expander I2C address
-const TCA9554_ADDRESS: u8 = 0x20;
-/// TCA9554 output register
-const REG_OUTPUT: u8 = 0x01;
-/// TCA9554 configuration register
-const REG_CONFIG: u8 = 0x03;
-
 /// Initialize the display hardware
-fn init_display(i2c: &mut I2cDriver) -> Result<Sh8601Driver, Box<dyn std::error::Error>> {
-    log::info!("Performing display reset...");
+fn init_display(
+    spi2: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::spi::SPI2> + 'static,
+    sck: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio1> + 'static,
+    mosi: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio2> + 'static,
+    cs: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio5> + 'static,
+    dc: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio3> + 'static,
+    rst: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio4> + 'static,
+) -> Result<St7789pDriver<'static>, Box<dyn std::error::Error>> {
+    log::info!("Initializing SPI bus for display...");
 
-    // Configure GPIO expander pins as output
-    i2c.write(TCA9554_ADDRESS, &[REG_CONFIG, 0x00], 1000)?;
+    // Initialize SPI2 for display
+    // Pins: GPIO1=SCK, GPIO2=MOSI, GPIO5=CS
+    let driver_config = DriverConfig::new().dma(Dma::Auto(4096));
+    let spi_driver = SpiDriver::new::<esp_idf_svc::hal::spi::SPI2>(
+        spi2,
+        sck,
+        mosi,
+        None::<esp_idf_svc::hal::gpio::AnyIOPin>, // No MISO for display
+        &driver_config,
+    )?;
 
-    // Reset low
-    i2c.write(TCA9554_ADDRESS, &[REG_OUTPUT, 0b0000_0010], 1000)?;
-    thread::sleep(Duration::from_millis(20));
+    // Configure SPI to 40MHz for fast display updates
+    let spi_config = SpiConfig::new().baudrate(Hertz(40_000_000));
+    let spi_device = SpiDeviceDriver::new(spi_driver, Some(cs), &spi_config)?;
 
-    // Reset high (EXIO0, EXIO1, EXIO2 all high)
-    i2c.write(TCA9554_ADDRESS, &[REG_OUTPUT, 0b0000_0111], 1000)?;
-    thread::sleep(Duration::from_millis(150));
+    log::info!("SPI bus initialized at 40MHz");
 
-    // Initialize QSPI bus for display
-    log::info!("Initializing QSPI bus...");
-
-    let mut bus_config = spi_bus_config_t::default();
-    bus_config.__bindgen_anon_1.data0_io_num = 4; // SIO0
-    bus_config.__bindgen_anon_2.data1_io_num = 5; // SIO1
-    bus_config.__bindgen_anon_3.data2_io_num = 6; // SIO2
-    bus_config.__bindgen_anon_4.data3_io_num = 7; // SIO3
-    bus_config.sclk_io_num = 11; // SCLK
-    bus_config.max_transfer_sz = 32768;
-    bus_config.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_QUAD;
-
-    unsafe {
-        let ret = spi_bus_initialize(
-            spi_host_device_t_SPI2_HOST,
-            &bus_config,
-            spi_common_dma_t_SPI_DMA_CH_AUTO,
-        );
-        if ret != ESP_OK {
-            return Err(format!("Failed to initialize SPI bus: {}", ret).into());
-        }
-    }
+    // Initialize DC and RST pins
+    let dc_pin = PinDriver::output(dc)?;
+    let rst_pin = PinDriver::output(rst)?;
 
     // Initialize display driver
-    log::info!("Initializing SH8601 display driver...");
-    let mut display = Sh8601Driver::new(
-        spi_host_device_t_SPI2_HOST,
-        12,
+    log::info!("Initializing ST7789P display driver...");
+    let mut display = St7789pDriver::new(
+        spi_device,
+        dc_pin,
+        rst_pin,
         LCD_H_RES,
         LCD_V_RES,
         ColorMode::Rgb888,
@@ -117,59 +105,12 @@ fn init_display(i2c: &mut I2cDriver) -> Result<Sh8601Driver, Box<dyn std::error:
     Ok(display)
 }
 
-/// Configure GPIO expander to set EXIO4 as input for PWR button
-fn configure_pwr_button(i2c: &mut I2cDriver) -> Result<(), Box<dyn std::error::Error>> {
-    // Read current configuration
-    let mut config = [0u8; 1];
-    i2c.write_read(TCA9554_ADDRESS, &[REG_CONFIG], &mut config, 1000)?;
-
-    // Set bit 4 to 1 (input mode for EXIO4)
-    let new_config = config[0] | 0b0001_0000;
-    i2c.write(TCA9554_ADDRESS, &[REG_CONFIG, new_config], 1000)?;
-
-    Ok(())
-}
-
-/// Initialize SD card with SPI3 and GPIO expander CS pin
-fn init_sd_card(
-    spi3: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::spi::SPI3> + 'static,
-    gpio1: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio1> + 'static,
-    gpio2: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio2> + 'static,
-    gpio3: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio3> + 'static,
-) -> Result<ecs::resources::SdCardWrapper, Box<dyn std::error::Error>> {
-    log::info!("Initializing SD card...");
-
-    // Initialize SPI3 for SD card
-    // Pins: GPIO1=MOSI, GPIO2=SCK, GPIO3=MISO
-    let driver_config = DriverConfig::new().dma(Dma::Auto(4096));
-    let spi_driver = SpiDriver::new::<esp_idf_svc::hal::spi::SPI3>(
-        spi3,
-        gpio2,  // SCK
-        gpio1,  // MOSI
-        Some(gpio3), // MISO
-        &driver_config,
-    )?;
-
-    // Wrap SpiDriver in SpiBusDriver to get embedded-hal SpiBus trait
-    // Start at 400kHz for initialization, then increase to 10MHz for normal operation
-    // Most modern SD cards support 10-25MHz in SPI mode
-    let spi_bus = SpiBusDriver::new(spi_driver, &esp_idf_svc::hal::spi::config::Config::new().baudrate(Hertz(10_000_000)))?;
-
-    log::info!("SPI3 initialized at 10MHz for fast SD card access");
-
-    // Create CS pin for SD card (EXIO7 on TCA9554)
-    // This doesn't borrow the I2C driver, avoiding lifetime issues
-    let cs_pin = drivers::SdCsPin::new()?;
-
-    log::info!("SD card CS pin (EXIO7) configured");
-
-    // Create SD card resource
-    let sd_card_resource = sdcard::SdCardResource::new(spi_bus, cs_pin)?;
-
-    log::info!("SD card initialized successfully");
-
-    // Wrap in SdCardWrapper for ECS
-    Ok(ecs::resources::SdCardWrapper::new(Box::new(sd_card_resource)))
+/// Initialize SD card (ESP32-C6 may use different pins - update as needed)
+/// Note: SD card functionality may need to be updated based on actual hardware configuration
+fn init_sd_card() -> Result<ecs::resources::SdCardWrapper, Box<dyn std::error::Error>> {
+    log::warn!("SD card initialization not yet configured for ESP32-C6");
+    log::warn!("Please check hardware documentation for SD card pin assignments");
+    Err("SD card not configured for ESP32-C6".into())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -178,55 +119,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     esp_idf_svc::log::EspLogger::initialize_default();
 
     log::info!("=== stdgotchi starting with Bevy ECS ===");
-    log::info!("ESP32-S3 with 1.8\" AMOLED Display (SH8601)");
+    log::info!("ESP32-C6 with 1.83\" LCD Display (ST7789P)");
 
     let peripherals = Peripherals::take()?;
 
-    // Initialize I2C for GPIO expander and touch controller
+    // Initialize I2C for touch controller and sensors
     log::info!("Initializing I2C...");
     let i2c_config = I2cConfig::new().baudrate(Hertz(400_000));
     let mut i2c = I2cDriver::new(
         peripherals.i2c0,
-        peripherals.pins.gpio15, // SDA
-        peripherals.pins.gpio14, // SCL
+        peripherals.pins.gpio7, // SDA
+        peripherals.pins.gpio8, // SCL
         &i2c_config,
     )?;
 
-    // Initialize display (uses I2C for reset via GPIO expander)
-    let display = init_display(&mut i2c)?;
+    // Initialize display (SPI2 with dedicated pins)
+    log::info!("Initializing display...");
+    let display = init_display(
+        peripherals.spi2,
+        peripherals.pins.gpio1,  // SCK
+        peripherals.pins.gpio2,  // MOSI
+        peripherals.pins.gpio5,  // CS
+        peripherals.pins.gpio3,  // DC
+        peripherals.pins.gpio4,  // RST
+    )?;
 
     // Initialize touch controller
-    log::info!("Initializing FT3168 touch controller...");
-    let mut touch = Ft3x68Driver::new(FT3168_DEVICE_ADDRESS);
+    log::info!("Initializing CST816D touch controller...");
+    let mut touch = Cst816dDriver::new(CST816D_DEVICE_ADDRESS);
     touch.initialize(&mut i2c)?;
-    touch.set_gesture_mode(&mut i2c, true)?;
     log::info!("Touch controller initialized successfully!");
 
-    // Initialize boot button GPIO
+    // Initialize buttons
     log::info!("Initializing buttons...");
-    let boot_pin = PinDriver::input(peripherals.pins.gpio0)?;
+    let boot_pin = PinDriver::input(peripherals.pins.gpio9)?;
+    log::info!("Boot button on GPIO9 initialized");
 
-    // Configure PWR button (EXIO4) as input on GPIO expander
-    configure_pwr_button(&mut i2c)?;
+    // PWR button on GPIO18 (per Waveshare documentation)
+    let pwr_pin = PinDriver::input(peripherals.pins.gpio18)?;
+    log::info!("PWR button on GPIO18 initialized");
     log::info!("Buttons initialized successfully!");
 
-    // NOW leak I2C driver to make it 'static for SD card CS pin sharing
-    // All other I2C initialization is complete, so we can dedicate it to SD card
+    // Leak I2C driver to make it 'static for input thread sharing
+    // The input thread needs access to I2C for touch controller
+    log::info!("Setting up shared I2C for input thread...");
     let i2c_static: &'static mut I2cDriver<'static> = Box::leak(Box::new(i2c));
 
-    // Initialize shared I2C for SD card CS pin
+    // Initialize shared I2C for input thread
     unsafe {
         drivers::sd_cs_pin::init_sd_i2c(i2c_static);
     }
+    log::info!("Shared I2C configured for input thread");
 
-    // Initialize SD card (CS pin will use shared I2C via static reference)
+    // Initialize SD card (if available on this board)
     log::info!("Initializing storage...");
-    let mut sd_card_wrapper = match init_sd_card(
-        peripherals.spi3,
-        peripherals.pins.gpio1,
-        peripherals.pins.gpio2,
-        peripherals.pins.gpio3,
-    ) {
+    let mut sd_card_wrapper = match init_sd_card() {
         Ok(wrapper) => {
             log::info!("SD card mounted successfully");
             Some(wrapper)
@@ -334,9 +281,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn input polling thread
     // This thread handles all input (touch, buttons) at high frequency
     // FreeRTOS scheduler will distribute threads across both cores automatically
-    log::info!("Starting dual-threaded mode: Input thread + Game thread on dual-core ESP32-S3");
+    log::info!("Starting dual-threaded mode: Input thread + Game thread on dual-core ESP32-C6");
     let _input_thread = input_thread::spawn_input_thread(
         boot_pin,
+        pwr_pin,
         touch,
         input_sender,
     );
@@ -365,7 +313,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Note: TouchResource and GpioResource are now owned by the input thread
     // Input events come through the InputEventChannel instead
 
-    // Insert button resource for PWR button state tracking
+    // Insert button resource for button state tracking
     world.insert_non_send_resource(ButtonResource {
         boot_last_state: false,
         pwr_last_state: false,

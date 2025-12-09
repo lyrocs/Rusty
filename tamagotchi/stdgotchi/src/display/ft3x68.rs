@@ -16,9 +16,9 @@
 //!
 //! # Example
 //! ```no_run
-//! use display::{Ft3x68Driver, FT3168_DEVICE_ADDRESS};
+//! use display::{Cst816dDriver, FT3168_DEVICE_ADDRESS};
 //!
-//! let mut touch = Ft3x68Driver::new(FT3168_DEVICE_ADDRESS);
+//! let mut touch = Cst816dDriver::new(FT3168_DEVICE_ADDRESS);
 //! touch.initialize(&mut i2c)?;
 //! touch.set_gesture_mode(&mut i2c, true)?;
 //!
@@ -107,11 +107,11 @@ impl fmt::Display for TouchError {
 impl Error for TouchError {}
 
 /// FT3x68 Touch Controller Driver
-pub struct Ft3x68Driver {
+pub struct Cst816dDriver {
     address: u8,
 }
 
-impl Ft3x68Driver {
+impl Cst816dDriver {
     /// Create a new FT3x68 driver instance
     ///
     /// # Arguments

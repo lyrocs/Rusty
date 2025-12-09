@@ -36,7 +36,7 @@ use std::error::Error;
 use std::io::Cursor;
 use std::cell::RefCell;
 
-use super::Sh8601Driver;
+use super::St7789pDriver;
 
 /// Frame metadata (lightweight, stored for all frames)
 #[derive(Debug, Clone)]
@@ -267,14 +267,14 @@ impl GifPlayer {
     /// * `display` - Display driver instance
     /// * `frame_index` - Frame index to render
     /// * `position` - Optional (x, y) position for top-left corner. If None, centers the GIF on screen.
-    pub fn render_frame(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>) -> Result<(), Box<dyn Error>> {
+    pub fn render_frame(&self, display: &mut St7789pDriver, frame_index: usize, position: Option<(i32, i32)>) -> Result<(), Box<dyn Error>> {
         self.render_frame_with_flip(display, frame_index, position, false)
     }
 
     /// Render a specific frame with optional horizontal flip
     ///
     /// The flip is zero-cost - just arithmetic, no memory allocation.
-    pub fn render_frame_with_flip(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool) -> Result<(), Box<dyn Error>> {
+    pub fn render_frame_with_flip(&self, display: &mut St7789pDriver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool) -> Result<(), Box<dyn Error>> {
         self.render_frame_centered(display, frame_index, position, flip_horizontal, false)
     }
 
@@ -282,7 +282,7 @@ impl GifPlayer {
     ///
     /// When `center_positioned` is true, the position represents the center of the image,
     /// not the top-left corner. This ensures animations with different sizes stay centered.
-    pub fn render_frame_centered(&self, display: &mut Sh8601Driver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool, center_positioned: bool) -> Result<(), Box<dyn Error>> {
+    pub fn render_frame_centered(&self, display: &mut St7789pDriver, frame_index: usize, position: Option<(i32, i32)>, flip_horizontal: bool, center_positioned: bool) -> Result<(), Box<dyn Error>> {
         if frame_index >= self.frame_metadata.len() {
             return Err(format!("Frame index {} out of bounds (max {})", frame_index, self.frame_metadata.len()).into());
         }
@@ -338,7 +338,8 @@ impl GifPlayer {
                     if px >= 0 && px < display_size.width as i32 &&
                        py >= 0 && py < display_size.height as i32 {
                         let point = Point::new(px, py);
-                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(r, g, b))))?;
+                        // Swap R and B for BGR display format
+                        display.draw_iter(core::iter::once(Pixel(point, Rgb888::new(b, g, r))))?;
                     }
                 }
             }

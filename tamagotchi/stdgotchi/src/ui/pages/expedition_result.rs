@@ -3,14 +3,14 @@
 //! Displays results from a completed expedition including
 //! XP gained, crystals, essences, and any captured monsters.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::core::Element;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::Rectangle,
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -114,94 +114,143 @@ impl ExpeditionResultPage {
 }
 
 impl Page for ExpeditionResultPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
         if full_redraw {
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(20, 25, 35))?;
+            // Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::WHITE);
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let gold_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(255, 215, 0));
-        let green_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 100));
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let gold_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(200, 150, 0));
+        let green_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 150, 50));
 
-        // Title
-        Text::new("EXPEDITION COMPLETE", Point::new(60, 30), title_style).draw(display)?;
+        // Title with rounded header
+        let header_rect = Rectangle::new(Point::new(10, 4), Size::new(220, 22));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 180, 100))
+            .build())
+            .draw(display)?;
+        Text::new("EXPEDITION COMPLETE", Point::new(45, 20), title_style).draw(display)?;
 
-        // Map and duration
-        Text::new(&self.result.map_name, Point::new(15, 60), text_style).draw(display)?;
-        let dur_text = format!("{}min expedition", self.result.duration_minutes);
-        Text::new(&dur_text, Point::new(200, 60), dim_style).draw(display)?;
+        // Map and duration card
+        let info_rect = Rectangle::new(Point::new(10, 30), Size::new(220, 28));
+        let info_rounded = RoundedRectangle::new(info_rect, CornerRadii::new(Size::new(6, 6)));
+        info_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(220, 225, 235))
+            .build())
+            .draw(display)?;
 
-        // Separator
-        let sep = Rectangle::new(Point::new(15, 75), Size::new(338, 2));
-        display.fill_solid(&sep, Rgb888::new(60, 65, 75))?;
+        // Map name (truncate if needed)
+        let map_name = if self.result.map_name.len() > 18 {
+            &self.result.map_name[..18]
+        } else {
+            &self.result.map_name
+        };
+        Text::new(map_name, Point::new(16, 42), text_style).draw(display)?;
+        let dur_text = format!("{}min", self.result.duration_minutes);
+        Text::new(&dur_text, Point::new(180, 42), dim_style).draw(display)?;
+
+        // Results card
+        let results_rect = Rectangle::new(Point::new(10, 62), Size::new(220, 130));
+        let results_rounded = RoundedRectangle::new(results_rect, CornerRadii::new(Size::new(8, 8)));
+        results_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(250, 250, 255))
+            .build())
+            .draw(display)?;
+        results_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(180, 185, 195))
+            .stroke_width(1)
+            .build())
+            .draw(display)?;
 
         // XP rewards section
-        let mut y = 95;
-        Text::new("--- EXPERIENCE ---", Point::new(80, y), dim_style).draw(display)?;
-        y += 22;
+        let mut y = 76;
+        Text::new("EXPERIENCE", Point::new(85, y), dim_style).draw(display)?;
+        y += 12;
 
-        for name in &self.result.monster_names {
-            let xp_text = format!("{}: +{} XP", name, self.result.xp_per_monster);
-            Text::new(&xp_text, Point::new(30, y), green_style).draw(display)?;
-            y += 20;
+        for (i, name) in self.result.monster_names.iter().take(3).enumerate() {
+            let truncated_name = if name.len() > 12 { &name[..12] } else { name };
+            let xp_text = format!("{}: +{} XP", truncated_name, self.result.xp_per_monster);
+            Text::new(&xp_text, Point::new(20, y), green_style).draw(display)?;
+            y += 12;
         }
 
         // Resources section
-        y += 15;
-        Text::new("--- RESOURCES ---", Point::new(80, y), dim_style).draw(display)?;
-        y += 22;
+        y += 6;
+        Text::new("RESOURCES", Point::new(90, y), dim_style).draw(display)?;
+        y += 12;
 
         // Crystals
         let crystal_text = format!("Crystals: +{}", self.result.crystals);
-        Text::new(&crystal_text, Point::new(30, y), gold_style).draw(display)?;
-        y += 22;
+        Text::new(&crystal_text, Point::new(20, y), gold_style).draw(display)?;
+        y += 12;
 
-        // Essences
-        for (element, amount) in &self.result.essences {
-            let ess_style = MonoTextStyle::new(&FONT_9X15, Self::element_color(element));
-            let ess_text = format!("{} Essence: +{}", Self::element_name(element), amount);
-            Text::new(&ess_text, Point::new(30, y), ess_style).draw(display)?;
-            y += 20;
+        // Essences (show up to 2)
+        for (element, amount) in self.result.essences.iter().take(2) {
+            let ess_style = MonoTextStyle::new(&FONT_6X10, Self::element_color(element));
+            let ess_text = format!("{}: +{}", Self::element_name(element), amount);
+            Text::new(&ess_text, Point::new(20, y), ess_style).draw(display)?;
+            y += 12;
         }
 
         // Capture section
-        y += 15;
-        Text::new("--- CAPTURE ---", Point::new(95, y), dim_style).draw(display)?;
-        y += 22;
+        y += 6;
+        Text::new("CAPTURE", Point::new(95, y), dim_style).draw(display)?;
+        y += 12;
 
         if let Some(ref species_name) = self.result.captured_species {
             if self.result.was_fusion {
-                let capture_text = format!("Fused: {} (+5% stats)", species_name);
-                let fusion_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(200, 150, 255));
-                Text::new(&capture_text, Point::new(30, y), fusion_style).draw(display)?;
+                let truncated = if species_name.len() > 15 { &species_name[..15] } else { species_name };
+                let capture_text = format!("Fused: {} (+5%)", truncated);
+                let fusion_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(150, 100, 200));
+                Text::new(&capture_text, Point::new(20, y), fusion_style).draw(display)?;
             } else {
-                let capture_text = format!("Captured: {}", species_name);
-                let capture_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 255));
-                Text::new(&capture_text, Point::new(30, y), capture_style).draw(display)?;
+                let truncated = if species_name.len() > 18 { &species_name[..18] } else { species_name };
+                let capture_text = format!("Got: {}", truncated);
+                let capture_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 150, 200));
+                Text::new(&capture_text, Point::new(20, y), capture_style).draw(display)?;
             }
         } else {
-            Text::new("No capture this time", Point::new(30, y), dim_style).draw(display)?;
+            Text::new("No capture", Point::new(20, y), dim_style).draw(display)?;
         }
 
-        // Buttons row - positioned like home page buttons for consistent touch
-        let button_y = 370i32;
-        let button_height = 55u32;
-        let button_width = 160u32;
-        let button_spacing = 175i32;
+        // Buttons row - rounded buttons
+        let button_y = 200i32;
+        let button_height = 32u32;
+        let button_width = 100u32;
 
-        // RERUN button (left)
+        // RERUN button (left) - Blue themed
         let rerun_rect = Rectangle::new(Point::new(15, button_y), Size::new(button_width, button_height));
-        display.fill_solid(&rerun_rect, Rgb888::new(80, 80, 120))?;
-        Text::new("RERUN", Point::new(60, button_y + 35), text_style).draw(display)?;
+        let rerun_rounded = RoundedRectangle::new(rerun_rect, CornerRadii::new(Size::new(8, 8)));
+        rerun_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 150, 220))
+            .build())
+            .draw(display)?;
+        rerun_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(60, 100, 180))
+            .stroke_width(2)
+            .build())
+            .draw(display)?;
+        Text::new("RERUN", Point::new(45, button_y + 20), text_style).draw(display)?;
         self.rerun_area = Some(rerun_rect);
 
-        // CONTINUE button (right)
-        let continue_rect = Rectangle::new(Point::new(15 + button_spacing, button_y), Size::new(button_width, button_height));
-        display.fill_solid(&continue_rect, Rgb888::new(60, 100, 60))?;
-        Text::new("CONTINUE", Point::new(15 + button_spacing + 30, button_y + 35), text_style).draw(display)?;
+        // CONTINUE button (right) - Green themed
+        let continue_rect = Rectangle::new(Point::new(125, button_y), Size::new(button_width, button_height));
+        let continue_rounded = RoundedRectangle::new(continue_rect, CornerRadii::new(Size::new(8, 8)));
+        continue_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 200, 100))
+            .build())
+            .draw(display)?;
+        continue_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(60, 160, 60))
+            .stroke_width(2)
+            .build())
+            .draw(display)?;
+        Text::new("CONTINUE", Point::new(145, button_y + 20), text_style).draw(display)?;
         self.continue_area = Some(continue_rect);
 
         display.flush()?;

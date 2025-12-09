@@ -2,14 +2,14 @@
 //!
 //! Shows collection progress - which species have been captured, organized by zone.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::game::core::Element;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::collections::HashSet;
@@ -118,11 +118,11 @@ impl CollectionPage {
 
     /// Handle swipe for scrolling (2 items per swipe)
     pub fn handle_swipe(&mut self, is_up: bool) {
-        const SCROLL_AMOUNT: i32 = 200; // 2 items * 100 pixels each
+        const SCROLL_AMOUNT: i32 = 130; // ~2 items * 65 pixels each
 
         if is_up {
             // Swipe up = scroll down (show more content below)
-            let max_scroll = (self.zones.len() as i32 * 100).saturating_sub(300);
+            let max_scroll = (self.zones.len() as i32 * 65).saturating_sub(180);
             if self.scroll_offset < max_scroll {
                 self.scroll_offset = (self.scroll_offset + SCROLL_AMOUNT).min(max_scroll);
                 self.dirty = true;
@@ -164,44 +164,52 @@ impl CollectionPage {
 }
 
 impl Page for CollectionPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let green_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 100));
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::BLACK);
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
 
         if full_redraw {
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(20, 25, 35))?;
+            // Light theme background
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(240, 240, 245))?;
         }
 
-        // Header
-        Text::new("COLLECTION", Point::new(120, 35), title_style).draw(display)?;
+        // Header with rounded background
+        let header_rect = Rectangle::new(Point::new(10, 4), Size::new(220, 24));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(100, 150, 200))
+            .build())
+            .draw(display)?;
+
+        Text::new("COLLECTION", Point::new(75, 20), title_style).draw(display)?;
 
         // Progress
         let progress_text = format!("{}/{}", self.total_captured, self.total_species);
-        Text::new(&progress_text, Point::new(280, 35), text_style).draw(display)?;
+        Text::new(&progress_text, Point::new(180, 20), text_style).draw(display)?;
 
         // Zones (scrollable area)
-        let content_y_start = 60;
-        let content_height = 340;
+        let content_y_start = 32;
+        let content_height = 240;
 
         // Clear content area for scrolling
         let content_bg = Rectangle::new(
             Point::new(0, content_y_start),
-            Size::new(368, content_height as u32)
+            Size::new(240, content_height as u32)
         );
-        display.fill_solid(&content_bg, Rgb888::new(20, 25, 35))?;
+        display.fill_solid(&content_bg, Rgb888::new(240, 240, 245))?;
 
         let mut y_pos = content_y_start - self.scroll_offset;
+        let zone_height = 62;
 
         // Clear zone touch areas
         self.zone_areas.clear();
 
         for zone in &self.zones {
             // Skip if above visible area
-            if y_pos + 100 < content_y_start {
-                y_pos += 100;
+            if y_pos + zone_height < content_y_start {
+                y_pos += zone_height + 3;
                 continue;
             }
 
@@ -210,22 +218,35 @@ impl Page for CollectionPage {
                 break;
             }
 
-            // Zone header
+            // Zone card
             let zone_y = y_pos;
-            if zone_y >= content_y_start && zone_y < content_y_start + content_height {
-                // Zone background
-                let zone_bg = Rectangle::new(Point::new(15, zone_y), Size::new(338, 90));
-                let bg_color = if zone.is_unlocked {
-                    Rgb888::new(30, 35, 45)
+            if zone_y >= content_y_start - 20 && zone_y < content_y_start + content_height {
+                let zone_rect = Rectangle::new(Point::new(10, zone_y), Size::new(220, zone_height as u32));
+                let zone_rounded = RoundedRectangle::new(zone_rect, CornerRadii::new(Size::new(8, 8)));
+
+                let (bg_color, border_color) = if zone.is_unlocked {
+                    (Rgb888::new(250, 250, 255), Rgb888::new(180, 185, 195))
                 } else {
-                    Rgb888::new(25, 25, 30)
+                    (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
                 };
-                display.fill_solid(&zone_bg, bg_color)?;
+
+                // Fill
+                zone_rounded.into_styled(PrimitiveStyleBuilder::new()
+                    .fill_color(bg_color)
+                    .build())
+                    .draw(display)?;
+
+                // Border
+                zone_rounded.into_styled(PrimitiveStyleBuilder::new()
+                    .stroke_color(border_color)
+                    .stroke_width(1)
+                    .build())
+                    .draw(display)?;
 
                 // Register touch area for this zone (only if unlocked)
                 if zone.is_unlocked {
                     self.zone_areas.push(ZoneTouchArea {
-                        rect: zone_bg,
+                        rect: zone_rect,
                         zone_id: zone.zone_id.clone(),
                     });
                 }
@@ -234,74 +255,98 @@ impl Page for CollectionPage {
                 let captured_in_zone = zone.species.iter().filter(|s| s.is_captured).count();
                 let total_in_zone = zone.species.len();
 
-                let zone_header = if zone.is_unlocked {
-                    format!("{} {}/{}", zone.zone_name, captured_in_zone, total_in_zone)
+                // Truncate zone name if needed
+                let zone_name = if zone.zone_name.len() > 16 {
+                    &zone.zone_name[..16]
                 } else {
-                    format!("{} [LOCKED]", zone.zone_name)
+                    &zone.zone_name
+                };
+
+                let zone_header = if zone.is_unlocked {
+                    format!("{} {}/{}", zone_name, captured_in_zone, total_in_zone)
+                } else {
+                    format!("{} [LOCKED]", zone_name)
                 };
 
                 let header_style = if zone.is_unlocked { text_style } else { dim_style };
-                Text::new(&zone_header, Point::new(25, zone_y + 20), header_style).draw(display)?;
+                Text::new(&zone_header, Point::new(18, zone_y + 14), header_style).draw(display)?;
 
                 // Species icons (only if unlocked)
                 if zone.is_unlocked {
-                    let icons_y = zone_y + 40;
-                    let mut icon_x = 25;
-                    let icon_spacing = 38;
+                    let icons_y = zone_y + 22;
+                    let mut icon_x = 18;
+                    let icon_spacing = 26;
 
-                    for (i, species) in zone.species.iter().take(8).enumerate() {
-                        if icon_x > 330 {
+                    for (_i, species) in zone.species.iter().take(7).enumerate() {
+                        if icon_x > 200 {
                             break;
                         }
+
+                        let icon_rect = Rectangle::new(
+                            Point::new(icon_x, icons_y),
+                            Size::new(22, 18)
+                        );
+                        let icon_rounded = RoundedRectangle::new(icon_rect, CornerRadii::new(Size::new(4, 4)));
 
                         if species.is_captured {
                             // Show element icon for captured species
                             let elem_char = Self::element_char(species.element);
                             let elem_color = Self::element_color(species.element);
-                            let style = MonoTextStyle::new(&FONT_9X15, elem_color);
+                            let style = MonoTextStyle::new(&FONT_6X10, elem_color);
 
-                            // Background for icon
-                            let icon_bg = Rectangle::new(
-                                Point::new(icon_x, icons_y),
-                                Size::new(32, 25)
-                            );
-                            display.fill_solid(&icon_bg, Rgb888::new(40, 45, 55))?;
+                            // Light background for icon
+                            icon_rounded.into_styled(PrimitiveStyleBuilder::new()
+                                .fill_color(Rgb888::new(230, 235, 245))
+                                .build())
+                                .draw(display)?;
 
-                            Text::new(&format!("{}", elem_char), Point::new(icon_x + 10, icons_y + 18), style).draw(display)?;
+                            Text::new(&format!("{}", elem_char), Point::new(icon_x + 7, icons_y + 13), style).draw(display)?;
                         } else {
                             // Show ? for uncaptured
-                            let icon_bg = Rectangle::new(
-                                Point::new(icon_x, icons_y),
-                                Size::new(32, 25)
-                            );
-                            display.fill_solid(&icon_bg, Rgb888::new(30, 30, 35))?;
-                            Text::new("?", Point::new(icon_x + 12, icons_y + 18), dim_style).draw(display)?;
+                            icon_rounded.into_styled(PrimitiveStyleBuilder::new()
+                                .fill_color(Rgb888::new(210, 215, 220))
+                                .build())
+                                .draw(display)?;
+                            Text::new("?", Point::new(icon_x + 8, icons_y + 13), dim_style).draw(display)?;
                         }
 
                         icon_x += icon_spacing;
                     }
 
-                    // Show +N if more than 8 species
-                    if zone.species.len() > 8 {
-                        let more = format!("+{}", zone.species.len() - 8);
-                        Text::new(&more, Point::new(icon_x, icons_y + 18), dim_style).draw(display)?;
+                    // Show +N if more than 7 species
+                    if zone.species.len() > 7 {
+                        let more = format!("+{}", zone.species.len() - 7);
+                        Text::new(&more, Point::new(icon_x, icons_y + 13), dim_style).draw(display)?;
+                    }
+                }
+
+                // Progress bar at bottom of card
+                if zone.is_unlocked && total_in_zone > 0 {
+                    let bar_y = zone_y + 46;
+                    let bar_width = 200u32;
+                    let filled_width = ((captured_in_zone as u32 * bar_width) / total_in_zone as u32) as u32;
+
+                    // Background bar
+                    let bar_bg = Rectangle::new(Point::new(18, bar_y), Size::new(bar_width, 6));
+                    display.fill_solid(&bar_bg, Rgb888::new(200, 205, 215))?;
+
+                    // Filled bar
+                    if filled_width > 0 {
+                        let bar_fill = Rectangle::new(Point::new(18, bar_y), Size::new(filled_width, 6));
+                        display.fill_solid(&bar_fill, Rgb888::new(100, 180, 100))?;
                     }
                 }
             }
 
-            y_pos += 100;
+            y_pos += zone_height + 3;
         }
 
-        // Back button
-        let back_rect = Rectangle::new(Point::new(15, 410), Size::new(80, 30));
-        display.fill_solid(&back_rect, Rgb888::new(80, 60, 60))?;
-        Text::new("< BACK", Point::new(25, 430), text_style).draw(display)?;
-        self.back_area = Some(back_rect);
-
-        // Scroll hint
+        // Scroll hint at bottom (no back button needed)
         if self.zones.len() > 3 {
-            Text::new("swipe to scroll", Point::new(230, 430), dim_style).draw(display)?;
+            Text::new("swipe to scroll", Point::new(75, 278), dim_style).draw(display)?;
         }
+
+        self.back_area = None;
 
         display.flush()?;
         self.dirty = false;

@@ -2,7 +2,7 @@
 //!
 //! Flexible page management for different screens/modes.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use std::error::Error;
 
 /// Trait for pages that can be rendered
@@ -17,7 +17,7 @@ pub trait Page {
     /// * `display` - Display driver
     /// * `full_redraw` - If true, redraw everything (background + sprites).
     ///                   If false, only redraw changed elements (sprites only)
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>>;
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>>;
 
     /// Called when entering this page
     fn on_enter(&mut self) {

@@ -2,13 +2,13 @@
 //!
 //! Shown when player loses in a dungeon. Displays rewards earned and offers retry/quit options.
 
-use crate::display::Sh8601Driver;
+use crate::display::St7789pDriver;
 use crate::ui::page::Page;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
+    mono_font::{MonoTextStyle, ascii::{FONT_6X10, FONT_7X13}},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Rectangle, PrimitiveStyle},
+    primitives::{Rectangle, RoundedRectangle, PrimitiveStyleBuilder, CornerRadii},
     text::Text,
 };
 use std::error::Error;
@@ -117,105 +117,116 @@ impl DungeonDefeatPage {
 }
 
 impl Page for DungeonDefeatPage {
-    fn draw(&mut self, display: &mut Sh8601Driver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
-        let title_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(200, 60, 60));
-        let text_style = MonoTextStyle::new(&FONT_9X15, Rgb888::WHITE);
-        let dim_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(150, 150, 150));
-        let green_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 100));
-        let gold_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 215, 0));
+    fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::new(180, 60, 60));
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
+        let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
+        let green_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(50, 150, 50));
+        let gold_style = MonoTextStyle::new(&FONT_7X13, Rgb888::new(180, 140, 50));
 
         if full_redraw {
-            // Dark red-tinted background
-            let bg = Rectangle::new(Point::new(0, 0), Size::new(368, 448));
-            display.fill_solid(&bg, Rgb888::new(30, 20, 25))?;
+            // Light theme background with slight red tint
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(250, 240, 240))?;
         }
 
-        // ═══════════════════════════════════════
-        // HEADER - Skull icon and defeat message
-        // ═══════════════════════════════════════
-        let header_y = 50;
-
-        // Skull decoration (simple text-based)
-        Text::new("DEFEAT", Point::new(130, header_y), title_style).draw(display)?;
-
-        // Floor reached
-        let floor_text = format!("Floor {} - {}", self.floor_reached, self.dungeon_name);
-        Text::new(&floor_text, Point::new(60, header_y + 35), dim_style).draw(display)?;
-
-        // ═══════════════════════════════════════
-        // REWARDS SECTION
-        // ═══════════════════════════════════════
-        let rewards_y = 130;
-
-        // Section header
-        Text::new("Rewards Obtained:", Point::new(30, rewards_y), text_style).draw(display)?;
-
-        // Rewards box background
-        let rewards_box = Rectangle::new(Point::new(30, rewards_y + 15), Size::new(308, 80));
-        display.fill_solid(&rewards_box, Rgb888::new(40, 35, 40))?;
-        Rectangle::new(Point::new(30, rewards_y + 15), Size::new(308, 80))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(80, 70, 80), 2))
+        // Header card
+        let header_rect = Rectangle::new(Point::new(10, 4), Size::new(220, 28));
+        let header_rounded = RoundedRectangle::new(header_rect, CornerRadii::new(Size::new(6, 6)));
+        header_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(220, 150, 150))
+            .build())
             .draw(display)?;
 
-        // Crystals
+        Text::new("DEFEAT", Point::new(95, 22), title_style).draw(display)?;
+
+        // Floor reached
+        let dungeon_name = if self.dungeon_name.len() > 16 { &self.dungeon_name[..16] } else { &self.dungeon_name };
+        let floor_text = format!("Floor {} - {}", self.floor_reached, dungeon_name);
+        Text::new(&floor_text, Point::new(40, 46), dim_style).draw(display)?;
+
+        // Rewards card
+        let rewards_y = 54;
+        let rewards_rect = Rectangle::new(Point::new(10, rewards_y), Size::new(220, 50));
+        let rewards_rounded = RoundedRectangle::new(rewards_rect, CornerRadii::new(Size::new(8, 8)));
+        rewards_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(250, 250, 255))
+            .build())
+            .draw(display)?;
+        rewards_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(180, 185, 195))
+            .stroke_width(1)
+            .build())
+            .draw(display)?;
+
+        Text::new("Rewards:", Point::new(18, rewards_y + 14), dim_style).draw(display)?;
+
         let crystal_text = format!("+{} Crystals", self.crystals_earned);
-        Text::new(&crystal_text, Point::new(50, rewards_y + 45), green_style).draw(display)?;
+        Text::new(&crystal_text, Point::new(18, rewards_y + 28), green_style).draw(display)?;
 
-        // XP
-        let xp_text = format!("+{} XP per monster", self.xp_earned);
-        Text::new(&xp_text, Point::new(50, rewards_y + 70), green_style).draw(display)?;
+        let xp_text = format!("+{} XP/monster", self.xp_earned);
+        Text::new(&xp_text, Point::new(18, rewards_y + 42), green_style).draw(display)?;
 
-        // ═══════════════════════════════════════
-        // NEW RECORD SECTION (if applicable)
-        // ═══════════════════════════════════════
+        // Record section
+        let record_y = 110;
         if self.is_new_record {
-            let record_y = 250;
-
-            // Gold banner background
-            let banner = Rectangle::new(Point::new(30, record_y), Size::new(308, 50));
-            display.fill_solid(&banner, Rgb888::new(60, 50, 20))?;
-            Rectangle::new(Point::new(30, record_y), Size::new(308, 50))
-                .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(255, 215, 0), 2))
+            let record_rect = Rectangle::new(Point::new(10, record_y), Size::new(220, 32));
+            let record_rounded = RoundedRectangle::new(record_rect, CornerRadii::new(Size::new(8, 8)));
+            record_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(255, 245, 220))
+                .build())
+                .draw(display)?;
+            record_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(200, 170, 100))
+                .stroke_width(2)
+                .build())
                 .draw(display)?;
 
             let record_text = format!("NEW RECORD: Floor {}!", self.floor_reached);
-            Text::new(&record_text, Point::new(70, record_y + 32), gold_style).draw(display)?;
+            Text::new(&record_text, Point::new(45, record_y + 20), gold_style).draw(display)?;
         } else {
-            // Show previous record
-            let record_y = 250;
             let record_text = format!("Best: Floor {}", self.previous_record);
-            Text::new(&record_text, Point::new(130, record_y + 25), dim_style).draw(display)?;
+            Text::new(&record_text, Point::new(85, record_y + 18), dim_style).draw(display)?;
         }
 
-        // ═══════════════════════════════════════
-        // ACTION BUTTONS
-        // ═══════════════════════════════════════
-        let button_y = 340;
-        let button_height = 60u32;
+        // Action buttons
+        let button_y = 155;
+        let button_width = 100u32;
+        let button_height = 36u32;
 
-        // Retry button (left)
-        let retry_rect = Rectangle::new(Point::new(30, button_y), Size::new(145, button_height));
-        display.fill_solid(&retry_rect, Rgb888::new(50, 80, 50))?;
-        Rectangle::new(Point::new(30, button_y), Size::new(145, button_height))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(100, 180, 100), 2))
+        // Retry button
+        let retry_rect = Rectangle::new(Point::new(15, button_y), Size::new(button_width, button_height));
+        let retry_rounded = RoundedRectangle::new(retry_rect, CornerRadii::new(Size::new(8, 8)));
+        retry_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(180, 230, 180))
+            .build())
+            .draw(display)?;
+        retry_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(100, 180, 100))
+            .stroke_width(2)
+            .build())
             .draw(display)?;
 
-        Text::new("RETRY", Point::new(68, button_y + 25), text_style).draw(display)?;
-
-        // Show checkpoint info
+        Text::new("RETRY", Point::new(42, button_y + 16), text_style).draw(display)?;
         let checkpoint_text = format!("Floor {}", self.last_checkpoint);
-        Text::new(&checkpoint_text, Point::new(58, button_y + 45), dim_style).draw(display)?;
+        Text::new(&checkpoint_text, Point::new(38, button_y + 30), dim_style).draw(display)?;
 
         self.retry_button = Some(retry_rect);
 
-        // Quit button (right)
-        let quit_rect = Rectangle::new(Point::new(193, button_y), Size::new(145, button_height));
-        display.fill_solid(&quit_rect, Rgb888::new(80, 50, 50))?;
-        Rectangle::new(Point::new(193, button_y), Size::new(145, button_height))
-            .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(180, 100, 100), 2))
+        // Quit button
+        let quit_rect = Rectangle::new(Point::new(125, button_y), Size::new(button_width, button_height));
+        let quit_rounded = RoundedRectangle::new(quit_rect, CornerRadii::new(Size::new(8, 8)));
+        quit_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .fill_color(Rgb888::new(240, 200, 200))
+            .build())
+            .draw(display)?;
+        quit_rounded.into_styled(PrimitiveStyleBuilder::new()
+            .stroke_color(Rgb888::new(200, 120, 120))
+            .stroke_width(2)
+            .build())
             .draw(display)?;
 
-        Text::new("QUIT", Point::new(238, button_y + 35), text_style).draw(display)?;
+        Text::new("QUIT", Point::new(158, button_y + 22), text_style).draw(display)?;
 
         self.quit_button = Some(quit_rect);
 
