@@ -2,7 +2,7 @@
 //!
 //! Manages real-time combat state, bars, and transitions.
 
-use crate::game::core::{Element, Monster};
+use crate::game::core::{Element, Monster, SkillEffectType};
 use crate::game::calculations::combat::{
     update_atk_bar, update_skl_bar_after_attack, update_swap_cooldown,
     AURA_DURATION_AUTO,
@@ -277,35 +277,59 @@ impl CombatState {
             return None;
         }
 
-        let atk = monster.atk;
         let element = monster.element;
         let skill_name = monster.skill.name.clone();
-        let skill_mult = monster.skill.effect_value;
+        let skill_effect = monster.skill.effect_type.clone();
+        let skill_value = monster.skill.effect_value;
 
-        // Calculate skill damage (typically 2x multiplier)
-        let reaction_mult = self.check_reaction(element);
-        let damage = calculate_final_damage(
-            atk,
-            self.enemy.def,
-            element,
-            self.enemy.element,
-            skill_mult * reaction_mult
-        );
+        // Handle different skill types
+        match skill_effect {
+            SkillEffectType::Heal => {
+                // Heal skill - heal active monster by percentage of max HP
+                let monster = self.active_monster_mut()?;
+                let heal_amount = (monster.hp_max as f32 * skill_value) as u16;
+                let old_hp = monster.hp_current;
+                monster.hp_current = (monster.hp_current + heal_amount).min(monster.hp_max);
+                let actual_heal = monster.hp_current - old_hp;
 
-        // Apply damage
-        self.enemy.take_damage(damage);
+                // Reset skill bar
+                self.player_skl_bar = 0.0;
 
-        // Apply longer aura from skill
-        self.enemy_aura = Some((element, 4.0));
+                log::info!("Heal skill used: {} healed for {} HP", skill_name, actual_heal);
 
-        // Reset skill bar
-        self.player_skl_bar = 0.0;
+                Some(CombatEvent::PlayerSkillHeal {
+                    skill_name,
+                    heal_amount: actual_heal,
+                })
+            }
+            _ => {
+                // Damage skills
+                let atk = monster.atk;
+                let reaction_mult = self.check_reaction(element);
+                let damage = calculate_final_damage(
+                    atk,
+                    self.enemy.def,
+                    element,
+                    self.enemy.element,
+                    skill_value * reaction_mult
+                );
 
-        Some(CombatEvent::PlayerSkill {
-            skill_name,
-            damage,
-            element
-        })
+                // Apply damage
+                self.enemy.take_damage(damage);
+
+                // Apply longer aura from skill
+                self.enemy_aura = Some((element, 4.0));
+
+                // Reset skill bar
+                self.player_skl_bar = 0.0;
+
+                Some(CombatEvent::PlayerSkill {
+                    skill_name,
+                    damage,
+                    element
+                })
+            }
+        }
     }
 
     /// Swap to a different monster
@@ -354,11 +378,16 @@ pub enum CombatEvent {
         damage: u16,
         element: Element,
     },
-    /// Player used skill
+    /// Player used damage skill
     PlayerSkill {
         skill_name: String,
         damage: u16,
         element: Element,
+    },
+    /// Player used heal skill
+    PlayerSkillHeal {
+        skill_name: String,
+        heal_amount: u16,
     },
     /// Monster swapped
     MonsterSwap {

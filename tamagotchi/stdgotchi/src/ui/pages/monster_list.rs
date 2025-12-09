@@ -3,7 +3,8 @@
 //! Displays monsters - either player's owned monsters or all species from a zone.
 //! Unowned species are shown as disabled/grayed out.
 
-use crate::display::Sh8601Driver;
+use crate::assets::get_monster_icon;
+use crate::display::{Sh8601Driver, StaticImage};
 use crate::game::core::{Element, Monster, MonsterStatus};
 use crate::game::systems::progression::fusion::format_fusion;
 use crate::ui::page::Page;
@@ -312,80 +313,91 @@ impl Page for MonsterListPage {
                 monster_index: monster.monster_index,
             });
 
+            // Draw monster icon on left side
+            let icon_x = card_x + 5;
+            let icon_y = y_pos + 5;
+            let icon_size = 40i32;
+            let text_x = card_x + icon_size + 15; // Text starts after icon
+
+            if let Some(icon_data) = get_monster_icon(&monster.species_id) {
+                if let Ok(icon) = StaticImage::new(icon_data) {
+                    let _ = icon.render(display, (icon_x, icon_y));
+                }
+            } else {
+                // Fallback: element colored square
+                let elem_color = if monster.is_owned {
+                    Self::element_color(monster.element)
+                } else {
+                    Rgb888::new(50, 50, 50) // Gray for unowned
+                };
+                let icon_rect = Rectangle::new(Point::new(icon_x, icon_y), Size::new(icon_size as u32, icon_size as u32));
+                display.fill_solid(&icon_rect, elem_color)?;
+                let elem_char = Self::element_char(monster.element);
+                let char_style = if monster.is_owned {
+                    MonoTextStyle::new(&FONT_10X20, Rgb888::BLACK)
+                } else {
+                    MonoTextStyle::new(&FONT_10X20, Rgb888::new(80, 80, 80))
+                };
+                Text::new(&elem_char.to_string(), Point::new(icon_x + 12, icon_y + 28), char_style).draw(display)?;
+            }
+
             if monster.is_owned {
                 // Draw owned monster with full details
                 let elem_color = Self::element_color(monster.element);
                 let elem_style = MonoTextStyle::new(&FONT_9X15, elem_color);
 
-                // Element icon and name
+                // Row 1: Name with element, fusion, level
                 let name_with_fusion = if monster.fusion.is_empty() {
                     format!("{} {} Lv.{}", Self::element_char(monster.element), monster.name, monster.level)
                 } else {
                     format!("{} {} {} Lv.{}", Self::element_char(monster.element), monster.name, monster.fusion, monster.level)
                 };
-                Text::new(&name_with_fusion, Point::new(card_x + 10, y_pos + 20), elem_style).draw(display)?;
+                Text::new(&name_with_fusion, Point::new(text_x, y_pos + 18), elem_style).draw(display)?;
 
-                // Draw power rating
-                let power_text = format!("PWR: {}", monster.power);
-                Text::new(&power_text, Point::new(card_x + 250, y_pos + 20), dim_style).draw(display)?;
+                // Row 2: PWR + [TEAM] + [EXP]/[DGN] status (same line)
+                let power_text = format!("PWR:{}", monster.power);
+                Text::new(&power_text, Point::new(text_x, y_pos + 38), dim_style).draw(display)?;
 
-                // Draw HP bar
-                let bar_x = card_x + 10;
-                let bar_y = y_pos + 35;
-                let bar_width = 150u32;
-                let bar_height = 8u32;
-
-                let hp_bg = Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_width, bar_height));
-                display.fill_solid(&hp_bg, Rgb888::new(60, 60, 60))?;
-
-                let hp_fill_width = ((bar_width as f32) * monster.hp_percent) as u32;
-                if hp_fill_width > 0 {
-                    let hp_fill = Rectangle::new(Point::new(bar_x, bar_y), Size::new(hp_fill_width, bar_height));
-                    let hp_color = if monster.hp_percent > 0.5 {
-                        Rgb888::new(80, 200, 80)
-                    } else if monster.hp_percent > 0.25 {
-                        Rgb888::new(200, 180, 60)
-                    } else {
-                        Rgb888::new(200, 60, 60)
-                    };
-                    display.fill_solid(&hp_fill, hp_color)?;
+                let mut status_x = text_x + 70;
+                if monster.is_in_team {
+                    let team_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 255));
+                    Text::new("[TEAM]", Point::new(status_x, y_pos + 38), team_style).draw(display)?;
+                    status_x += 60;
                 }
-                Text::new("HP", Point::new(bar_x + bar_width as i32 + 5, bar_y + 7), dim_style).draw(display)?;
 
-                // Draw XP bar
-                let xp_bar_y = y_pos + 50;
-                let xp_bg = Rectangle::new(Point::new(bar_x, xp_bar_y), Size::new(bar_width, bar_height));
-                display.fill_solid(&xp_bg, Rgb888::new(40, 40, 60))?;
-
-                let xp_fill_width = ((bar_width as f32) * monster.xp_percent) as u32;
-                if xp_fill_width > 0 {
-                    let xp_fill = Rectangle::new(Point::new(bar_x, xp_bar_y), Size::new(xp_fill_width, bar_height));
-                    display.fill_solid(&xp_fill, Rgb888::new(100, 150, 255))?;
-                }
-                Text::new("XP", Point::new(bar_x + bar_width as i32 + 5, xp_bar_y + 7), dim_style).draw(display)?;
-
-                // Draw status
                 let status_text = match monster.status {
                     MonsterStatus::Available => "",
                     MonsterStatus::InExpedition => "[EXP]",
                     MonsterStatus::InDungeon => "[DGN]",
                 };
                 if !status_text.is_empty() {
-                    Text::new(status_text, Point::new(card_x + 260, y_pos + 55), dim_style).draw(display)?;
+                    let status_color = MonoTextStyle::new(&FONT_9X15, Rgb888::new(200, 180, 100));
+                    Text::new(status_text, Point::new(status_x, y_pos + 38), status_color).draw(display)?;
                 }
 
-                // Draw team indicator
-                if monster.is_in_team {
-                    Text::new("[TEAM]", Point::new(card_x + 200, y_pos + 55), MonoTextStyle::new(&FONT_9X15, Rgb888::new(100, 200, 255))).draw(display)?;
+                // Row 3: Small XP bar (reduced size)
+                let bar_x = text_x;
+                let bar_y = y_pos + 48;
+                let bar_width = 80u32;
+                let bar_height = 6u32;
+
+                let xp_bg = Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_width, bar_height));
+                display.fill_solid(&xp_bg, Rgb888::new(40, 40, 60))?;
+
+                let xp_fill_width = ((bar_width as f32) * monster.xp_percent) as u32;
+                if xp_fill_width > 0 {
+                    let xp_fill = Rectangle::new(Point::new(bar_x, bar_y), Size::new(xp_fill_width, bar_height));
+                    display.fill_solid(&xp_fill, Rgb888::new(100, 150, 255))?;
                 }
+                Text::new("XP", Point::new(bar_x + bar_width as i32 + 5, bar_y + 5), dim_style).draw(display)?;
             } else {
-                // Draw unowned species as disabled
+                // Draw unowned species as disabled (no icon fallback already handled above)
                 let elem_char = Self::element_char(monster.element);
-                let disabled_name = format!("{} {} ???", elem_char, monster.name);
-                Text::new(&disabled_name, Point::new(card_x + 10, y_pos + 35), disabled_style).draw(display)?;
+                let disabled_name = format!("{} {}", elem_char, monster.name);
+                Text::new(&disabled_name, Point::new(text_x, y_pos + 25), disabled_style).draw(display)?;
 
                 // "Not captured" text
-                Text::new("Not captured", Point::new(card_x + 220, y_pos + 35), disabled_style).draw(display)?;
+                Text::new("Not captured", Point::new(text_x, y_pos + 45), disabled_style).draw(display)?;
             }
 
             y_pos += card_height + card_spacing;

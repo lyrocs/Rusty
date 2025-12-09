@@ -49,6 +49,7 @@ pub struct DungeonCombatPage {
 struct DamagePopup {
     damage: u16,
     is_player_damage: bool,  // true = damage to enemy, false = damage to player
+    is_heal: bool,           // true = heal (green), false = damage (red/white)
     y_offset: f32,
     alpha: f32,
 }
@@ -104,6 +105,7 @@ impl DungeonCombatPage {
                 self.damage_popups.push(DamagePopup {
                     damage,
                     is_player_damage: true,
+                    is_heal: false,
                     y_offset: 0.0,
                     alpha: 1.0,
                 });
@@ -112,6 +114,7 @@ impl DungeonCombatPage {
                 self.damage_popups.push(DamagePopup {
                     damage,
                     is_player_damage: false,
+                    is_heal: false,
                     y_offset: 0.0,
                     alpha: 1.0,
                 });
@@ -120,6 +123,16 @@ impl DungeonCombatPage {
                 self.damage_popups.push(DamagePopup {
                     damage,
                     is_player_damage: true,
+                    is_heal: false,
+                    y_offset: 0.0,
+                    alpha: 1.0,
+                });
+            }
+            CombatEvent::PlayerSkillHeal { heal_amount, .. } => {
+                self.damage_popups.push(DamagePopup {
+                    damage: heal_amount,
+                    is_player_damage: false, // Show on player side
+                    is_heal: true,
                     y_offset: 0.0,
                     alpha: 1.0,
                 });
@@ -393,6 +406,32 @@ impl Page for DungeonCombatPage {
         Text::new(&skill_text, Point::new(skill_x + 10, skill_y + 28), text_style).draw(display)?;
 
         self.skill_button_area = Some(skill_rect);
+
+        // Draw damage/heal popups
+        for popup in &self.damage_popups {
+            let popup_color = if popup.is_heal {
+                Rgb888::new(100, 255, 100) // Green for heal
+            } else if popup.is_player_damage {
+                Rgb888::WHITE // White for damage to enemy
+            } else {
+                Rgb888::new(255, 100, 100) // Red for damage to player
+            };
+
+            let popup_style = MonoTextStyle::new(&FONT_10X20, popup_color);
+            let popup_x = if popup.is_player_damage { 280 } else { 200 }; // Enemy side vs player side
+            let popup_y = if popup.is_player_damage {
+                (80.0 - popup.y_offset) as i32 // Enemy area
+            } else {
+                (220.0 - popup.y_offset) as i32 // Player area
+            };
+
+            let popup_text = if popup.is_heal {
+                format!("+{}", popup.damage)
+            } else {
+                format!("-{}", popup.damage)
+            };
+            Text::new(&popup_text, Point::new(popup_x, popup_y), popup_style).draw(display)?;
+        }
 
         // Combat ended message
         if self.combat_state.combat_ended {

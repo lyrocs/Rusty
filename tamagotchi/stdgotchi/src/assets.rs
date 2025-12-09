@@ -60,6 +60,8 @@ pub enum AssetId {
     MapBackground(u32),
     /// UI element
     UIElement(&'static str),
+    /// Monster icon by species_id
+    MonsterIcon(&'static str),
 }
 
 impl AssetId {
@@ -89,6 +91,9 @@ impl AssetId {
             }
             AssetId::UIElement(name) => {
                 format!("/SPRITES/UI/{}.GIF", name.to_uppercase())
+            }
+            AssetId::MonsterIcon(species_id) => {
+                format!("/SPRITES/ICON/{}.GIF", species_id.to_uppercase())
             }
         }
     }
@@ -181,6 +186,16 @@ impl AssetId {
             }
             AssetId::UIElement("background") => {
                 Some(include_bytes!("../assets/images/ui/background.gif"))
+            }
+            // Monster icons
+            AssetId::MonsterIcon("poring") => {
+                Some(include_bytes!("../assets/images/poring/icon.gif"))
+            }
+            AssetId::MonsterIcon("lunatic") => {
+                Some(include_bytes!("../assets/images/lunatic/icon.gif"))
+            }
+            AssetId::MonsterIcon("familiar") => {
+                Some(include_bytes!("../assets/images/familiar/icon.gif"))
             }
             // Add more mappings as needed
             _ => None,
@@ -278,6 +293,16 @@ where
     /// Set SD card preference
     pub fn set_prefer_sd(&mut self, prefer: bool) {
         self.prefer_sd = prefer;
+    }
+}
+
+/// Helper function to get monster icon bytes by species ID
+pub fn get_monster_icon(species_id: &str) -> Option<&'static [u8]> {
+    match species_id {
+        "poring" => Some(include_bytes!("../assets/images/poring/icon.gif")),
+        "lunatic" => Some(include_bytes!("../assets/images/lunatic/icon.gif")),
+        "familiar" => Some(include_bytes!("../assets/images/familiar/icon.gif")),
+        _ => None,
     }
 }
 

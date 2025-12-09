@@ -3,7 +3,8 @@
 //! Main dashboard showing expedition status, active team, and navigation.
 //! Based on GDD section 3.3.1
 
-use crate::display::Sh8601Driver;
+use crate::assets::get_monster_icon;
+use crate::display::{Sh8601Driver, StaticImage};
 use crate::game::core::{Element, Monster, MonsterStatus};
 use crate::game::systems::expedition::Expedition;
 use crate::ui::page::Page;
@@ -46,6 +47,7 @@ pub struct ExpeditionSlotData {
 /// Data for displaying a team monster
 #[derive(Clone)]
 pub struct TeamMonsterData {
+    pub species_id: String,
     pub element: Element,
     pub level: u8,
     pub name: String,
@@ -126,6 +128,7 @@ impl HomePage {
 
         // Update team monsters
         self.team_monsters = team_monsters.iter().map(|m| TeamMonsterData {
+            species_id: m.species_id.clone(),
             element: m.element,
             level: m.level,
             name: m.name.clone(),
@@ -324,15 +327,23 @@ impl Page for HomePage {
             let monster_rect = Rectangle::new(Point::new(x, team_y), Size::new(monster_width, monster_height));
             display.fill_solid(&monster_rect, Rgb888::new(35, 40, 50))?;
 
-            // Element indicator (large circle/icon area)
-            let elem_color = Self::element_color(&monster_data.element);
-            let elem_rect = Rectangle::new(Point::new(x + 30, team_y + 10), Size::new(40, 30));
-            display.fill_solid(&elem_rect, elem_color)?;
-
-            // Element letter
-            let elem_char = Self::element_char(&monster_data.element);
-            let elem_text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::BLACK);
-            Text::new(&elem_char.to_string(), Point::new(x + 43, team_y + 32), elem_text_style).draw(display)?;
+            // Load and display monster icon from embedded assets
+            if let Some(icon_data) = get_monster_icon(&monster_data.species_id) {
+                if let Ok(icon) = StaticImage::new(icon_data) {
+                    // Center the icon in the card area (icon area: 40x40 centered)
+                    let icon_x = x + 30;
+                    let icon_y = team_y + 5;
+                    let _ = icon.render(display, (icon_x, icon_y));
+                }
+            } else {
+                // Fallback to element square if icon not found
+                let elem_color = Self::element_color(&monster_data.element);
+                let elem_rect = Rectangle::new(Point::new(x + 30, team_y + 10), Size::new(40, 30));
+                display.fill_solid(&elem_rect, elem_color)?;
+                let elem_char = Self::element_char(&monster_data.element);
+                let elem_text_style = MonoTextStyle::new(&FONT_10X20, Rgb888::BLACK);
+                Text::new(&elem_char.to_string(), Point::new(x + 43, team_y + 32), elem_text_style).draw(display)?;
+            }
 
             // Level
             let level_text = format!("Lv.{}", monster_data.level);

@@ -318,7 +318,7 @@ impl MapPage {
             .collect();
 
         let map_start_y = 80;
-        let map_height = 50;
+        let map_height = 60;
         let map_spacing = 5;
 
         for (idx, map) in zone_maps.iter().skip(scroll_offset).take(4).enumerate() {
@@ -334,21 +334,23 @@ impl MapPage {
             write!(map_name, "> {}", map.name).ok();
             Text::new(&map_name, Point::new(margin + 10, y + 20), text_style_section).draw(display)?;
 
-            // Level range and required elements
+            // Level range
             let mut info_text = heapless::String::<48>::new();
-            write!(info_text, "Niv.{}-{} | ", map.level_range.0, map.level_range.1).ok();
-            Text::new(&info_text, Point::new(margin + 20, y + 40), text_style_info).draw(display)?;
+            write!(info_text, "Niv.{}-{}", map.level_range.0, map.level_range.1).ok();
+            Text::new(&info_text, Point::new(margin + 20, y + 38), text_style_info).draw(display)?;
 
-            // Draw required elements
-            let mut elem_x = margin + 100;
+            // Required elements on separate line
+            let mut elem_x = margin + 20;
             for elem in &map.required_elements {
                 let elem_icon = Self::element_icon(elem);
                 let elem_color = Self::element_color(elem);
                 let elem_style = MonoTextStyle::new(&FONT_10X20, elem_color);
-                Text::new(elem_icon, Point::new(elem_x, y + 40), elem_style).draw(display)?;
-                elem_x += 15;
+                Text::new(elem_icon, Point::new(elem_x, y + 55), elem_style).draw(display)?;
+                elem_x += 18;
             }
-            Text::new("requis", Point::new(elem_x + 5, y + 40), text_style_info).draw(display)?;
+            if !map.required_elements.is_empty() {
+                Text::new("requis", Point::new(elem_x + 5, y + 55), text_style_info).draw(display)?;
+            }
 
             // Add touch area
             self.touch_areas.push(TouchArea::new(

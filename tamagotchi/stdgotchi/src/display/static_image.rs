@@ -30,8 +30,6 @@ impl StaticImage {
         let gif_width = decoder.width();
         let gif_height = decoder.height();
 
-        log::info!("Loading static image from GIF: {}x{}", gif_width, gif_height);
-
         // Read only the first frame
         let frame = decoder.read_next_frame()?
             .ok_or("GIF contains no frames")?;
@@ -40,11 +38,6 @@ impl StaticImage {
         let frame_height = frame.height;
         let left = frame.left;
         let top = frame.top;
-
-        log::info!(
-            "First frame: {}x{} at offset ({}, {})",
-            frame_width, frame_height, left, top
-        );
 
         // Calculate canvas size with proper usize casting
         let canvas_size = (gif_width as usize) * (gif_height as usize) * 4;
@@ -67,8 +60,6 @@ impl StaticImage {
                 }
             }
         }
-
-        log::info!("Static image loaded: {}x{}, {} bytes", gif_width, gif_height, canvas.len());
 
         Ok(Self {
             pixels: canvas,

@@ -127,13 +127,14 @@ fn create_dungeon_combat(
     let dungeon = game_manager.tamer_data.get_dungeon(dungeon_id)?.clone();
     let dungeon_name = dungeon.name.clone();
 
-    // Get player's team monsters (must be available and alive)
+    // Get player's team monsters (must be alive, can be in expedition)
     let team_ids = game_manager.team.monster_ids().to_vec();
     let mut player_monsters: Vec<crate::game::core::Monster> = Vec::new();
 
     for monster_id in &team_ids {
         if let Some(monster) = game_manager.get_monster_mut(monster_id) {
-            if monster.status == crate::game::core::MonsterStatus::Available && monster.is_alive() {
+            // Allow monsters in expedition to also run dungeons
+            if monster.is_alive() {
                 // Clone monster for combat and heal it
                 let mut combat_monster = monster.clone();
                 combat_monster.full_heal();

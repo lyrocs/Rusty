@@ -5,7 +5,6 @@
 use bevy_ecs::prelude::*;
 
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
-use crate::game::core::MonsterStatus;
 use crate::game::systems::combat::CombatState;
 use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
 use crate::input_thread::{InputEvent, SwipeDirection};
@@ -351,12 +350,11 @@ pub fn dungeon_defeat_navigation_system(
 
                             for monster_id in team_ids.iter() {
                                 if let Some(monster) = game_manager.get_monster_mut(monster_id) {
-                                    if monster.status == MonsterStatus::Available {
-                                        let mut combat_monster = monster.clone();
-                                        // Full HP on retry
-                                        combat_monster.hp_current = combat_monster.hp_max;
-                                        player_monsters.push(combat_monster);
-                                    }
+                                    // Allow monsters in expedition to also run dungeons
+                                    let mut combat_monster = monster.clone();
+                                    // Full HP on retry
+                                    combat_monster.hp_current = combat_monster.hp_max;
+                                    player_monsters.push(combat_monster);
                                 }
                             }
 
@@ -458,15 +456,14 @@ fn create_next_floor_combat(
 
     for (i, monster_id) in team_ids.iter().enumerate() {
         if let Some(monster) = game_manager.get_monster_mut(monster_id) {
-            if monster.status == MonsterStatus::Available {
-                let mut combat_monster = monster.clone();
-                // Restore HP from previous combat if available
-                if i < team_hp.len() {
-                    combat_monster.hp_current = team_hp[i].0;
-                    combat_monster.hp_max = team_hp[i].1;
-                }
-                player_monsters.push(combat_monster);
+            // Allow monsters in expedition to also run dungeons
+            let mut combat_monster = monster.clone();
+            // Restore HP from previous combat if available
+            if i < team_hp.len() {
+                combat_monster.hp_current = team_hp[i].0;
+                combat_monster.hp_max = team_hp[i].1;
             }
+            player_monsters.push(combat_monster);
         }
     }
 
