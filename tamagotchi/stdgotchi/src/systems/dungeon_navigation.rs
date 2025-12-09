@@ -359,14 +359,14 @@ pub fn dungeon_defeat_navigation_system(
                             }
 
                             if !player_monsters.is_empty() {
-                                // Generate enemy for checkpoint floor
-                                if let Some(enemy) = generate_floor_enemy(&*game_manager, &dungeon, checkpoint) {
-                                    let combat_state = CombatState::new(player_monsters, enemy, checkpoint);
+                                // Generate wave enemies for checkpoint floor
+                                if let Some(wave_enemies) = generate_floor_waves(&*game_manager, &dungeon, checkpoint) {
+                                    let combat_state = CombatState::with_waves(player_monsters, wave_enemies, checkpoint);
                                     game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone()));
                                     app_state.current_mode = AppMode::DungeonCombat;
                                     app_state.needs_redraw = true;
                                 } else {
-                                    log::warn!("Failed to generate enemy for retry");
+                                    log::warn!("Failed to generate enemies for retry");
                                     app_state.current_mode = AppMode::Home;
                                     app_state.needs_redraw = true;
                                 }
@@ -475,16 +475,16 @@ fn create_next_floor_combat(
         return None;
     }
 
-    // Generate enemy for this floor
-    let enemy = generate_floor_enemy(game_manager, &dungeon, floor)?;
+    // Generate wave enemies for this floor
+    let wave_enemies = generate_floor_waves(game_manager, &dungeon, floor)?;
 
-    log::info!("Next floor combat: {} monsters vs {} (Lv.{}) on floor {}, skill bar: {:.0}%",
-        player_monsters.len(), enemy.name, enemy.level, floor, persistent_skill_bar * 100.0);
+    log::info!("Next floor combat: {} monsters vs {} waves on floor {}, skill bar: {:.0}%",
+        player_monsters.len(), wave_enemies.len(), floor, persistent_skill_bar * 100.0);
 
-    // Create combat state with preserved skill bar
-    let combat_state = CombatState::with_initial_skill_bar(
+    // Create combat state with waves and preserved skill bar
+    let combat_state = CombatState::with_waves_and_skill_bar(
         player_monsters,
-        enemy,
+        wave_enemies,
         floor,
         persistent_skill_bar,
     );
@@ -495,7 +495,7 @@ fn create_next_floor_combat(
     Some((combat_page, ()))
 }
 
-/// Generate enemy for a dungeon floor
+/// Generate enemy for a dungeon floor (single enemy - for backwards compatibility)
 fn generate_floor_enemy(
     game_manager: &GameManager,
     dungeon: &crate::game::core::Dungeon,
@@ -539,4 +539,93 @@ fn generate_floor_enemy(
     enemy.def = (enemy.def as f32 * multiplier) as u16;
 
     Some(enemy)
+}
+
+/// Generate all wave enemies for a dungeon floor
+/// Boss floors (every 5th): 5 waves - 4 normal enemies + 1 boss
+/// Normal floors: random 2-5 normal enemies
+fn generate_floor_waves(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+) -> Option<Vec<crate::game::core::Monster>> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let mut waves = Vec::new();
+
+    let is_boss = dungeon.is_boss_floor(floor);
+
+    if is_boss {
+        // Boss floor: 4 normal waves + 1 boss wave
+        for _ in 0..4 {
+            if let Some(enemy) = generate_regular_enemy(game_manager, dungeon, floor, &mut rng) {
+                waves.push(enemy);
+            }
+        }
+        // Add boss as final wave
+        if let Some(boss) = generate_boss_enemy(game_manager, dungeon, floor) {
+            waves.push(boss);
+        }
+    } else {
+        // Normal floor: random 2-5 waves
+        let wave_count = rng.gen_range(2..=5);
+        for _ in 0..wave_count {
+            if let Some(enemy) = generate_regular_enemy(game_manager, dungeon, floor, &mut rng) {
+                waves.push(enemy);
+            }
+        }
+    }
+
+    if waves.is_empty() {
+        None
+    } else {
+        log::info!("Generated {} waves for floor {} (boss: {})", waves.len(), floor, is_boss);
+        Some(waves)
+    }
+}
+
+/// Generate a regular (non-boss) enemy
+fn generate_regular_enemy(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+    rng: &mut impl rand::Rng,
+) -> Option<crate::game::core::Monster> {
+    let pool = dungeon.get_enemy_pool(floor)?;
+    if pool.species.is_empty() {
+        return None;
+    }
+
+    let species_idx = rng.gen_range(0..pool.species.len());
+    let species_id = &pool.species[species_idx];
+    let enemy_level = (floor.min(99)) as u8;
+
+    let mut enemy = game_manager.tamer_data.create_monster_at_level(species_id, enemy_level)?;
+
+    let multiplier = floor_stat_multiplier(floor);
+    enemy.hp_max = (enemy.hp_max as f32 * multiplier) as u16;
+    enemy.hp_current = enemy.hp_max;
+    enemy.atk = (enemy.atk as f32 * multiplier) as u16;
+    enemy.def = (enemy.def as f32 * multiplier) as u16;
+
+    Some(enemy)
+}
+
+/// Generate a boss enemy
+fn generate_boss_enemy(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+) -> Option<crate::game::core::Monster> {
+    let boss_species = dungeon.get_boss_species(floor)?;
+    let boss_level = (floor + 5).min(99) as u8;
+    let mut boss = game_manager.tamer_data.create_monster_at_level(boss_species, boss_level)?;
+
+    let multiplier = floor_stat_multiplier(floor);
+    boss.hp_max = (boss.hp_max as f32 * multiplier * 1.5) as u16;
+    boss.hp_current = boss.hp_max;
+    boss.atk = (boss.atk as f32 * multiplier * 1.2) as u16;
+    boss.def = (boss.def as f32 * multiplier * 1.2) as u16;
+
+    Some(boss)
 }

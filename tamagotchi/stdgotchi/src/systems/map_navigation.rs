@@ -148,17 +148,17 @@ fn create_dungeon_combat(
         return None;
     }
 
-    // Generate enemy for this floor
-    let enemy = generate_floor_enemy(game_manager, &dungeon, start_floor)?;
+    // Generate wave enemies for this floor
+    let wave_enemies = generate_floor_waves(game_manager, &dungeon, start_floor)?;
 
-    log::info!("Starting dungeon combat: {} monsters vs {} (Lv.{}) in {} floor {}",
-        player_monsters.len(), enemy.name, enemy.level, dungeon_name, start_floor);
+    log::info!("Starting dungeon combat: {} monsters vs {} waves in {} floor {}",
+        player_monsters.len(), wave_enemies.len(), dungeon_name, start_floor);
 
     // Create dungeon run
     let dungeon_run = DungeonRun::new(dungeon_id.to_string(), start_floor);
 
-    // Create combat state
-    let combat_state = CombatState::new(player_monsters, enemy, start_floor);
+    // Create combat state with waves
+    let combat_state = CombatState::with_waves(player_monsters, wave_enemies, start_floor);
 
     // Create combat page
     let combat_page = DungeonCombatPage::new(combat_state, dungeon_name);
@@ -217,6 +217,95 @@ fn generate_floor_enemy(
     enemy.def = (enemy.def as f32 * multiplier) as u16;
 
     Some(enemy)
+}
+
+/// Generate all wave enemies for a dungeon floor
+/// Boss floors (every 5th): 5 waves - 4 normal enemies + 1 boss
+/// Normal floors: random 2-5 normal enemies
+fn generate_floor_waves(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+) -> Option<Vec<crate::game::core::Monster>> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let mut waves = Vec::new();
+
+    let is_boss = dungeon.is_boss_floor(floor);
+
+    if is_boss {
+        // Boss floor: 4 normal waves + 1 boss wave
+        for _ in 0..4 {
+            if let Some(enemy) = generate_regular_enemy(game_manager, dungeon, floor, &mut rng) {
+                waves.push(enemy);
+            }
+        }
+        // Add boss as final wave
+        if let Some(boss) = generate_boss_enemy(game_manager, dungeon, floor) {
+            waves.push(boss);
+        }
+    } else {
+        // Normal floor: random 2-5 waves
+        let wave_count = rng.gen_range(2..=5);
+        for _ in 0..wave_count {
+            if let Some(enemy) = generate_regular_enemy(game_manager, dungeon, floor, &mut rng) {
+                waves.push(enemy);
+            }
+        }
+    }
+
+    if waves.is_empty() {
+        None
+    } else {
+        log::info!("Generated {} waves for floor {} (boss: {})", waves.len(), floor, is_boss);
+        Some(waves)
+    }
+}
+
+/// Generate a regular (non-boss) enemy
+fn generate_regular_enemy(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+    rng: &mut impl rand::Rng,
+) -> Option<crate::game::core::Monster> {
+    let pool = dungeon.get_enemy_pool(floor)?;
+    if pool.species.is_empty() {
+        return None;
+    }
+
+    let species_idx = rng.gen_range(0..pool.species.len());
+    let species_id = &pool.species[species_idx];
+    let enemy_level = (floor.min(99)) as u8;
+
+    let mut enemy = game_manager.tamer_data.create_monster_at_level(species_id, enemy_level)?;
+
+    let multiplier = floor_stat_multiplier(floor);
+    enemy.hp_max = (enemy.hp_max as f32 * multiplier) as u16;
+    enemy.hp_current = enemy.hp_max;
+    enemy.atk = (enemy.atk as f32 * multiplier) as u16;
+    enemy.def = (enemy.def as f32 * multiplier) as u16;
+
+    Some(enemy)
+}
+
+/// Generate a boss enemy
+fn generate_boss_enemy(
+    game_manager: &GameManager,
+    dungeon: &crate::game::core::Dungeon,
+    floor: u16,
+) -> Option<crate::game::core::Monster> {
+    let boss_species = dungeon.get_boss_species(floor)?;
+    let boss_level = (floor + 5).min(99) as u8;
+    let mut boss = game_manager.tamer_data.create_monster_at_level(boss_species, boss_level)?;
+
+    let multiplier = floor_stat_multiplier(floor);
+    boss.hp_max = (boss.hp_max as f32 * multiplier * 1.5) as u16;
+    boss.hp_current = boss.hp_max;
+    boss.atk = (boss.atk as f32 * multiplier * 1.2) as u16;
+    boss.def = (boss.def as f32 * multiplier * 1.2) as u16;
+
+    Some(boss)
 }
 
 /// Create expedition team selection page from map ID

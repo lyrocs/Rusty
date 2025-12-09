@@ -3,8 +3,9 @@
 //! All combat timing calculations: ATK bar fill rate, SKL bar gain, swap cooldown.
 //! This is the SINGLE SOURCE OF TRUTH for combat timing formulas.
 
-/// Base SPD for 1 attack per second
-pub const BASE_SPD: f32 = 30.0;
+/// Base SPD for 1 attack per second (higher = slower attacks)
+/// 60 SPD = 1 attack/second, 30 SPD = 0.5 attacks/second (2 sec per attack)
+pub const BASE_SPD: f32 = 60.0;
 
 /// SKL bar gain per attack (20%)
 pub const SKL_GAIN_PER_ATTACK: f32 = 0.20;
@@ -67,19 +68,19 @@ mod tests {
 
     #[test]
     fn test_atk_bar_fill_rate() {
-        assert_eq!(atk_bar_fill_rate(30), 1.0);  // 1 attack/second
-        assert_eq!(atk_bar_fill_rate(60), 2.0);  // 2 attacks/second
-        assert_eq!(atk_bar_fill_rate(15), 0.5);  // 0.5 attacks/second
+        assert_eq!(atk_bar_fill_rate(60), 1.0);  // 1 attack/second
+        assert_eq!(atk_bar_fill_rate(120), 2.0); // 2 attacks/second
+        assert_eq!(atk_bar_fill_rate(30), 0.5);  // 0.5 attacks/second
     }
 
     #[test]
     fn test_update_atk_bar() {
-        // SPD 30 = 1.0 fill/second, after 0.5 seconds
-        let new_bar = update_atk_bar(0.0, 30, 0.5);
+        // SPD 60 = 1.0 fill/second, after 0.5 seconds
+        let new_bar = update_atk_bar(0.0, 60, 0.5);
         assert!((new_bar - 0.5).abs() < 0.001);
 
         // Capped at 1.0
-        let new_bar = update_atk_bar(0.9, 30, 0.5);
+        let new_bar = update_atk_bar(0.9, 60, 0.5);
         assert_eq!(new_bar, 1.0);
     }
 

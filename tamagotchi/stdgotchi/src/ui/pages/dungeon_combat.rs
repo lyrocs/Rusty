@@ -199,15 +199,23 @@ impl Page for DungeonCombatPage {
         }
 
         // ═══════════════════════════════════════
-        // HEADER: Dungeon name, floor, crystals
+        // HEADER: Dungeon name, floor, wave, crystals
         // ═══════════════════════════════════════
         let header_text = format!(
-            "{} Fl.{}  +{} crystals",
+            "{} Fl.{}",
             self.dungeon_name,
             self.combat_state.current_floor,
-            self.combat_state.crystals_earned
         );
         Text::new(&header_text, Point::new(15, 25), dim_style).draw(display)?;
+
+        // Wave indicator (show wave N/M)
+        let wave_text = format!(
+            "Wave {}/{}  +{}",
+            self.combat_state.current_wave,
+            self.combat_state.total_waves,
+            self.combat_state.crystals_earned,
+        );
+        Text::new(&wave_text, Point::new(200, 25), dim_style).draw(display)?;
 
         // ═══════════════════════════════════════
         // ENEMY SECTION
@@ -431,6 +439,20 @@ impl Page for DungeonCombatPage {
                 format!("-{}", popup.damage)
             };
             Text::new(&popup_text, Point::new(popup_x, popup_y), popup_style).draw(display)?;
+        }
+
+        // Wave transition message
+        if self.combat_state.is_wave_transitioning {
+            let wave_msg = format!(
+                "Wave {} cleared!",
+                self.combat_state.current_wave
+            );
+            let wave_style = MonoTextStyle::new(&FONT_10X20, Rgb888::new(255, 220, 100));
+            Text::new(&wave_msg, Point::new(100, 130), wave_style).draw(display)?;
+
+            let next_msg = "Next wave incoming...";
+            let next_style = MonoTextStyle::new(&FONT_9X15, Rgb888::new(180, 180, 180));
+            Text::new(next_msg, Point::new(100, 155), next_style).draw(display)?;
         }
 
         // Combat ended message
