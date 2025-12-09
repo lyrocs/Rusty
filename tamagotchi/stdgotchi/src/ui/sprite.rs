@@ -57,15 +57,15 @@ pub struct AnimatedSprite {
 }
 
 impl AnimatedSprite {
-    /// Create a new animated sprite from GIF data
+    /// Create a new animated sprite from static GIF data (stays in flash)
     ///
     /// # Arguments
-    /// * `gif_data` - Raw GIF file bytes
+    /// * `gif_data` - Static reference to raw GIF file bytes (use include_bytes!)
     /// * `position` - (x, y) position on screen
     /// * `frame_delay` - Time between frames (e.g., Duration::from_millis(50))
     /// * `loops` - Number of loops (None for infinite)
     pub fn new(
-        gif_data: &[u8],
+        gif_data: &'static [u8],
         position: (i32, i32),
         frame_delay: Duration,
         loops: Option<u32>,
@@ -89,7 +89,7 @@ impl AnimatedSprite {
 
     /// Create a new animated sprite with horizontal flip (for facing opposite direction)
     pub fn new_flipped(
-        gif_data: &[u8],
+        gif_data: &'static [u8],
         position: (i32, i32),
         frame_delay: Duration,
         loops: Option<u32>,

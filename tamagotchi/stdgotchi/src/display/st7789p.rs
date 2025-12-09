@@ -113,6 +113,8 @@ where
     framebuffer: Vec<u8>,
     width: u16,
     height: u16,
+    /// Backlight pin (GPIO6) - None if not connected
+    backlight: Option<PinDriver<'a, esp_idf_svc::hal::gpio::Gpio6, Output>>,
 }
 
 impl<'a, DC, RST> St7789pDriver<'a, DC, RST>
@@ -148,9 +150,33 @@ where
             framebuffer,
             width,
             height,
+            backlight: None,
         };
 
         Ok(driver)
+    }
+
+    /// Set the backlight pin for controlling display brightness
+    pub fn set_backlight_pin(&mut self, backlight: PinDriver<'a, esp_idf_svc::hal::gpio::Gpio6, Output>) {
+        self.backlight = Some(backlight);
+    }
+
+    /// Turn backlight on
+    pub fn backlight_on(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(ref mut bl) = self.backlight {
+            bl.set_high()?;
+            log::info!("Backlight ON");
+        }
+        Ok(())
+    }
+
+    /// Turn backlight off
+    pub fn backlight_off(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(ref mut bl) = self.backlight {
+            bl.set_low()?;
+            log::info!("Backlight OFF");
+        }
+        Ok(())
     }
 
     /// Initialize the display
@@ -297,11 +323,17 @@ where
         self.send_command(commands::DISPON)?;
         thread::sleep(Duration::from_millis(10));
 
+        // Turn backlight on
+        self.backlight_on()?;
+
         Ok(())
     }
 
     /// Turn display off
     pub fn display_off(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Turn backlight off first
+        self.backlight_off()?;
+
         // Turn display off
         self.send_command(commands::DISPOFF)?;
         thread::sleep(Duration::from_millis(10));

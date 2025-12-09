@@ -1,32 +1,30 @@
-//! GIF Animation Player for AMOLED Display
+//! GIF Animation Player for LCD Display
 //!
-//! This module provides GIF decoding and playback functionality for the SH8601 display.
+//! This module provides GIF decoding and playback functionality for the ST7789P display.
 //! It supports animated GIFs with proper frame timing and color palette handling.
 //!
 //! # Features
 //! - Streaming GIF decoding with on-demand frame loading
+//! - Zero-copy: GIF data stays in flash memory, not copied to RAM
+//! - Shared canvas: multiple GIFs can share one canvas buffer
 //! - Palette to RGB888 conversion
 //! - Frame timing and animation loop support
 //! - Centered rendering on display
-//! - Memory-efficient: only decodes frames as needed
 //!
-//! # Example
+//! # Memory-Efficient Usage with GifMeta
 //! ```no_run
-//! use display::GifPlayer;
+//! use display::{GifMeta, SharedCanvas};
 //!
-//! let gif_data = include_bytes!("../../assets/80.gif");
-//! let mut player = GifPlayer::new(gif_data)?;
+//! // Create ONE shared canvas (only RAM allocation needed)
+//! let mut canvas = SharedCanvas::new(80, 80);
 //!
-//! // Play one frame centered
-//! player.render_frame(&mut display, 0, None)?;
-//! display.flush()?;
+//! // Create lightweight metadata (no canvas allocation)
+//! let gif1 = GifMeta::new(include_bytes!("monster1.gif"))?;
+//! let gif2 = GifMeta::new(include_bytes!("monster2.gif"))?;
 //!
-//! // Animate at fixed position (x=50, y=100)
-//! loop {
-//!     let delay = player.next_frame(&mut display, Some((50, 100)))?;
-//!     display.flush()?;
-//!     thread::sleep(delay);
-//! }
+//! // Render using shared canvas
+//! gif1.render_frame(&mut display, 0, &mut canvas, Some((60, 100)), false, true)?;
+//! gif2.render_frame(&mut display, 0, &mut canvas, Some((180, 100)), true, true)?;
 //! ```
 
 use embedded_graphics::prelude::*;
@@ -37,6 +35,210 @@ use std::io::Cursor;
 use std::cell::RefCell;
 
 use super::St7789pDriver;
+
+/// Shared canvas buffer for memory-efficient GIF rendering
+///
+/// Only ONE of these is needed - all GIFs can share it.
+/// Allocates width * height * 4 bytes (RGBA).
+pub struct SharedCanvas {
+    buffer: Vec<u8>,
+    width: u16,
+    height: u16,
+}
+
+impl SharedCanvas {
+    /// Create a shared canvas large enough for GIFs up to the given dimensions
+    pub fn new(max_width: u16, max_height: u16) -> Self {
+        let size = (max_width as usize) * (max_height as usize) * 4;
+        log::info!("SharedCanvas: {}x{} = {}KB", max_width, max_height, size / 1024);
+        Self {
+            buffer: vec![0u8; size],
+            width: max_width,
+            height: max_height,
+        }
+    }
+
+    /// Clear the canvas
+    pub fn clear(&mut self) {
+        self.buffer.fill(0);
+    }
+
+    /// Get canvas dimensions
+    pub fn dimensions(&self) -> (u16, u16) {
+        (self.width, self.height)
+    }
+}
+
+/// Lightweight GIF metadata - NO canvas allocation
+///
+/// This struct only stores metadata and a reference to GIF data in flash.
+/// Use with SharedCanvas for memory-efficient rendering.
+pub struct GifMeta {
+    gif_data: &'static [u8],
+    frame_metadata: Vec<FrameMetadata>,
+    gif_width: u16,
+    gif_height: u16,
+}
+
+impl GifMeta {
+    /// Create GIF metadata from static data (no canvas allocation)
+    pub fn new(gif_data: &'static [u8]) -> Result<Self, Box<dyn Error>> {
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(ColorOutput::RGBA);
+
+        let mut decoder = options.read_info(Cursor::new(gif_data))?;
+        let gif_width = decoder.width();
+        let gif_height = decoder.height();
+
+        let mut frame_metadata = Vec::new();
+
+        while let Some(frame) = decoder.read_next_frame()? {
+            let delay_ms = frame.delay as u16 * 10;
+            frame_metadata.push(FrameMetadata {
+                delay_ms: if delay_ms > 0 { delay_ms } else { 100 },
+                left: frame.left,
+                top: frame.top,
+                width: frame.width,
+                height: frame.height,
+                disposal: frame.dispose,
+            });
+        }
+
+        if frame_metadata.is_empty() {
+            return Err("GIF contains no frames".into());
+        }
+
+        log::info!("GifMeta: {}x{}, {} frames (no canvas)", gif_width, gif_height, frame_metadata.len());
+
+        Ok(Self {
+            gif_data,
+            frame_metadata,
+            gif_width,
+            gif_height,
+        })
+    }
+
+    /// Get frame count
+    pub fn frame_count(&self) -> usize {
+        self.frame_metadata.len()
+    }
+
+    /// Get dimensions
+    pub fn dimensions(&self) -> (u16, u16) {
+        (self.gif_width, self.gif_height)
+    }
+
+    /// Render a frame using a shared canvas
+    pub fn render_frame(
+        &self,
+        display: &mut St7789pDriver,
+        frame_index: usize,
+        canvas: &mut SharedCanvas,
+        position: Option<(i32, i32)>,
+        flip_horizontal: bool,
+        center_positioned: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        if frame_index >= self.frame_metadata.len() {
+            return Err(format!("Frame index {} out of bounds", frame_index).into());
+        }
+
+        // Decode frame into shared canvas
+        self.decode_frame_to_canvas(frame_index, canvas)?;
+
+        let display_size = display.size();
+
+        let (base_x, base_y) = if let Some((x, y)) = position {
+            if center_positioned {
+                (x - (self.gif_width as i32 / 2), y - (self.gif_height as i32 / 2))
+            } else {
+                (x, y)
+            }
+        } else {
+            let center_x = (display_size.width as i32 - self.gif_width as i32) / 2;
+            let center_y = (display_size.height as i32 - self.gif_height as i32) / 2;
+            (center_x, center_y)
+        };
+
+        // Render from canvas to display
+        for y in 0..self.gif_height {
+            for x in 0..self.gif_width {
+                let pixel_idx = ((y as usize) * (self.gif_width as usize) + (x as usize)) * 4;
+
+                if pixel_idx + 3 < canvas.buffer.len() {
+                    let r = canvas.buffer[pixel_idx];
+                    let g = canvas.buffer[pixel_idx + 1];
+                    let b = canvas.buffer[pixel_idx + 2];
+                    let a = canvas.buffer[pixel_idx + 3];
+
+                    if a < 128 {
+                        continue;
+                    }
+
+                    let px = if flip_horizontal {
+                        base_x + (self.gif_width - 1 - x) as i32
+                    } else {
+                        base_x + x as i32
+                    };
+                    let py = base_y + y as i32;
+
+                    if px >= 0 && px < display_size.width as i32 &&
+                       py >= 0 && py < display_size.height as i32 {
+                        display.draw_iter(core::iter::once(Pixel(
+                            Point::new(px, py),
+                            Rgb888::new(b, g, r)
+                        )))?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Decode a specific frame into the shared canvas
+    fn decode_frame_to_canvas(&self, frame_index: usize, canvas: &mut SharedCanvas) -> Result<(), Box<dyn Error>> {
+        // Clear canvas first
+        canvas.clear();
+
+        // Create decoder and decode up to target frame
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(ColorOutput::RGBA);
+        let mut decoder = options.read_info(Cursor::new(self.gif_data))?;
+
+        for i in 0..=frame_index {
+            if let Some(frame) = decoder.read_next_frame()? {
+                let metadata = &self.frame_metadata[i];
+
+                // Handle disposal
+                if matches!(metadata.disposal, DisposalMethod::Background) {
+                    canvas.clear();
+                }
+
+                // Composite frame onto canvas
+                for y in 0..metadata.height {
+                    for x in 0..metadata.width {
+                        let frame_idx = ((y as usize) * (metadata.width as usize) + (x as usize)) * 4;
+                        if frame_idx + 3 < frame.buffer.len() {
+                            let canvas_x = metadata.left + x;
+                            let canvas_y = metadata.top + y;
+                            if canvas_x < self.gif_width && canvas_y < self.gif_height {
+                                let canvas_idx = ((canvas_y as usize) * (self.gif_width as usize) + (canvas_x as usize)) * 4;
+                                if canvas_idx + 3 < canvas.buffer.len() {
+                                    canvas.buffer[canvas_idx] = frame.buffer[frame_idx];
+                                    canvas.buffer[canvas_idx + 1] = frame.buffer[frame_idx + 1];
+                                    canvas.buffer[canvas_idx + 2] = frame.buffer[frame_idx + 2];
+                                    canvas.buffer[canvas_idx + 3] = frame.buffer[frame_idx + 3];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// Frame metadata (lightweight, stored for all frames)
 #[derive(Debug, Clone)]
@@ -59,16 +261,21 @@ struct FrameMetadata {
 ///
 /// This uses a persistent decoder that maintains state between frames,
 /// making sequential playback fast without needing to cache frames.
+///
+/// Memory layout:
+/// - GIF data: stored in flash via static reference (zero RAM cost)
+/// - Frame metadata: ~24 bytes per frame
+/// - Canvas buffer: width * height * 4 bytes (only RAM allocation)
 pub struct GifPlayer {
-    /// Original GIF data (stored for decoder resets)
-    gif_data: Vec<u8>,
+    /// Original GIF data (static reference to flash - NO RAM copy!)
+    gif_data: &'static [u8],
     /// Frame metadata (lightweight)
     frame_metadata: Vec<FrameMetadata>,
     /// Overall GIF dimensions
     gif_width: u16,
     gif_height: u16,
     /// Persistent decoder for sequential playback
-    decoder: RefCell<Option<Decoder<Cursor<Vec<u8>>>>>,
+    decoder: RefCell<Option<Decoder<Cursor<&'static [u8]>>>>,
     /// Current decoder position (which frame it's at)
     decoder_position: RefCell<usize>,
     /// Reusable canvas buffer for frame composition
@@ -76,13 +283,14 @@ pub struct GifPlayer {
 }
 
 impl GifPlayer {
-    /// Create a new GIF player from GIF data
+    /// Create a new GIF player from static GIF data (stays in flash, not copied to RAM)
     ///
     /// This only parses metadata, not actual frame data, for memory efficiency.
+    /// The GIF data remains in flash memory - only the canvas buffer uses RAM.
     ///
     /// # Arguments
-    /// * `gif_data` - Raw GIF file bytes
-    pub fn new(gif_data: &[u8]) -> Result<Self, Box<dyn Error>> {
+    /// * `gif_data` - Static reference to raw GIF file bytes (use include_bytes!)
+    pub fn new(gif_data: &'static [u8]) -> Result<Self, Box<dyn Error>> {
         let mut options = gif::DecodeOptions::new();
         options.set_color_output(ColorOutput::RGBA);
 
@@ -93,7 +301,7 @@ impl GifPlayer {
         // Calculate canvas size for single frame buffer
         let canvas_size = (gif_width as usize) * (gif_height as usize) * 4;
         log::info!(
-            "Loading GIF (streaming): {}x{}, canvas: {} bytes",
+            "Loading GIF (zero-copy): {}x{}, canvas: {} bytes (data stays in flash)",
             gif_width, gif_height, canvas_size
         );
 
@@ -118,7 +326,7 @@ impl GifPlayer {
         }
 
         log::info!(
-            "Loaded GIF metadata: {} frames, {}x{} (stateful streaming: {}KB single buffer)",
+            "Loaded GIF: {} frames, {}x{} (canvas: {}KB, GIF data in flash)",
             frame_metadata.len(),
             gif_width,
             gif_height,
@@ -130,7 +338,7 @@ impl GifPlayer {
         }
 
         Ok(Self {
-            gif_data: gif_data.to_vec(),
+            gif_data,  // Static reference - NO copy!
             frame_metadata,
             gif_width,
             gif_height,
@@ -178,10 +386,10 @@ impl GifPlayer {
 
     /// Reset decoder and decode up to target frame
     fn reset_decoder_to_frame(&self, target_frame: usize) -> Result<(), Box<dyn Error>> {
-        // Create new decoder
+        // Create new decoder from static flash data (no copy!)
         let mut options = gif::DecodeOptions::new();
         options.set_color_output(ColorOutput::RGBA);
-        let decoder = options.read_info(Cursor::new(self.gif_data.clone()))?;
+        let decoder = options.read_info(Cursor::new(self.gif_data))?;
 
         *self.decoder.borrow_mut() = Some(decoder);
         *self.decoder_position.borrow_mut() = 0;

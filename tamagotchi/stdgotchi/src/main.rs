@@ -65,6 +65,7 @@ fn init_display(
     cs: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio5> + 'static,
     dc: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio3> + 'static,
     rst: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio4> + 'static,
+    backlight: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio6> + 'static,
 ) -> Result<St7789pDriver<'static>, Box<dyn std::error::Error>> {
     log::info!("Initializing SPI bus for display...");
 
@@ -89,6 +90,11 @@ fn init_display(
     let dc_pin = PinDriver::output(dc)?;
     let rst_pin = PinDriver::output(rst)?;
 
+    // Initialize backlight pin (GPIO6)
+    let mut bl_pin = PinDriver::output(backlight)?;
+    bl_pin.set_high()?; // Turn backlight on initially
+    log::info!("Backlight pin (GPIO6) initialized");
+
     // Initialize display driver
     log::info!("Initializing ST7789P display driver...");
     let mut display = St7789pDriver::new(
@@ -100,6 +106,9 @@ fn init_display(
         ColorMode::Rgb888,
     )?;
     display.initialize(ColorMode::Rgb888)?;
+
+    // Set backlight pin on display driver for on/off control
+    display.set_backlight_pin(bl_pin);
 
     log::info!("Display initialized successfully!");
     Ok(display)
@@ -142,6 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         peripherals.pins.gpio5,  // CS
         peripherals.pins.gpio3,  // DC
         peripherals.pins.gpio4,  // RST
+        peripherals.pins.gpio6,  // Backlight
     )?;
 
     // Initialize touch controller

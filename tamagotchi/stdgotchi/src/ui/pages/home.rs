@@ -379,14 +379,14 @@ impl Page for HomePage {
         // ═══════════════════════════════════════
         // NAVIGATION BUTTONS (2 buttons side by side with rounded corners)
         // ═══════════════════════════════════════
-        let nav_y = 222;  // Moved up to ensure visibility at bottom
-        let button_width = 106u32;
-        let button_height = 38u32;  // Reduced height slightly
-        let col_spacing = 116;
-        let corner_radius = 8u32;  // Rounded corner radius
+        let nav_y = 224;
+        let button_width = 110u32;
+        let button_height = 50u32;  // Taller buttons for better touch
+        let button_spacing = 10;     // Gap between buttons
+        let corner_radius = 8u32;
 
         // MAP button - Blue themed with rounded corners
-        let map_rect = Rectangle::new(Point::new(10, nav_y), Size::new(button_width, button_height));
+        let map_rect = Rectangle::new(Point::new(5, nav_y), Size::new(button_width, button_height));
         let map_rounded = RoundedRectangle::new(
             map_rect,
             CornerRadii::new(Size::new(corner_radius, corner_radius))
@@ -407,11 +407,12 @@ impl Page for HomePage {
                 .build())
             .draw(display)?;
 
-        Text::new("MAP", Point::new(46, nav_y + 24), text_style).draw(display)?;
+        Text::new("MAP", Point::new(42, nav_y + 30), text_style).draw(display)?;
         self.map_button = Some(map_rect);
 
         // COLLECTION button - Green themed with rounded corners
-        let coll_rect = Rectangle::new(Point::new(10 + col_spacing, nav_y), Size::new(button_width, button_height));
+        let coll_x = 5 + button_width as i32 + button_spacing;
+        let coll_rect = Rectangle::new(Point::new(coll_x, nav_y), Size::new(button_width, button_height));
         let coll_rounded = RoundedRectangle::new(
             coll_rect,
             CornerRadii::new(Size::new(corner_radius, corner_radius))
@@ -432,7 +433,7 @@ impl Page for HomePage {
                 .build())
             .draw(display)?;
 
-        Text::new("COLLECT", Point::new(10 + col_spacing + 24, nav_y + 24), text_style).draw(display)?;
+        Text::new("COLLECT", Point::new(coll_x + 22, nav_y + 30), text_style).draw(display)?;
         self.collection_button = Some(coll_rect);
 
         display.flush()?;

@@ -430,9 +430,17 @@ pub fn check_expedition_completion(game_manager: &mut GameManager) -> Option<(us
                 // New capture
                 if let Some(new_monster) = game_manager.tamer_data.create_monster(species_id) {
                     captured_species_result = Some(new_monster.name.clone());
+                    let monster_id = new_monster.id.clone();
                     game_manager.monsters.push(new_monster);
                     was_fusion = false;
                     log::info!("Captured new monster: {}", species_id);
+
+                    // Auto-add to team if there's space
+                    if !game_manager.team.is_full() {
+                        if game_manager.team.add(monster_id.clone()) {
+                            log::info!("Auto-added {} to team (slot {})", species_id, game_manager.team.len());
+                        }
+                    }
                 } else {
                     captured_species_result = None;
                     was_fusion = false;

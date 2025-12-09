@@ -5,7 +5,7 @@ pub mod static_image;
 
 pub use st7789p::ColorMode;
 pub use cst816d::{Cst816dDriver, CST816D_DEVICE_ADDRESS};
-pub use gif_player::GifPlayer;
+pub use gif_player::{GifPlayer, GifMeta, SharedCanvas};
 pub use static_image::StaticImage;
 
 // Display configuration for Waveshare ESP32-C6-Touch-LCD-1.83

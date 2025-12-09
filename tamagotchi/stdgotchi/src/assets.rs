@@ -336,40 +336,41 @@ pub mod battle {
         Ok((idle, attack, attacked, death))
     }
 
-    /// Load embedded enemy sprites (backward compatibility)
+    /// Load embedded enemy sprites (static references - data stays in flash)
     ///
-    /// This is the same as the old get_enemy_data() but uses enemy IDs
+    /// Returns static references to GIF data in flash memory.
+    /// This avoids copying sprite data to RAM.
     pub fn load_enemy_sprites_embedded(
         enemy_id: u32,
-    ) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>)> {
+    ) -> Option<(&'static [u8], &'static [u8], &'static [u8], Option<&'static [u8]>)> {
         match enemy_id {
             1002 => Some((
                 // Poring
-                include_bytes!("../assets/images/poring/6.gif").to_vec(),
-                include_bytes!("../assets/images/poring/22.gif").to_vec(),
-                include_bytes!("../assets/images/poring/30.gif").to_vec(),
-                Some(include_bytes!("../assets/images/poring/38.gif").to_vec()),
+                include_bytes!("../assets/images/poring/6.gif"),
+                include_bytes!("../assets/images/poring/22.gif"),
+                include_bytes!("../assets/images/poring/30.gif"),
+                Some(include_bytes!("../assets/images/poring/38.gif")),
             )),
             1004 => Some((
                 // Hornet
-                include_bytes!("../assets/images/hornet/6.gif").to_vec(),
-                include_bytes!("../assets/images/hornet/22.gif").to_vec(),
-                include_bytes!("../assets/images/hornet/30.gif").to_vec(),
-                Some(include_bytes!("../assets/images/hornet/38.gif").to_vec()),
+                include_bytes!("../assets/images/hornet/6.gif"),
+                include_bytes!("../assets/images/hornet/22.gif"),
+                include_bytes!("../assets/images/hornet/30.gif"),
+                Some(include_bytes!("../assets/images/hornet/38.gif")),
             )),
             1007 => Some((
                 // Fabre
-                include_bytes!("../assets/images/fabre/6.gif").to_vec(),
-                include_bytes!("../assets/images/fabre/22.gif").to_vec(),
-                include_bytes!("../assets/images/fabre/30.gif").to_vec(),
-                Some(include_bytes!("../assets/images/fabre/38.gif").to_vec()),
+                include_bytes!("../assets/images/fabre/6.gif"),
+                include_bytes!("../assets/images/fabre/22.gif"),
+                include_bytes!("../assets/images/fabre/30.gif"),
+                Some(include_bytes!("../assets/images/fabre/38.gif")),
             )),
             1051 => Some((
                 // Thief Bug
-                include_bytes!("../assets/images/thief_bug/6.gif").to_vec(),
-                include_bytes!("../assets/images/thief_bug/22.gif").to_vec(),
-                include_bytes!("../assets/images/thief_bug/30.gif").to_vec(),
-                Some(include_bytes!("../assets/images/thief_bug/38.gif").to_vec()),
+                include_bytes!("../assets/images/thief_bug/6.gif"),
+                include_bytes!("../assets/images/thief_bug/22.gif"),
+                include_bytes!("../assets/images/thief_bug/30.gif"),
+                Some(include_bytes!("../assets/images/thief_bug/38.gif")),
             )),
             _ => None,
         }
