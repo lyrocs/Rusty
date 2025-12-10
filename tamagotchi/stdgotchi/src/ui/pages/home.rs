@@ -3,8 +3,9 @@
 //! Main dashboard showing expedition status, active team, and navigation.
 //! Based on GDD section 3.3.1
 
-use crate::assets::get_monster_icon;
-use crate::display::{St7789pDriver, StaticImage};
+use crate::assets::{get_monster_sprite_path, SpriteAction, SpriteCache};
+use crate::display::{St7789pDriver, GifPlayer, DynamicGifMeta, SharedCanvas};
+use crate::ecs::resources::SdCardWrapper;
 use crate::game::core::{Element, Monster, MonsterStatus};
 use crate::game::systems::expedition::Expedition;
 use crate::ui::page::Page;
@@ -68,6 +69,15 @@ pub struct HomePage {
 
     // State
     dirty: bool,
+
+    // Icon GIFs loaded from SD card
+    monster_icons: Vec<Option<DynamicGifMeta>>,
+    // Shared canvas for rendering icons
+    shared_canvas: SharedCanvas,
+    // Track if icons need reload
+    icons_need_reload: bool,
+    // Track team species for icon reload detection
+    loaded_species: Vec<String>,
 }
 
 impl HomePage {
@@ -81,7 +91,48 @@ impl HomePage {
             map_button: None,
             collection_button: None,
             dirty: true,
+            monster_icons: Vec::new(),
+            shared_canvas: SharedCanvas::new(32, 32), // Icons are 32x32
+            icons_need_reload: true,
+            loaded_species: Vec::new(),
         }
+    }
+
+    /// Check if icons need to be reloaded (team changed)
+    pub fn needs_icon_reload(&self) -> bool {
+        if self.icons_need_reload {
+            return true;
+        }
+        // Check if team species have changed
+        let current_species: Vec<&str> = self.team_monsters.iter()
+            .map(|m| m.species_id.as_str())
+            .collect();
+        let loaded: Vec<&str> = self.loaded_species.iter()
+            .map(|s| s.as_str())
+            .collect();
+        current_species != loaded
+    }
+
+    /// Load monster icons from SD card
+    pub fn load_icons(&mut self, sd_card: &mut SdCardWrapper) {
+        self.monster_icons.clear();
+        self.loaded_species.clear();
+        for monster_data in &self.team_monsters {
+            let path = get_monster_sprite_path(&monster_data.species_id, SpriteAction::Icon);
+            let icon = match sd_card.load_binary_file(&path) {
+                Ok(data) => {
+                    log::info!("Loaded icon: {} ({} bytes)", path, data.len());
+                    DynamicGifMeta::new(data).ok()
+                }
+                Err(e) => {
+                    log::warn!("Failed to load icon {}: {:?}", path, e);
+                    None
+                }
+            };
+            self.monster_icons.push(icon);
+            self.loaded_species.push(monster_data.species_id.clone());
+        }
+        self.icons_need_reload = false;
     }
 
     /// Update home page data from game state
@@ -329,21 +380,28 @@ impl Page for HomePage {
         let monster_height = 60u32;
         let monster_spacing = 76;
 
-        for (i, monster_data) in self.team_monsters.iter().take(3).enumerate() {
+        // Pre-calculate icon positions and check which ones to render
+        let team_count = self.team_monsters.len().min(3);
+        for i in 0..team_count {
+            let monster_data = &self.team_monsters[i];
             let x = 14 + (i as i32 * monster_spacing);
             let monster_rect = Rectangle::new(Point::new(x, team_y), Size::new(monster_width, monster_height));
             display.fill_solid(&monster_rect, Rgb888::new(220, 225, 235))?;
 
-            // Load and display monster icon from embedded assets
-            if let Some(icon_data) = get_monster_icon(&monster_data.species_id) {
-                if let Ok(icon) = StaticImage::new(icon_data) {
-                    // Center the icon in the card area (icon area: 30x30 centered)
-                    let icon_x = x + 19;
-                    let icon_y = team_y + 5;
-                    let _ = icon.render(display, (icon_x, icon_y));
-                }
+            // Display monster icon from SD card
+            let has_icon = i < self.monster_icons.len() && self.monster_icons[i].is_some();
+            let icon_rendered = if has_icon {
+                let gif = self.monster_icons[i].as_ref().unwrap();
+                // Center the icon in the card area
+                let icon_x = x + 34; // Center X for 32x32 icon in 68 width card
+                let icon_y = team_y + 22; // Center Y accounting for icon height
+                gif.render_frame(display, 0, &mut self.shared_canvas, Some((icon_x, icon_y)), false, true).is_ok()
             } else {
-                // Fallback to element square if icon not found (keep element colors unchanged)
+                false
+            };
+
+            if !icon_rendered {
+                // Fallback to element square if icon not found
                 let elem_color = Self::element_color(&monster_data.element);
                 let elem_rect = Rectangle::new(Point::new(x + 19, team_y + 8), Size::new(30, 24));
                 display.fill_solid(&elem_rect, elem_color)?;

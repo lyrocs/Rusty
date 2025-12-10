@@ -107,6 +107,14 @@ impl SdCardWrapper {
     pub fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         self.sd_ops.borrow_mut().load_binary_file(filename)
     }
+
+    /// Load a range of bytes from a binary file
+    /// Returns the requested bytes or an error
+    pub fn load_binary_range(&mut self, filename: &str, offset: usize, length: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        // Use the SD card's native range loading (seeks to offset and reads only requested bytes)
+        let mut sd_ops = self.sd_ops.borrow_mut();
+        sd_ops.load_binary_range(filename, offset as u32, length)
+    }
 }
 
 impl crate::sdcard::SdCardOps for SdCardWrapper {
@@ -124,6 +132,10 @@ impl crate::sdcard::SdCardOps for SdCardWrapper {
 
     fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         self.sd_ops.borrow_mut().load_binary_file(filename)
+    }
+
+    fn load_binary_range(&mut self, filename: &str, offset: u32, length: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        self.sd_ops.borrow_mut().load_binary_range(filename, offset, length)
     }
 
     fn file_exists(&mut self, filename: &str) -> bool {

@@ -257,6 +257,193 @@ struct FrameMetadata {
     disposal: DisposalMethod,
 }
 
+/// Dynamic GIF metadata that owns its data (for SD card loaded GIFs)
+///
+/// Unlike GifMeta which requires 'static data, this version owns the GIF bytes.
+pub struct DynamicGifMeta {
+    gif_data: Vec<u8>,
+    frame_metadata: Vec<FrameMetadata>,
+    gif_width: u16,
+    gif_height: u16,
+}
+
+impl DynamicGifMeta {
+    /// Create GIF metadata from owned data (for SD card loading)
+    pub fn new(gif_data: Vec<u8>) -> Result<Self, Box<dyn Error>> {
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(ColorOutput::RGBA);
+
+        let mut decoder = options.read_info(Cursor::new(&gif_data))?;
+        let gif_width = decoder.width();
+        let gif_height = decoder.height();
+
+        let mut frame_metadata = Vec::new();
+
+        while let Some(frame) = decoder.read_next_frame()? {
+            let delay_ms = frame.delay as u16 * 10;
+            frame_metadata.push(FrameMetadata {
+                delay_ms: if delay_ms > 0 { delay_ms } else { 100 },
+                left: frame.left,
+                top: frame.top,
+                width: frame.width,
+                height: frame.height,
+                disposal: frame.dispose,
+            });
+        }
+
+        if frame_metadata.is_empty() {
+            return Err("GIF contains no frames".into());
+        }
+
+        log::info!("DynamicGifMeta: {}x{}, {} frames", gif_width, gif_height, frame_metadata.len());
+
+        Ok(Self {
+            gif_data,
+            frame_metadata,
+            gif_width,
+            gif_height,
+        })
+    }
+
+    /// Get frame count
+    pub fn frame_count(&self) -> usize {
+        self.frame_metadata.len()
+    }
+
+    /// Get dimensions
+    pub fn dimensions(&self) -> (u16, u16) {
+        (self.gif_width, self.gif_height)
+    }
+
+    /// Render a frame using a shared canvas
+    pub fn render_frame(
+        &self,
+        display: &mut St7789pDriver,
+        frame_index: usize,
+        canvas: &mut SharedCanvas,
+        position: Option<(i32, i32)>,
+        flip_horizontal: bool,
+        center_positioned: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        if frame_index >= self.frame_metadata.len() {
+            return Err(format!("Frame index {} out of bounds", frame_index).into());
+        }
+
+        // Decode frame into shared canvas
+        self.decode_frame_to_canvas(frame_index, canvas)?;
+
+        let display_size = display.size();
+
+        let (base_x, base_y) = if let Some((x, y)) = position {
+            if center_positioned {
+                (x - (self.gif_width as i32 / 2), y - (self.gif_height as i32 / 2))
+            } else {
+                (x, y)
+            }
+        } else {
+            let center_x = (display_size.width as i32 - self.gif_width as i32) / 2;
+            let center_y = (display_size.height as i32 - self.gif_height as i32) / 2;
+            (center_x, center_y)
+        };
+
+        // Render from canvas to display
+        for y in 0..self.gif_height {
+            for x in 0..self.gif_width {
+                let pixel_idx = ((y as usize) * (self.gif_width as usize) + (x as usize)) * 4;
+
+                if pixel_idx + 3 < canvas.buffer.len() {
+                    let r = canvas.buffer[pixel_idx];
+                    let g = canvas.buffer[pixel_idx + 1];
+                    let b = canvas.buffer[pixel_idx + 2];
+                    let a = canvas.buffer[pixel_idx + 3];
+
+                    if a < 128 {
+                        continue;
+                    }
+
+                    let px = if flip_horizontal {
+                        base_x + (self.gif_width - 1 - x) as i32
+                    } else {
+                        base_x + x as i32
+                    };
+                    let py = base_y + y as i32;
+
+                    if px >= 0 && px < display_size.width as i32 &&
+                       py >= 0 && py < display_size.height as i32 {
+                        display.draw_iter(core::iter::once(Pixel(
+                            Point::new(px, py),
+                            Rgb888::new(b, g, r)
+                        )))?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Decode a specific frame into the shared canvas
+    fn decode_frame_to_canvas(&self, frame_index: usize, canvas: &mut SharedCanvas) -> Result<(), Box<dyn Error>> {
+        // Clear canvas first
+        canvas.clear();
+
+        // Create decoder and decode up to target frame
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(ColorOutput::RGBA);
+        let mut decoder = options.read_info(Cursor::new(&self.gif_data))?;
+
+        for i in 0..=frame_index {
+            if let Some(frame) = decoder.read_next_frame()? {
+                let metadata = &self.frame_metadata[i];
+
+                // Handle disposal
+                if matches!(metadata.disposal, DisposalMethod::Background) {
+                    canvas.clear();
+                }
+
+                // Composite frame onto canvas
+                for y in 0..metadata.height {
+                    for x in 0..metadata.width {
+                        let frame_idx = ((y as usize) * (metadata.width as usize) + (x as usize)) * 4;
+                        if frame_idx + 3 < frame.buffer.len() {
+                            let canvas_x = metadata.left + x;
+                            let canvas_y = metadata.top + y;
+                            if canvas_x < self.gif_width && canvas_y < self.gif_height {
+                                let canvas_idx = ((canvas_y as usize) * (self.gif_width as usize) + (canvas_x as usize)) * 4;
+                                if canvas_idx + 3 < canvas.buffer.len() {
+                                    canvas.buffer[canvas_idx] = frame.buffer[frame_idx];
+                                    canvas.buffer[canvas_idx + 1] = frame.buffer[frame_idx + 1];
+                                    canvas.buffer[canvas_idx + 2] = frame.buffer[frame_idx + 2];
+                                    canvas.buffer[canvas_idx + 3] = frame.buffer[frame_idx + 3];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Helper function to count frames in GIF data without creating full metadata
+pub fn count_gif_frames(data: &[u8]) -> usize {
+    let mut options = gif::DecodeOptions::new();
+    options.set_color_output(ColorOutput::RGBA);
+
+    match options.read_info(Cursor::new(data)) {
+        Ok(mut decoder) => {
+            let mut count = 0;
+            while decoder.read_next_frame().ok().flatten().is_some() {
+                count += 1;
+            }
+            count.max(1)
+        }
+        Err(_) => 1,
+    }
+}
+
 /// GIF animation player with stateful streaming decoding
 ///
 /// This uses a persistent decoder that maintains state between frames,

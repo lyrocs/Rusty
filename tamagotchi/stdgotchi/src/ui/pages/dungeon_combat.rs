@@ -2,13 +2,16 @@
 //!
 //! Real-time combat UI for dungeon battles with GIF animations.
 //! Uses shared canvas for memory efficiency - only ONE canvas buffer in RAM.
+//! Loads sprites from SD card at runtime.
 //!
 //! Layout:
 //! - Top: Enemy stats (left) | Player monster stats (right)
 //! - Middle: Enemy GIF (left) | Player GIF (right)
 //! - Bottom: Swap buttons | Skill button
 
-use crate::display::{St7789pDriver, GifMeta, SharedCanvas};
+use crate::assets::{get_monster_raw_path, SpriteAction, SpriteCache};
+use crate::display::{St7789pDriver, RawAnimPlayer};
+use crate::ecs::resources::SdCardWrapper;
 use crate::game::core::Element;
 use crate::game::systems::combat::{CombatState, CombatEvent};
 use crate::ui::page::Page;
@@ -39,53 +42,60 @@ enum AnimType {
     Death,
 }
 
-// Static GIF data - stays in flash, never copied to RAM
-static PORING_IDLE: &[u8] = include_bytes!("../../../assets/images/poring/6.gif");
-static PORING_ATTACK: &[u8] = include_bytes!("../../../assets/images/poring/22.gif");
-static PORING_HURT: &[u8] = include_bytes!("../../../assets/images/poring/30.gif");
-static PORING_DEATH: &[u8] = include_bytes!("../../../assets/images/poring/38.gif");
+impl AnimType {
+    fn to_sprite_action(self) -> SpriteAction {
+        match self {
+            AnimType::Idle => SpriteAction::Idle,
+            AnimType::Attack => SpriteAction::Attack,
+            AnimType::Hurt => SpriteAction::Attacked,
+            AnimType::Death => SpriteAction::Death,
+        }
+    }
 
-static FABRE_IDLE: &[u8] = include_bytes!("../../../assets/images/fabre/6.gif");
-static FABRE_ATTACK: &[u8] = include_bytes!("../../../assets/images/fabre/22.gif");
-static FABRE_HURT: &[u8] = include_bytes!("../../../assets/images/fabre/30.gif");
-static FABRE_DEATH: &[u8] = include_bytes!("../../../assets/images/fabre/38.gif");
-
-static HORNET_IDLE: &[u8] = include_bytes!("../../../assets/images/hornet/6.gif");
-static HORNET_ATTACK: &[u8] = include_bytes!("../../../assets/images/hornet/22.gif");
-static HORNET_HURT: &[u8] = include_bytes!("../../../assets/images/hornet/30.gif");
-static HORNET_DEATH: &[u8] = include_bytes!("../../../assets/images/hornet/38.gif");
-
-static THIEF_BUG_IDLE: &[u8] = include_bytes!("../../../assets/images/thief_bug/6.gif");
-static THIEF_BUG_ATTACK: &[u8] = include_bytes!("../../../assets/images/thief_bug/22.gif");
-static THIEF_BUG_HURT: &[u8] = include_bytes!("../../../assets/images/thief_bug/30.gif");
-static THIEF_BUG_DEATH: &[u8] = include_bytes!("../../../assets/images/thief_bug/38.gif");
-
-/// Get GIF data for a species and animation type (returns static reference to flash)
-fn get_gif_data(species_id: &str, anim_type: AnimType) -> Option<&'static [u8]> {
-    match (species_id, anim_type) {
-        ("poring", AnimType::Idle) => Some(PORING_IDLE),
-        ("poring", AnimType::Attack) => Some(PORING_ATTACK),
-        ("poring", AnimType::Hurt) => Some(PORING_HURT),
-        ("poring", AnimType::Death) => Some(PORING_DEATH),
-        ("fabre", AnimType::Idle) => Some(FABRE_IDLE),
-        ("fabre", AnimType::Attack) => Some(FABRE_ATTACK),
-        ("fabre", AnimType::Hurt) => Some(FABRE_HURT),
-        ("fabre", AnimType::Death) => Some(FABRE_DEATH),
-        ("hornet", AnimType::Idle) => Some(HORNET_IDLE),
-        ("hornet", AnimType::Attack) => Some(HORNET_ATTACK),
-        ("hornet", AnimType::Hurt) => Some(HORNET_HURT),
-        ("hornet", AnimType::Death) => Some(HORNET_DEATH),
-        ("thief_bug", AnimType::Idle) => Some(THIEF_BUG_IDLE),
-        ("thief_bug", AnimType::Attack) => Some(THIEF_BUG_ATTACK),
-        ("thief_bug", AnimType::Hurt) => Some(THIEF_BUG_HURT),
-        ("thief_bug", AnimType::Death) => Some(THIEF_BUG_DEATH),
-        _ => None,
+    /// Get array index for this animation type
+    fn index(self) -> usize {
+        match self {
+            AnimType::Idle => 0,
+            AnimType::Attack => 1,
+            AnimType::Hurt => 2,
+            AnimType::Death => 3,
+        }
     }
 }
 
-/// Load GIF metadata (lightweight, no canvas allocation)
-fn load_gif_meta(species_id: &str, anim_type: AnimType) -> Option<GifMeta> {
-    get_gif_data(species_id, anim_type).and_then(|data| GifMeta::new(data).ok())
+/// Load raw animation from SD card as RawAnimPlayer
+/// Uses different strategies based on animation type:
+/// - Idle: Load full file (small, fast playback)
+/// - Action animations: Use streaming (large files)
+fn load_raw_from_sd(sd_card: &mut SdCardWrapper, species_id: &str, anim_type: AnimType) -> Option<RawAnimPlayer> {
+    use crate::assets::{get_monster_raw_path, SpriteAction};
+
+    let path = get_monster_raw_path(species_id, anim_type.to_sprite_action());
+
+    match anim_type {
+        AnimType::Idle => {
+            // For idle animations, load the entire file (small, ~13KB)
+            // This gives smooth playback without per-frame SD card reads
+            log::info!("Loading full raw animation: {} {:?}", species_id, anim_type);
+            let data = sd_card.load_binary_file(&path).ok()?;
+            log::info!("Loaded {} bytes for {} idle animation", data.len(), species_id);
+            RawAnimPlayer::from_file_data(data)
+        }
+        _ => {
+            // For action animations (Attack/Hurt/Death), use streaming
+            // These can be large (>100KB) and would fail to allocate
+            log::info!("Loading streaming raw animation: {} {:?}", species_id, anim_type);
+            let mut player = crate::assets::load_streaming_raw_animation(sd_card, species_id, anim_type.to_sprite_action())?;
+
+            // Load initial frame (frame 0) for immediate rendering
+            if let Err(e) = player.load_frame(0, sd_card) {
+                log::warn!("Failed to load initial frame for {} {:?}: {}", species_id, anim_type, e);
+                return None;
+            }
+
+            Some(player)
+        }
+    }
 }
 
 /// Action from combat page
@@ -97,12 +107,12 @@ pub enum DungeonCombatAction {
     CombatEnded { victory: bool },
 }
 
-/// Dungeon combat page with memory-efficient animations
+/// Dungeon combat page with fast raw RGB565 animations
 ///
-/// Memory layout:
-/// - SharedCanvas: ONE buffer ~25KB (80×80×4)
-/// - GifMeta: lightweight metadata per GIF (~100 bytes each)
-/// - Total: ~25KB instead of ~75KB with multiple GifPlayers
+/// Memory layout (optimized for ESP32-C6 with no PSRAM):
+/// - Only TWO idle animations loaded at startup (~13KB each)
+/// - Action animations loaded ONE at a time, replacing idle temporarily
+/// - After action completes, idle is reloaded
 pub struct DungeonCombatPage {
     combat_state: CombatState,
     last_update: Instant,
@@ -125,21 +135,19 @@ pub struct DungeonCombatPage {
     enemy_species: String,
     player_species: String,
 
-    // SHARED canvas - only ONE buffer in RAM!
-    shared_canvas: SharedCanvas,
-
-    // Lightweight GIF metadata (no canvas allocation)
-    enemy_gif: Option<GifMeta>,
-    player_gif: Option<GifMeta>,
+    // Raw animation players loaded from SD card
+    // During IDLE: both loaded (~13KB each)
+    // During ACTION: only the action animation loaded, other is None
+    enemy_anim: Option<RawAnimPlayer>,
+    player_anim: Option<RawAnimPlayer>,
 
     // Current animation state
     enemy_anim_type: AnimType,
     player_anim_type: AnimType,
 
-    // Frame tracking
-    enemy_frame: usize,
-    player_frame: usize,
-    frame_timer: f32,
+    // Pending animation loads (loaded by navigation system)
+    pending_enemy_anim: Option<AnimType>,
+    pending_player_anim: Option<AnimType>,
 
     // Action animation state
     action_target: ActiveAnim,
@@ -155,18 +163,21 @@ struct DamagePopup {
 }
 
 impl DungeonCombatPage {
-    pub fn new(combat_state: CombatState, dungeon_name: String) -> Self {
+    pub fn new(combat_state: CombatState, dungeon_name: String, sd_card: Option<&mut SdCardWrapper>) -> Self {
         let enemy_species = combat_state.enemy.species_id.clone();
         let player_species = combat_state.active_monster()
             .map(|m| m.species_id.clone())
             .unwrap_or_else(|| "poring".to_string());
 
-        // Create ONE shared canvas - the only significant RAM allocation!
-        let shared_canvas = SharedCanvas::new(80, 80);
-
-        // Load lightweight GIF metadata (no canvas allocation)
-        let enemy_gif = load_gif_meta(&enemy_species, AnimType::Idle);
-        let player_gif = load_gif_meta(&player_species, AnimType::Idle);
+        // Load only IDLE animations to save memory - other animations loaded on-demand
+        let (enemy_anim, player_anim) = if let Some(sd) = sd_card {
+            log::info!("Loading idle raw animations for {} and {}", enemy_species, player_species);
+            let enemy = load_raw_from_sd(sd, &enemy_species, AnimType::Idle);
+            let player = load_raw_from_sd(sd, &player_species, AnimType::Idle);
+            (enemy, player)
+        } else {
+            (None, None)
+        };
 
         Self {
             combat_state,
@@ -179,58 +190,134 @@ impl DungeonCombatPage {
             end_delay: 0.0,
             enemy_species,
             player_species,
-            shared_canvas,
-            enemy_gif,
-            player_gif,
+            enemy_anim,
+            player_anim,
             enemy_anim_type: AnimType::Idle,
             player_anim_type: AnimType::Idle,
-            enemy_frame: 0,
-            player_frame: 0,
-            frame_timer: 0.0,
+            pending_enemy_anim: None,
+            pending_player_anim: None,
             action_target: ActiveAnim::None,
             action_timer: 0.0,
         }
     }
 
-    /// Switch animation type for a monster (reloads GIF metadata, not canvas)
-    fn set_animation(&mut self, target: ActiveAnim, anim_type: AnimType) {
-        match target {
-            ActiveAnim::Enemy => {
-                if self.enemy_anim_type != anim_type {
-                    self.enemy_gif = load_gif_meta(&self.enemy_species, anim_type);
-                    self.enemy_anim_type = anim_type;
-                    self.enemy_frame = 0;
-                }
+    /// Reload player species animation (after swap) - loads idle
+    pub fn reload_player_species(&mut self, sd_card: &mut SdCardWrapper) {
+        if let Some(monster) = self.combat_state.active_monster() {
+            if monster.species_id != self.player_species {
+                self.player_species = monster.species_id.clone();
+                log::info!("Reloading idle raw animation for swapped monster: {}", self.player_species);
+                // Drop old animation FIRST to free memory
+                self.player_anim = None;
+                self.player_anim = load_raw_from_sd(sd_card, &self.player_species, AnimType::Idle);
+                self.player_anim_type = AnimType::Idle;
+                self.pending_player_anim = None;
             }
-            ActiveAnim::Player => {
-                if self.player_anim_type != anim_type {
-                    self.player_gif = load_gif_meta(&self.player_species, anim_type);
-                    self.player_anim_type = anim_type;
-                    self.player_frame = 0;
-                }
-            }
-            _ => {}
         }
-        self.action_target = target;
-        self.action_timer = 0.0;
+    }
+
+    /// Reload enemy species animation (for new wave) - loads idle
+    pub fn reload_enemy_species(&mut self, sd_card: &mut SdCardWrapper) {
+        let new_species = self.combat_state.enemy.species_id.clone();
+        if new_species != self.enemy_species {
+            self.enemy_species = new_species;
+            log::info!("Reloading idle raw animation for new enemy: {}", self.enemy_species);
+            // Drop old animation FIRST to free memory
+            self.enemy_anim = None;
+            self.enemy_anim = load_raw_from_sd(sd_card, &self.enemy_species, AnimType::Idle);
+            self.enemy_anim_type = AnimType::Idle;
+            self.pending_enemy_anim = None;
+        }
+    }
+
+    /// Check if enemy needs animation reload (new wave)
+    pub fn needs_enemy_reload(&self) -> bool {
+        self.combat_state.enemy.species_id != self.enemy_species
+    }
+
+    /// Check if any animation needs its current frame loaded from SD card
+    pub fn needs_frame_reload(&self) -> bool {
+        let enemy_needs = self.enemy_anim.as_ref().map(|a| a.needs_frame_load()).unwrap_or(false);
+        let player_needs = self.player_anim.as_ref().map(|a| a.needs_frame_load()).unwrap_or(false);
+        enemy_needs || player_needs
+    }
+
+    /// Reload current frames for animations that need it (streaming playback)
+    pub fn reload_needed_frames(&mut self, sd_card: &mut SdCardWrapper) {
+        // Reload enemy animation current frame if needed
+        if let Some(ref mut anim) = self.enemy_anim {
+            if anim.needs_frame_load() {
+                let current_frame = anim.current_frame();
+                if let Err(e) = anim.load_frame(current_frame, sd_card) {
+                    log::warn!("Failed to reload enemy frame {}: {}", current_frame, e);
+                }
+            }
+        }
+
+        // Reload player animation current frame if needed
+        if let Some(ref mut anim) = self.player_anim {
+            if anim.needs_frame_load() {
+                let current_frame = anim.current_frame();
+                if let Err(e) = anim.load_frame(current_frame, sd_card) {
+                    log::warn!("Failed to reload player frame {}: {}", current_frame, e);
+                }
+            }
+        }
+    }
+
+    /// Check if there are pending animation loads
+    pub fn has_pending_animations(&self) -> bool {
+        self.pending_enemy_anim.is_some() || self.pending_player_anim.is_some()
+    }
+
+    /// Load pending animations from SD card
+    /// Note: Only loads Idle animations. Action animations use idle + visual effects.
+    pub fn load_pending_animations(&mut self, sd_card: &mut SdCardWrapper) {
+        // Only load Idle animations - action animations use visual effects with idle
+        if let Some(anim_type) = self.pending_enemy_anim.take() {
+            if anim_type == AnimType::Idle {
+                log::info!("Loading pending enemy raw animation: {:?}", anim_type);
+                self.enemy_anim = None;
+                self.enemy_anim = load_raw_from_sd(sd_card, &self.enemy_species, anim_type);
+                self.enemy_anim_type = anim_type;
+            }
+        }
+        if let Some(anim_type) = self.pending_player_anim.take() {
+            if anim_type == AnimType::Idle {
+                log::info!("Loading pending player raw animation: {:?}", anim_type);
+                self.player_anim = None;
+                self.player_anim = load_raw_from_sd(sd_card, &self.player_species, anim_type);
+                self.player_anim_type = anim_type;
+            }
+        }
     }
 
     /// End action animation and return to idle
-    fn end_action(&mut self) {
-        match self.action_target {
-            ActiveAnim::Enemy => {
-                self.enemy_gif = load_gif_meta(&self.enemy_species, AnimType::Idle);
-                self.enemy_anim_type = AnimType::Idle;
-                self.enemy_frame = 0;
-            }
-            ActiveAnim::Player => {
-                self.player_gif = load_gif_meta(&self.player_species, AnimType::Idle);
-                self.player_anim_type = AnimType::Idle;
-                self.player_frame = 0;
-            }
-            _ => {}
-        }
+    /// Note: We no longer free idle animations, so no reload needed
+    fn end_action_to_idle(&mut self) {
         self.action_target = ActiveAnim::None;
+    }
+
+    /// Queue an animation action (uses idle animation with visual effects)
+    /// Note: We don't actually load action animations due to SD card speed constraints.
+    /// Instead, we use the idle animation with position offsets (lunge effect).
+    fn queue_animation(&mut self, target: ActiveAnim, anim_type: AnimType) {
+        // Only queue Idle animations for actual loading
+        // Action animations (Attack/Hurt/Death) use idle + visual effects
+        if anim_type == AnimType::Idle {
+            match target {
+                ActiveAnim::Enemy => {
+                    self.pending_enemy_anim = Some(anim_type);
+                }
+                ActiveAnim::Player => {
+                    self.pending_player_anim = Some(anim_type);
+                }
+                _ => {}
+            }
+        }
+        // Set action state for visual effect (lunge)
+        self.action_target = target;
+        self.action_timer = 0.0;
     }
 
     /// Handle touch input
@@ -265,9 +352,9 @@ impl DungeonCombatPage {
     fn handle_combat_event(&mut self, event: CombatEvent) {
         match event {
             CombatEvent::PlayerAttack { damage, .. } => {
-                // Player attacks - show player attack animation
+                // Player attacks - queue player attack animation
                 if self.action_target == ActiveAnim::None {
-                    self.set_animation(ActiveAnim::Player, AnimType::Attack);
+                    self.queue_animation(ActiveAnim::Player, AnimType::Attack);
                 }
                 self.damage_popups.push(DamagePopup {
                     damage,
@@ -278,9 +365,9 @@ impl DungeonCombatPage {
                 });
             }
             CombatEvent::EnemyAttack { damage, .. } => {
-                // Enemy attacks - show enemy attack animation
+                // Enemy attacks - queue enemy attack animation
                 if self.action_target == ActiveAnim::None {
-                    self.set_animation(ActiveAnim::Enemy, AnimType::Attack);
+                    self.queue_animation(ActiveAnim::Enemy, AnimType::Attack);
                 }
                 self.damage_popups.push(DamagePopup {
                     damage,
@@ -292,7 +379,7 @@ impl DungeonCombatPage {
             }
             CombatEvent::PlayerSkill { damage, .. } => {
                 if self.action_target == ActiveAnim::None {
-                    self.set_animation(ActiveAnim::Player, AnimType::Attack);
+                    self.queue_animation(ActiveAnim::Player, AnimType::Attack);
                 }
                 self.damage_popups.push(DamagePopup {
                     damage,
@@ -312,24 +399,25 @@ impl DungeonCombatPage {
                 });
             }
             CombatEvent::MonsterSwap { .. } => {
-                // Update player species and reload metadata
+                // Update player species - mark for reload
+                // The actual reload will happen when navigation system calls reload_player_species()
                 if let Some(monster) = self.combat_state.active_monster() {
                     if monster.species_id != self.player_species {
                         self.player_species = monster.species_id.clone();
-                        self.player_gif = load_gif_meta(&self.player_species, AnimType::Idle);
                         self.player_anim_type = AnimType::Idle;
-                        self.player_frame = 0;
+                        self.player_anim = None; // Mark for reload
+                        self.pending_player_anim = None;
                     }
                 }
             }
             CombatEvent::Victory { .. } => {
                 if self.action_target == ActiveAnim::None {
-                    self.set_animation(ActiveAnim::Enemy, AnimType::Death);
+                    self.queue_animation(ActiveAnim::Enemy, AnimType::Death);
                 }
             }
             CombatEvent::Defeat => {
                 if self.action_target == ActiveAnim::None {
-                    self.set_animation(ActiveAnim::Player, AnimType::Death);
+                    self.queue_animation(ActiveAnim::Player, AnimType::Death);
                 }
             }
             _ => {}
@@ -503,20 +591,30 @@ impl Page for DungeonCombatPage {
         let anim_bg = Rectangle::new(Point::new(0, anim_y), Size::new(240, anim_h as u32));
         display.fill_solid(&anim_bg, Rgb888::new(240, 240, 245))?;
 
-        let enemy_x = 60;
-        let player_x = 180;
+        let base_enemy_x = 60;
+        let base_player_x = 180;
         let center_y = anim_y + anim_h / 2;
 
-        // Render enemy GIF using shared canvas
-        if let Some(ref gif) = self.enemy_gif {
-            let frame = self.enemy_frame.min(gif.frame_count().saturating_sub(1));
-            gif.render_frame(display, frame, &mut self.shared_canvas, Some((enemy_x, center_y)), false, true)?;
+        // Calculate lunge offset based on action state
+        // Lunge forward (toward opponent) when attacking
+        let lunge_amount = 25; // pixels to lunge
+        let (enemy_offset, player_offset) = match self.action_target {
+            ActiveAnim::Enemy => (lunge_amount, 0),   // Enemy lunges toward player (right)
+            ActiveAnim::Player => (0, -lunge_amount), // Player lunges toward enemy (left)
+            ActiveAnim::None => (0, 0),
+        };
+
+        let enemy_x = base_enemy_x + enemy_offset;
+        let player_x = base_player_x + player_offset;
+
+        // Render enemy animation using raw format (fast!)
+        if let Some(ref anim) = self.enemy_anim {
+            anim.render(display, enemy_x, center_y, false);
         }
 
-        // Render player GIF using shared canvas (flipped)
-        if let Some(ref gif) = self.player_gif {
-            let frame = self.player_frame.min(gif.frame_count().saturating_sub(1));
-            gif.render_frame(display, frame, &mut self.shared_canvas, Some((player_x, center_y)), true, true)?;
+        // Render player animation using raw format (flipped)
+        if let Some(ref anim) = self.player_anim {
+            anim.render(display, player_x, center_y, true);
         }
 
         // Damage popups
@@ -666,68 +764,69 @@ impl Page for DungeonCombatPage {
             self.action_timer += delta;
 
             // Get frame count for the active animation
-            let (frame_count, is_death) = match self.action_target {
+            let enemy_frame_count = self.enemy_anim.as_ref().map(|a| a.frame_count()).unwrap_or(1);
+            let player_frame_count = self.player_anim.as_ref().map(|a| a.frame_count()).unwrap_or(1);
+            let (frame_count, current_frame, is_death) = match self.action_target {
                 ActiveAnim::Enemy => (
-                    self.enemy_gif.as_ref().map(|g| g.frame_count()).unwrap_or(1),
+                    enemy_frame_count,
+                    self.enemy_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
                     self.enemy_anim_type == AnimType::Death
                 ),
                 ActiveAnim::Player => (
-                    self.player_gif.as_ref().map(|g| g.frame_count()).unwrap_or(1),
+                    player_frame_count,
+                    self.player_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
                     self.player_anim_type == AnimType::Death
                 ),
-                _ => (1, false),
+                _ => (1, 0, false),
             };
 
-            // Advance action frame at ~15 FPS
-            if self.action_timer >= 0.067 {
-                self.action_timer = 0.0;
+            // Advance action frame using RawAnimPlayer's built-in update
+            let frame_changed = match self.action_target {
+                ActiveAnim::Enemy => self.enemy_anim.as_mut().map(|a| a.update(delta)).unwrap_or(false),
+                ActiveAnim::Player => self.player_anim.as_mut().map(|a| a.update(delta)).unwrap_or(false),
+                _ => false,
+            };
 
-                match self.action_target {
-                    ActiveAnim::Enemy => self.enemy_frame += 1,
-                    ActiveAnim::Player => self.player_frame += 1,
-                    _ => {}
-                }
-
-                // Check if animation complete
-                let current_frame = match self.action_target {
-                    ActiveAnim::Enemy => self.enemy_frame,
-                    ActiveAnim::Player => self.player_frame,
+            // Check if animation looped (completed)
+            if frame_changed {
+                let new_frame = match self.action_target {
+                    ActiveAnim::Enemy => self.enemy_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
+                    ActiveAnim::Player => self.player_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
                     _ => 0,
                 };
 
-                if current_frame >= frame_count {
+                // If frame went back to 0, animation completed
+                if new_frame < current_frame || (current_frame >= frame_count.saturating_sub(1)) {
                     if is_death {
                         // Stay on last frame for death
                         match self.action_target {
-                            ActiveAnim::Enemy => self.enemy_frame = frame_count.saturating_sub(1),
-                            ActiveAnim::Player => self.player_frame = frame_count.saturating_sub(1),
+                            ActiveAnim::Enemy => {
+                                if let Some(ref mut anim) = self.enemy_anim {
+                                    anim.set_frame(frame_count.saturating_sub(1));
+                                }
+                            }
+                            ActiveAnim::Player => {
+                                if let Some(ref mut anim) = self.player_anim {
+                                    anim.set_frame(frame_count.saturating_sub(1));
+                                }
+                            }
                             _ => {}
                         }
                     } else {
-                        self.end_action();
+                        self.end_action_to_idle();
                     }
                 }
             }
-        }
-
-        // Update idle frame animations at ~10 FPS
-        self.frame_timer += delta;
-        if self.frame_timer >= 0.1 {
-            self.frame_timer = 0.0;
-
-            // Only advance idle animations (not action animations)
-            if self.action_target != ActiveAnim::Enemy {
-                if let Some(ref gif) = self.enemy_gif {
-                    if self.enemy_anim_type == AnimType::Idle {
-                        self.enemy_frame = (self.enemy_frame + 1) % gif.frame_count().max(1);
-                    }
+        } else {
+            // Update idle animations using RawAnimPlayer's built-in timing
+            if self.enemy_anim_type == AnimType::Idle {
+                if let Some(ref mut anim) = self.enemy_anim {
+                    anim.update(delta);
                 }
             }
-            if self.action_target != ActiveAnim::Player {
-                if let Some(ref gif) = self.player_gif {
-                    if self.player_anim_type == AnimType::Idle {
-                        self.player_frame = (self.player_frame + 1) % gif.frame_count().max(1);
-                    }
+            if self.player_anim_type == AnimType::Idle {
+                if let Some(ref mut anim) = self.player_anim {
+                    anim.update(delta);
                 }
             }
         }

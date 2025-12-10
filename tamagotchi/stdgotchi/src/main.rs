@@ -109,17 +109,18 @@ fn init_display(
     bl_pin.set_high()?; // Turn backlight on initially
     log::info!("Backlight pin (GPIO6) initialized");
 
-    // Initialize display driver
-    log::info!("Initializing ST7789P display driver...");
+    // Initialize display driver with RGB565 for memory efficiency
+    // (Native 65K color display, saves 66KB RAM vs RGB888)
+    log::info!("Initializing ST7789P display driver (RGB565 mode)...");
     let mut display = St7789pDriver::new(
         spi_device,
         dc_pin,
         rst_pin,
         LCD_H_RES,
         LCD_V_RES,
-        ColorMode::Rgb888,
+        ColorMode::Rgb565,
     )?;
-    display.initialize(ColorMode::Rgb888)?;
+    display.initialize(ColorMode::Rgb565)?;
 
     // Set backlight pin on display driver for on/off control
     display.set_backlight_pin(bl_pin);

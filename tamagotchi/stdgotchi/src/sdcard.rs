@@ -13,6 +13,7 @@ pub trait SdCardOps {
     fn save_to_file(&mut self, filename: &str, data: &str) -> Result<(), Box<dyn Error>>;
     fn load_from_file(&mut self, filename: &str) -> Result<String, Box<dyn Error>>;
     fn load_binary_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn load_binary_range(&mut self, filename: &str, offset: u32, length: usize) -> Result<Vec<u8>, Box<dyn Error>>;
     fn file_exists(&mut self, filename: &str) -> bool;
 }
 
@@ -349,6 +350,126 @@ where
             }
             _ => {
                 return Err(format!("Path too deep (max 2 subdirectories): {}", filename).into());
+            }
+        };
+
+        Ok(buffer)
+    }
+
+    fn load_binary_range(&mut self, filename: &str, offset: u32, length: usize) -> Result<Vec<u8>, Box<dyn Error>> {
+        use embedded_sdmmc::Mode;
+
+        log::info!("Loading binary range from {} (offset: {}, length: {})", filename, offset, length);
+
+        // Open volume
+        let mut volume = self.volume_mgr.open_volume(VolumeIdx(0))
+            .map_err(|e| {
+                log::error!("Failed to open volume: {:?}", e);
+                format!("Failed to open volume: {:?}", e)
+            })?;
+
+        // Open root directory
+        let mut root_dir = volume.open_root_dir()
+            .map_err(|e| {
+                log::error!("Failed to open root directory: {:?}", e);
+                format!("Failed to open root directory: {:?}", e)
+            })?;
+
+        // Parse path - remove leading slash and split into parts
+        let path = filename.trim_start_matches('/');
+        let parts: Vec<&str> = path.split('/').collect();
+
+        if parts.is_empty() {
+            return Err("Empty filename".into());
+        }
+
+        // Helper function to read range from file
+        let read_file_range = |file: &mut embedded_sdmmc::File<_, _, _, _, _>| -> Result<Vec<u8>, Box<dyn Error>> {
+            // Seek to offset
+            file.seek_from_start(offset)
+                .map_err(|e| format!("Failed to seek to offset {}: {:?}", offset, e))?;
+
+            // Read exactly 'length' bytes (or less if EOF)
+            let mut buffer = vec![0u8; length];
+            let mut total_read = 0;
+
+            while total_read < length {
+                match file.read(&mut buffer[total_read..]) {
+                    Ok(0) => {
+                        // EOF reached - truncate buffer and return
+                        buffer.truncate(total_read);
+                        log::info!("Read {} bytes from {} (EOF reached)", total_read, filename);
+                        return Ok(buffer);
+                    }
+                    Ok(n) => {
+                        total_read += n;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to read range after {} bytes: {:?}", total_read, e);
+                        return Err(format!("Failed to read file: {:?}", e).into());
+                    }
+                }
+            }
+
+            log::info!("Read {} bytes from {}", total_read, filename);
+            Ok(buffer)
+        };
+
+        // Handle different directory depths
+        let buffer = match parts.len() {
+            1 => {
+                // File in root
+                log::info!("Opening file in root: {}", parts[0]);
+                let mut file = root_dir.open_file_in_dir(parts[0], Mode::ReadOnly)
+                    .map_err(|e| {
+                        log::error!("Failed to open file {}: {:?}", parts[0], e);
+                        format!("Failed to open file: {:?}", e)
+                    })?;
+                read_file_range(&mut file)?
+            }
+            2 => {
+                // File in subdirectory
+                log::info!("Opening directory: {}", parts[0]);
+                let mut dir = root_dir.open_dir(parts[0])
+                    .map_err(|e| {
+                        log::error!("Failed to open directory {}: {:?}", parts[0], e);
+                        format!("Failed to open directory: {:?}", e)
+                    })?;
+
+                log::info!("Opening file in directory: {}", parts[1]);
+                let mut file = dir.open_file_in_dir(parts[1], Mode::ReadOnly)
+                    .map_err(|e| {
+                        log::error!("Failed to open file {}: {:?}", parts[1], e);
+                        format!("Failed to open file: {:?}", e)
+                    })?;
+                read_file_range(&mut file)?
+            }
+            3 => {
+                // File in nested subdirectory
+                log::info!("Opening directory: {}", parts[0]);
+                let mut dir1 = root_dir.open_dir(parts[0])
+                    .map_err(|e| {
+                        log::error!("Failed to open directory {}: {:?}", parts[0], e);
+                        format!("Failed to open directory: {:?}", e)
+                    })?;
+
+                log::info!("Opening subdirectory: {}", parts[1]);
+                let mut dir2 = dir1.open_dir(parts[1])
+                    .map_err(|e| {
+                        log::error!("Failed to open subdirectory {}: {:?}", parts[1], e);
+                        format!("Failed to open subdirectory: {:?}", e)
+                    })?;
+
+                log::info!("Opening file in subdirectory: {}", parts[2]);
+                let mut file = dir2.open_file_in_dir(parts[2], Mode::ReadOnly)
+                    .map_err(|e| {
+                        log::error!("Failed to open file {}: {:?}", parts[2], e);
+                        format!("Failed to open file: {:?}", e)
+                    })?;
+                read_file_range(&mut file)?
+            }
+            _ => {
+                return Err(format!("Path depth {} not supported (max 3 levels)", parts.len()).into());
             }
         };
 

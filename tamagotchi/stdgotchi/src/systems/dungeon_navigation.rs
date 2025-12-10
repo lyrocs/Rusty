@@ -4,7 +4,7 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents, SdCardWrapper};
 use crate::game::systems::combat::CombatState;
 use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
 use crate::game::systems::progression::leveling::apply_xp_to_monster;
@@ -16,6 +16,7 @@ pub fn dungeon_combat_navigation_system(
     mut app_state: ResMut<AppState>,
     pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
+    mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     // Only process in DungeonCombat mode
     if app_state.current_mode != AppMode::DungeonCombat {
@@ -29,6 +30,24 @@ pub fn dungeon_combat_navigation_system(
     let Some(ref mut game_manager) = game_manager else {
         return;
     };
+
+    // Check if animations need loading from SD card
+    if let (Some(ref mut combat_page), Some(ref mut sd_card)) =
+        (&mut game_manager.dungeon_combat_page, &mut sd_card_res)
+    {
+        // Load pending animations (attack, hurt, death queued by combat events)
+        if combat_page.has_pending_animations() {
+            combat_page.load_pending_animations(sd_card);
+        }
+        // Reload if enemy species changed (new wave)
+        if combat_page.needs_enemy_reload() {
+            combat_page.reload_enemy_species(sd_card);
+        }
+        // Reload current frames for streaming playback (only when frames advance)
+        if combat_page.needs_frame_reload() {
+            combat_page.reload_needed_frames(sd_card);
+        }
+    }
 
     // Check if combat ended
     let combat_ended = game_manager.dungeon_combat_page
@@ -197,6 +216,7 @@ pub fn between_floors_navigation_system(
     mut app_state: ResMut<AppState>,
     pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
+    mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     // Only process in BetweenFloors mode
     if app_state.current_mode != AppMode::BetweenFloors {
@@ -236,11 +256,13 @@ pub fn between_floors_navigation_system(
                                 .unwrap_or_default();
 
                             // Create next combat
+                            let sd_card_mut = sd_card_res.as_deref_mut();
                             if let Some((combat_page, _)) = create_next_floor_combat(
                                 game_manager,
                                 dungeon_id,
                                 next_floor,
                                 &team_hp,
+                                sd_card_mut,
                             ) {
                                 game_manager.dungeon_combat_page = Some(combat_page);
                                 game_manager.between_floors_page = None;
@@ -284,6 +306,7 @@ pub fn dungeon_defeat_navigation_system(
     mut app_state: ResMut<AppState>,
     pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
+    mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     // Only process in DungeonDefeat mode
     if app_state.current_mode != AppMode::DungeonDefeat {
@@ -381,7 +404,8 @@ pub fn dungeon_defeat_navigation_system(
                                 // Generate wave enemies for checkpoint floor
                                 if let Some(wave_enemies) = generate_floor_waves(&*game_manager, &dungeon, checkpoint) {
                                     let combat_state = CombatState::with_waves(player_monsters, wave_enemies, checkpoint);
-                                    game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone()));
+                                    let sd_card_mut = sd_card_res.as_deref_mut();
+                                    game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone(), sd_card_mut));
                                     app_state.current_mode = AppMode::DungeonCombat;
                                     app_state.needs_redraw = true;
                                 } else {
@@ -476,6 +500,7 @@ fn create_next_floor_combat(
     dungeon_id: &str,
     floor: u16,
     team_hp: &[(u16, u16)],
+    sd_card: Option<&mut SdCardWrapper>,
 ) -> Option<(DungeonCombatPage, ())> {
     use rand::Rng;
 
@@ -529,7 +554,7 @@ fn create_next_floor_combat(
     );
 
     // Create combat page
-    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name);
+    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name, sd_card);
 
     Some((combat_page, ()))
 }

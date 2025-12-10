@@ -5,7 +5,7 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents, SdCardWrapper};
 use crate::game::core::MonsterStatus;
 use crate::game::systems::combat::CombatState;
 use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
@@ -17,6 +17,7 @@ pub fn map_navigation_system(
     mut app_state: ResMut<AppState>,
     pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
+    mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     // Only process in Map mode
     if app_state.current_mode != AppMode::Map {
@@ -72,10 +73,12 @@ pub fn map_navigation_system(
                         TouchAction::StartDungeon { dungeon_id, start_floor } => {
                             log::info!("Map -> Dungeon Combat: {} from floor {}", dungeon_id, start_floor);
                             // Start dungeon combat
+                            let sd_card_mut = sd_card_res.as_deref_mut();
                             if let Some((combat_page, dungeon_run)) = create_dungeon_combat(
                                 game_manager,
                                 &dungeon_id,
                                 start_floor,
+                                sd_card_mut,
                             ) {
                                 game_manager.dungeon_combat_page = Some(combat_page);
                                 game_manager.active_dungeon_run = Some(dungeon_run);
@@ -122,6 +125,7 @@ fn create_dungeon_combat(
     game_manager: &mut GameManager,
     dungeon_id: &str,
     start_floor: u16,
+    sd_card: Option<&mut SdCardWrapper>,
 ) -> Option<(DungeonCombatPage, DungeonRun)> {
     // Clone dungeon data to avoid borrow conflict
     let dungeon = game_manager.tamer_data.get_dungeon(dungeon_id)?.clone();
@@ -161,7 +165,7 @@ fn create_dungeon_combat(
     let combat_state = CombatState::with_waves(player_monsters, wave_enemies, start_floor);
 
     // Create combat page
-    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name);
+    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name, sd_card);
 
     Some((combat_page, dungeon_run))
 }

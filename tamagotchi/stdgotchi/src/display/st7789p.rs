@@ -114,6 +114,7 @@ where
     framebuffer: Vec<u8>,
     width: u16,
     height: u16,
+    color_mode: ColorMode,
     /// Backlight pin (GPIO6) - None if not connected
     backlight: Option<PinDriver<'a, esp_idf_svc::hal::gpio::Gpio6, Output>>,
 }
@@ -151,6 +152,7 @@ where
             framebuffer,
             width,
             height,
+            color_mode,
             backlight: None,
         };
 
@@ -345,6 +347,130 @@ where
 
         Ok(())
     }
+
+    /// Set a single pixel directly in the framebuffer (fast path)
+    /// Coordinates are in display space (0,0 is top-left)
+    /// Converts RGB888 to framebuffer color mode automatically
+    #[inline]
+    pub fn set_pixel(&mut self, x: u16, y: u16, color: Rgb888) {
+        if x < self.width && y < self.height {
+            match self.color_mode {
+                ColorMode::Rgb888 => {
+                    let offset = (y as usize * self.width as usize + x as usize) * 3;
+                    if offset + 2 < self.framebuffer.len() {
+                        self.framebuffer[offset] = color.r();
+                        self.framebuffer[offset + 1] = color.g();
+                        self.framebuffer[offset + 2] = color.b();
+                    }
+                }
+                ColorMode::Rgb565 => {
+                    // Convert RGB888 to RGB565
+                    let r = (color.r() >> 3) as u16;
+                    let g = (color.g() >> 2) as u16;
+                    let b = (color.b() >> 3) as u16;
+                    let rgb565 = (r << 11) | (g << 5) | b;
+
+                    let offset = (y as usize * self.width as usize + x as usize) * 2;
+                    if offset + 1 < self.framebuffer.len() {
+                        // Big-endian (MSB first) - ST7789P expects this format
+                        self.framebuffer[offset] = (rgb565 >> 8) as u8;
+                        self.framebuffer[offset + 1] = (rgb565 & 0xFF) as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set a single pixel from RGB565 value (fast path)
+    #[inline]
+    pub fn set_pixel_rgb565(&mut self, x: u16, y: u16, rgb565: u16) {
+        if x < self.width && y < self.height {
+            match self.color_mode {
+                ColorMode::Rgb565 => {
+                    // Direct write to RGB565 framebuffer (zero-cost!)
+                    let offset = (y as usize * self.width as usize + x as usize) * 2;
+                    if offset + 1 < self.framebuffer.len() {
+                        // Big-endian (MSB first) - ST7789P expects this format
+                        self.framebuffer[offset] = (rgb565 >> 8) as u8;
+                        self.framebuffer[offset + 1] = (rgb565 & 0xFF) as u8;
+                    }
+                }
+                ColorMode::Rgb888 => {
+                    // Convert RGB565 to RGB888
+                    let r = ((rgb565 >> 11) & 0x1F) as u8;
+                    let g = ((rgb565 >> 5) & 0x3F) as u8;
+                    let b = (rgb565 & 0x1F) as u8;
+
+                    // Expand to 8-bit
+                    let r = (r << 3) | (r >> 2);
+                    let g = (g << 2) | (g >> 4);
+                    let b = (b << 3) | (b >> 2);
+
+                    let offset = (y as usize * self.width as usize + x as usize) * 3;
+                    if offset + 2 < self.framebuffer.len() {
+                        self.framebuffer[offset] = r;
+                        self.framebuffer[offset + 1] = g;
+                        self.framebuffer[offset + 2] = b;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Blit RGB565 data directly to framebuffer (fast bulk transfer)
+    /// Returns the number of pixels written
+    pub fn blit_rgb565(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: u16,
+        height: u16,
+        data: &[u8],
+        flip_h: bool,
+        alpha_mask: Option<&[u8]>,
+    ) -> usize {
+        let w = width as usize;
+        let h = height as usize;
+        let mut pixels_written = 0;
+
+        for py in 0..h {
+            let draw_y = y + py as i32;
+            if draw_y < 0 || draw_y >= self.height as i32 {
+                continue;
+            }
+
+            for px in 0..w {
+                let draw_x = x + px as i32;
+                if draw_x < 0 || draw_x >= self.width as i32 {
+                    continue;
+                }
+
+                let src_x = if flip_h { w - 1 - px } else { px };
+                let pixel_idx = py * w + src_x;
+
+                // Check transparency
+                if let Some(mask) = alpha_mask {
+                    let byte_idx = pixel_idx / 8;
+                    let bit_idx = pixel_idx % 8;
+                    if byte_idx < mask.len() && (mask[byte_idx] & (1 << bit_idx)) == 0 {
+                        continue; // Skip transparent pixel
+                    }
+                }
+
+                // Read RGB565 (little-endian)
+                let data_idx = pixel_idx * 2;
+                if data_idx + 1 >= data.len() {
+                    continue;
+                }
+                let rgb565 = u16::from_le_bytes([data[data_idx], data[data_idx + 1]]);
+
+                self.set_pixel_rgb565(draw_x as u16, draw_y as u16, rgb565);
+                pixels_written += 1;
+            }
+        }
+
+        pixels_written
+    }
 }
 
 impl<DC, RST> DrawTarget for St7789pDriver<'_, DC, RST>
@@ -361,15 +487,8 @@ where
     {
         for Pixel(coord, color) in pixels.into_iter() {
             if coord.x >= 0 && coord.x < self.width as i32 && coord.y >= 0 && coord.y < self.height as i32 {
-                let x = coord.x as usize;
-                let y = coord.y as usize;
-                let offset = (y * self.width as usize + x) * 3;
-
-                if offset + 2 < self.framebuffer.len() {
-                    self.framebuffer[offset] = color.r();
-                    self.framebuffer[offset + 1] = color.g();
-                    self.framebuffer[offset + 2] = color.b();
-                }
+                // Use set_pixel which handles both RGB888 and RGB565 modes
+                self.set_pixel(coord.x as u16, coord.y as u16, color);
             }
         }
         Ok(())

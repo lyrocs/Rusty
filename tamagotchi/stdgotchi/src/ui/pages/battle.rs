@@ -3,13 +3,11 @@
 //! NOTE: This is a placeholder for Phase 1 migration.
 //! Will be replaced with new real-time combat system in Phase 2.
 
-use crate::assets::battle::load_enemy_sprites_embedded;
 use crate::display::St7789pDriver;
 use crate::ecs::resources::SdCardWrapper;
 use crate::game::{Enemy as GameEnemy, GameData, KillTracker, BattleState};
 use crate::game::battle::DamageResult;
 use crate::ui::page::Page;
-use crate::ui::sprite::{AnimatedSprite, Background};
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::{FONT_9X15, FONT_10X20}},
     pixelcolor::Rgb888,
@@ -18,7 +16,7 @@ use embedded_graphics::{
     text::Text,
 };
 use std::error::Error;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Action returned from battle page
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +43,6 @@ pub struct BattlePage {
     is_victory: bool,
     is_defeat: bool,
     exp_gained: u64,
-    enemy_sprite: Option<AnimatedSprite>,
     dirty: bool,
 }
 
@@ -56,14 +53,7 @@ impl BattlePage {
         kill_tracker: KillTracker,
         _sd_card: Option<&mut SdCardWrapper>,
     ) -> Result<Self, Box<dyn Error>> {
-        // Load enemy sprite
-        let enemy_sprite = if let Some((idle, _, _, _)) = load_enemy_sprites_embedded(enemy.id) {
-            let frame_delay = Duration::from_millis(100);
-            AnimatedSprite::new(&idle, (280, 200), frame_delay, None).ok()
-        } else {
-            None
-        };
-
+        // Note: Animation not implemented for this placeholder page
         Ok(Self {
             exp_gained: enemy.exp_reward,
             enemy,
@@ -79,7 +69,6 @@ impl BattlePage {
             battle_state: BattleState::default(),
             is_victory: false,
             is_defeat: false,
-            enemy_sprite,
             dirty: true,
         })
     }
@@ -228,10 +217,7 @@ impl Page for BattlePage {
         }
         Text::new("ATK", Point::new(325, 162), small_style).draw(display)?;
 
-        // Draw enemy sprite if available
-        if let Some(ref mut sprite) = self.enemy_sprite {
-            sprite.draw(display)?;
-        }
+        // Enemy sprite placeholder - animation not implemented
 
         // Draw battle status
         if self.is_victory {
@@ -251,10 +237,6 @@ impl Page for BattlePage {
     }
 
     fn update(&mut self) -> bool {
-        // Update enemy sprite animation
-        if let Some(ref mut sprite) = self.enemy_sprite {
-            sprite.update();
-        }
 
         // Update combat (ATK bars and auto-attacks)
         self.update_combat();

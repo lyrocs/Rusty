@@ -5,7 +5,7 @@
 
 use bevy_ecs::prelude::*;
 
-use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents};
+use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents, SdCardWrapper};
 use crate::input_thread::{InputEvent, SwipeDirection};
 use crate::systems::expedition_navigation::create_expedition_map_page;
 use crate::ui::pages::{HomeAction, CollectionPage, ZoneCollectionData, SpeciesCollectionData};
@@ -15,6 +15,7 @@ pub fn home_navigation_system(
     mut app_state: ResMut<AppState>,
     pending_events: Res<PendingInputEvents>,
     mut game_manager: Option<NonSendMut<GameManager>>,
+    mut sd_card_res: Option<NonSendMut<SdCardWrapper>>,
 ) {
     // Only process in Home mode
     if app_state.current_mode != AppMode::Home {
@@ -32,6 +33,14 @@ pub fn home_navigation_system(
 
     // Update home page data
     update_home_page_data(game_manager);
+
+    // Load icons from SD card if available (only when icons need refresh)
+    if let Some(ref mut sd_card) = sd_card_res {
+        // Load icons if team changed or icons not loaded yet
+        if game_manager.home_page.needs_icon_reload() {
+            game_manager.home_page.load_icons(sd_card);
+        }
+    }
 
     // Process input events
     for event in pending_events.events.iter() {
