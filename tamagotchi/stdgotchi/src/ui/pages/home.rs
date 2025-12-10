@@ -379,10 +379,10 @@ impl Page for HomePage {
         // ═══════════════════════════════════════
         // NAVIGATION BUTTONS (2 buttons side by side with rounded corners)
         // ═══════════════════════════════════════
-        let nav_y = 224;
-        let button_width = 110u32;
-        let button_height = 50u32;  // Taller buttons for better touch
-        let button_spacing = 10;     // Gap between buttons
+        let nav_y = 218;
+        let button_width = 112u32;
+        let button_height = 62u32;  // Large touch zone
+        let button_spacing = 8;      // Gap between buttons
         let corner_radius = 8u32;
 
         // MAP button - Blue themed with rounded corners
@@ -407,7 +407,7 @@ impl Page for HomePage {
                 .build())
             .draw(display)?;
 
-        Text::new("MAP", Point::new(42, nav_y + 30), text_style).draw(display)?;
+        Text::new("MAP", Point::new(42, nav_y + 36), text_style).draw(display)?;
         self.map_button = Some(map_rect);
 
         // COLLECTION button - Green themed with rounded corners
@@ -433,7 +433,7 @@ impl Page for HomePage {
                 .build())
             .draw(display)?;
 
-        Text::new("COLLECT", Point::new(coll_x + 22, nav_y + 30), text_style).draw(display)?;
+        Text::new("COLLECT", Point::new(coll_x + 22, nav_y + 36), text_style).draw(display)?;
         self.collection_button = Some(coll_rect);
 
         display.flush()?;

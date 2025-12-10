@@ -16,11 +16,17 @@ pub struct Species {
     /// Element type
     pub element: Element,
 
+    /// Base level (from RO database) - starting level when captured
+    pub base_level: u8,
+
     // Base stats at level 1
     pub base_hp: u16,
     pub base_atk: u16,
     pub base_def: u16,
     pub base_spd: u16,
+
+    /// Base XP reward when defeated (from RO database)
+    pub base_exp: u32,
 
     /// Reference to skill in skills.json
     pub skill_id: String,

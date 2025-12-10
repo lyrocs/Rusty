@@ -111,9 +111,18 @@ impl MapPage {
     }
 
     /// Update cached game data (call once when entering Map mode, not every frame)
+    /// Sorts zones and maps by level for better navigation
     pub fn set_game_data(&mut self, zones: Vec<crate::game::core::Zone>, tamer_maps: Vec<crate::game::core::TamerMap>) {
-        self.zones = zones;
-        self.tamer_maps = tamer_maps;
+        // Sort zones by minimum level
+        let mut sorted_zones = zones;
+        sorted_zones.sort_by_key(|z| z.level_range.0);
+        self.zones = sorted_zones;
+
+        // Sort maps by minimum level
+        let mut sorted_maps = tamer_maps;
+        sorted_maps.sort_by_key(|m| m.level_range.0);
+        self.tamer_maps = sorted_maps;
+
         self.needs_full_redraw = true;
     }
 

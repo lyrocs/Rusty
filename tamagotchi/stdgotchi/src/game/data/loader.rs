@@ -25,10 +25,14 @@ struct SpeciesData {
     id: String,
     name: String,
     element: String,
+    #[serde(default = "default_level")]
+    level: u8,
     base_hp: u16,
     base_atk: u16,
     base_def: u16,
     base_spd: u16,
+    #[serde(default)]
+    base_exp: u32,
     skill_id: String,
     zones: Vec<String>,
     #[serde(default)]
@@ -37,16 +41,22 @@ struct SpeciesData {
     is_boss: bool,
 }
 
+fn default_level() -> u8 {
+    1
+}
+
 impl SpeciesData {
     fn to_species(&self) -> Species {
         Species {
             id: self.id.clone(),
             name: self.name.clone(),
             element: parse_element(&self.element),
+            base_level: self.level,
             base_hp: self.base_hp,
             base_atk: self.base_atk,
             base_def: self.base_def,
             base_spd: self.base_spd,
+            base_exp: self.base_exp,
             skill_id: self.skill_id.clone(),
             zones: self.zones.clone(),
         }

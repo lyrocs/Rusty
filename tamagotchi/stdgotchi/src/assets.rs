@@ -372,7 +372,13 @@ pub mod battle {
                 include_bytes!("../assets/images/thief_bug/30.gif"),
                 Some(include_bytes!("../assets/images/thief_bug/38.gif")),
             )),
-            _ => None,
+            // Fallback to Poring for unknown enemies
+            _ => Some((
+                include_bytes!("../assets/images/poring/6.gif"),
+                include_bytes!("../assets/images/poring/22.gif"),
+                include_bytes!("../assets/images/poring/30.gif"),
+                Some(include_bytes!("../assets/images/poring/38.gif")),
+            )),
         }
     }
 }

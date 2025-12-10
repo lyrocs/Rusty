@@ -7,13 +7,13 @@ use uuid::Uuid;
 use crate::game::core::{Monster, MonsterStatus, Species, Skill, Element};
 use crate::game::calculations::{stats, xp};
 
-/// Create a new Monster instance from a Species
+/// Create a new Monster instance from a Species at its base level
 pub fn create_monster(species: &Species, skill: &Skill) -> Monster {
     let id = Uuid::new_v4().to_string();
-    let level = 1;
+    let level = species.base_level; // Use species base level from RO database
     let fusion_count = 0;
 
-    // Calculate initial stats at level 1
+    // Calculate initial stats at species base level
     let hp_max = stats::calculate_final_hp(species.base_hp, level, fusion_count);
     let atk = stats::calculate_final_stat(species.base_atk, level, fusion_count);
     let def = stats::calculate_final_stat(species.base_def, level, fusion_count);
@@ -86,10 +86,12 @@ mod tests {
             id: "poring".to_string(),
             name: "Poring".to_string(),
             element: Element::Water,
+            base_level: 1,
             base_hp: 80,
             base_atk: 15,
             base_def: 10,
             base_spd: 20,
+            base_exp: 2,
             skill_id: "heal".to_string(),
             zones: vec!["prontera".to_string()],
         }

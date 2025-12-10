@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::element_system::Element;
+use super::calculations::xp::calculate_exp_reward;
 
 /// Enemy instance in battle
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +25,7 @@ pub struct Enemy {
 
 impl Enemy {
     /// Create enemy from loaded data
+    /// Applies XP_MULTIPLIER to base_exp for actual reward
     pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, hit: u32, flee: u32, base_exp: u64, element: Element) -> Self {
         Self {
             id,
@@ -35,12 +37,13 @@ impl Enemy {
             def: defense,
             hit,
             flee,
-            exp_reward: base_exp,
+            exp_reward: calculate_exp_reward(base_exp),
             element,
         }
     }
 
     /// Create enemy with level scaling based on hero level
+    /// Applies XP_MULTIPLIER to base_exp, then scales by level modifier
     pub fn from_data_scaled(
         id: u32,
         name: String,
@@ -63,7 +66,8 @@ impl Enemy {
         let def = (base_defense as f32 * level_modifier).max(0.0) as u32;
         let hit = (base_hit as f32 * level_modifier).max(1.0) as u32;
         let flee = (base_flee as f32 * level_modifier).max(1.0) as u32;
-        let exp_reward = (base_exp as f32 * level_modifier).max(1.0) as u64;
+        // Apply multiplier first, then scale
+        let exp_reward = (calculate_exp_reward(base_exp) as f32 * level_modifier).max(1.0) as u64;
 
         Self {
             id,
