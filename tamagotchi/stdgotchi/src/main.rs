@@ -57,34 +57,48 @@ use std::thread;
 use std::time::Duration;
 use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, dungeon_combat_navigation_system, between_floors_navigation_system, dungeon_defeat_navigation_system, expedition_navigation_system, fps_system, home_navigation_system, map_navigation_system, menu_system, monster_navigation_system, render_system, utility_navigation_system};
 
-/// Initialize the display hardware
-fn init_display(
+/// Initialize the shared SPI bus for display and SD card
+/// Returns a 'static reference to the SPI driver that can be shared
+fn init_shared_spi_bus(
     spi2: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::spi::SPI2> + 'static,
     sck: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio1> + 'static,
     mosi: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio2> + 'static,
-    cs: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio5> + 'static,
-    dc: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio3> + 'static,
-    rst: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio4> + 'static,
-    backlight: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio6> + 'static,
-) -> Result<St7789pDriver<'static>, Box<dyn std::error::Error>> {
-    log::info!("Initializing SPI bus for display...");
+    miso: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio16> + 'static,
+) -> Result<&'static SpiDriver<'static>, Box<dyn std::error::Error>> {
+    log::info!("Initializing shared SPI bus (SCK=GPIO1, MOSI=GPIO2, MISO=GPIO16)...");
 
-    // Initialize SPI2 for display
-    // Pins: GPIO1=SCK, GPIO2=MOSI, GPIO5=CS
+    // Initialize SPI2 with MISO for SD card support
     let driver_config = DriverConfig::new().dma(Dma::Auto(4096));
     let spi_driver = SpiDriver::new::<esp_idf_svc::hal::spi::SPI2>(
         spi2,
         sck,
         mosi,
-        None::<esp_idf_svc::hal::gpio::AnyIOPin>, // No MISO for display
+        Some(miso), // MISO for SD card
         &driver_config,
     )?;
 
+    // Leak to get 'static lifetime for bus sharing
+    let spi_driver_static: &'static SpiDriver<'static> = Box::leak(Box::new(spi_driver));
+
+    log::info!("Shared SPI bus initialized");
+    Ok(spi_driver_static)
+}
+
+/// Initialize the display using the shared SPI bus
+fn init_display(
+    spi_bus: &'static SpiDriver<'static>,
+    cs: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio5> + 'static,
+    dc: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio3> + 'static,
+    rst: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio4> + 'static,
+    backlight: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio6> + 'static,
+) -> Result<St7789pDriver<'static>, Box<dyn std::error::Error>> {
+    log::info!("Initializing display on shared SPI bus...");
+
     // Configure SPI to 40MHz for fast display updates
     let spi_config = SpiConfig::new().baudrate(Hertz(40_000_000));
-    let spi_device = SpiDeviceDriver::new(spi_driver, Some(cs), &spi_config)?;
+    let spi_device = SpiDeviceDriver::new(spi_bus, Some(cs), &spi_config)?;
 
-    log::info!("SPI bus initialized at 40MHz");
+    log::info!("Display SPI device initialized at 40MHz");
 
     // Initialize DC and RST pins
     let dc_pin = PinDriver::output(dc)?;
@@ -111,15 +125,29 @@ fn init_display(
     display.set_backlight_pin(bl_pin);
 
     log::info!("Display initialized successfully!");
+
     Ok(display)
 }
 
-/// Initialize SD card (ESP32-C6 may use different pins - update as needed)
-/// Note: SD card functionality may need to be updated based on actual hardware configuration
-fn init_sd_card() -> Result<ecs::resources::SdCardWrapper, Box<dyn std::error::Error>> {
-    log::warn!("SD card initialization not yet configured for ESP32-C6");
-    log::warn!("Please check hardware documentation for SD card pin assignments");
-    Err("SD card not configured for ESP32-C6".into())
+/// Initialize SD card using the shared SPI bus
+fn init_sd_card(
+    spi_bus: &'static SpiDriver<'static>,
+    cs: impl esp_idf_svc::hal::peripheral::Peripheral<P = esp_idf_svc::hal::gpio::Gpio17> + 'static,
+) -> Result<ecs::resources::SdCardWrapper, Box<dyn std::error::Error>> {
+    log::info!("Initializing SD card on shared SPI bus (CS=GPIO17)...");
+
+    // Configure SPI for SD card at 20MHz (most cards support this)
+    // Note: SD spec says init at 400kHz, but modern cards work fine at higher speeds
+    let spi_config = SpiConfig::new().baudrate(Hertz(20_000_000)); // 20MHz
+    let spi_device = SpiDeviceDriver::new(spi_bus, Some(cs), &spi_config)?;
+
+    log::info!("SD card SPI device created at 20MHz");
+
+    // Initialize SD card
+    let sd_resource = sdcard::SdCardResource::new(spi_device)?;
+    log::info!("SD card initialized successfully!");
+
+    Ok(ecs::resources::SdCardWrapper::new(Box::new(sd_resource)))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -142,16 +170,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &i2c_config,
     )?;
 
-    // Initialize display (SPI2 with dedicated pins)
+    // Initialize shared SPI bus for display and SD card
+    log::info!("Initializing shared SPI bus...");
+    let spi_bus = init_shared_spi_bus(
+        peripherals.spi2,
+        peripherals.pins.gpio1,   // SCK
+        peripherals.pins.gpio2,   // MOSI
+        peripherals.pins.gpio16,  // MISO (for SD card)
+    )?;
+
+    // Initialize display on the shared SPI bus
     log::info!("Initializing display...");
     let display = init_display(
-        peripherals.spi2,
-        peripherals.pins.gpio1,  // SCK
-        peripherals.pins.gpio2,  // MOSI
-        peripherals.pins.gpio5,  // CS
-        peripherals.pins.gpio3,  // DC
-        peripherals.pins.gpio4,  // RST
-        peripherals.pins.gpio6,  // Backlight
+        spi_bus,
+        peripherals.pins.gpio5,   // Display CS
+        peripherals.pins.gpio3,   // DC
+        peripherals.pins.gpio4,   // RST
+        peripherals.pins.gpio6,   // Backlight
     )?;
 
     // Initialize touch controller
@@ -181,9 +216,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     log::info!("Shared I2C configured for input thread");
 
-    // Initialize SD card (if available on this board)
-    log::info!("Initializing storage...");
-    let mut sd_card_wrapper = match init_sd_card() {
+    // Initialize SD card on the shared SPI bus
+    log::info!("Initializing SD card...");
+    let mut sd_card_wrapper = match init_sd_card(spi_bus, peripherals.pins.gpio17) {
         Ok(wrapper) => {
             log::info!("SD card mounted successfully");
             Some(wrapper)

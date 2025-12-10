@@ -1,8 +1,9 @@
 // SD Card Support Module
 //!
-//! Provides SD card initialization and file operations for ESP32-S3.
+//! Provides SD card initialization and file operations for ESP32-C6.
 //! Uses embedded-sdmmc library over SPI.
 
+use embedded_hal::delay::DelayNs;
 use embedded_sdmmc::{TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use std::error::Error;
 
@@ -49,22 +50,98 @@ impl TimeSource for SimpleTimeSource {
     }
 }
 
-/// SD card resource for ECS
-pub struct SdCardResource<SPI, CS, D>
+/// Copy-able delay wrapper for FreeRtos
+#[derive(Clone, Copy)]
+pub struct FreeRtosDelay;
+
+impl embedded_hal::delay::DelayNs for FreeRtosDelay {
+    fn delay_ns(&mut self, ns: u32) {
+        // Use microsecond precision instead of rounding to milliseconds
+        // This is critical for SD card performance
+        if ns >= 1_000_000 {
+            // 1ms or more - use millisecond delay
+            let ms = ns / 1_000_000;
+            esp_idf_svc::hal::delay::FreeRtos.delay_ms(ms);
+        } else if ns >= 1_000 {
+            // 1us or more - use microsecond delay
+            let us = ns / 1_000;
+            esp_idf_svc::hal::delay::FreeRtos.delay_us(us);
+        } else if ns > 0 {
+            // Less than 1us - use minimum 1us delay
+            esp_idf_svc::hal::delay::FreeRtos.delay_us(1);
+        }
+        // If ns == 0, no delay needed
+    }
+}
+
+/// SD card resource with concrete type for MutexDevice
+pub struct SdCardResource<DEV>
 where
-    SPI: embedded_hal::spi::SpiBus,
-    CS: embedded_hal::digital::OutputPin,
-    D: embedded_hal::delay::DelayNs,
+    DEV: embedded_hal::spi::SpiDevice,
 {
-    pub volume_mgr: VolumeManager<embedded_sdmmc::SdCard<embedded_hal_bus::spi::ExclusiveDevice<SPI, CS, D>, D>, SimpleTimeSource, 4, 4, 1>,
+    pub volume_mgr: VolumeManager<embedded_sdmmc::SdCard<DEV, FreeRtosDelay>, SimpleTimeSource, 4, 4, 1>,
     pub mounted: bool,
 }
 
-impl<SPI, CS, D> SdCardOps for SdCardResource<SPI, CS, D>
+impl<DEV> SdCardResource<DEV>
 where
-    SPI: embedded_hal::spi::SpiBus,
-    CS: embedded_hal::digital::OutputPin,
-    D: embedded_hal::delay::DelayNs,
+    DEV: embedded_hal::spi::SpiDevice<Error: std::fmt::Debug>,
+{
+    /// Create a new SD card resource from an existing SPI device
+    pub fn new(mut spi_device: DEV) -> Result<Self, Box<dyn Error>> {
+        log::info!("Initializing SD card...");
+
+        // SD card power-on sequence:
+        // 1. Wait at least 1ms after power stabilization
+        // 2. Send at least 74 clock cycles with CS HIGH (deselected)
+        // 3. Then the card is ready for CMD0
+
+        // Wait for power stabilization
+        FreeRtosDelay.delay_ms(10);
+
+        // Send dummy bytes to generate clock cycles
+        // The SPI device will keep CS high between transactions when we're not in a transaction
+        // So we do a transaction with dummy data to generate clocks
+        log::info!("Sending SD card wake-up clocks...");
+        let dummy = [0xFF; 10]; // 80 clock cycles (10 bytes * 8 bits)
+        let _ = spi_device.write(&dummy); // Ignore errors, card might not respond yet
+
+        // Small delay after wake-up sequence
+        FreeRtosDelay.delay_ms(10);
+
+        let delay = FreeRtosDelay;
+
+        // Create SD card with the provided SPI device
+        let sd_card = embedded_sdmmc::SdCard::new(spi_device, delay);
+
+        // Try to get card size to verify the card is present
+        // This triggers the initialization sequence
+        match sd_card.num_bytes() {
+            Ok(size) => {
+                log::info!("SD card detected: {} MB", size / 1024 / 1024);
+            }
+            Err(e) => {
+                log::error!("SD card not responding: {:?}", e);
+                return Err(format!("SD card error: {:?}", e).into());
+            }
+        }
+
+        // Create volume manager
+        let time_source = SimpleTimeSource;
+        let volume_mgr = VolumeManager::new(sd_card, time_source);
+
+        log::info!("SD card ready");
+
+        Ok(Self {
+            volume_mgr,
+            mounted: true,
+        })
+    }
+}
+
+impl<DEV> SdCardOps for SdCardResource<DEV>
+where
+    DEV: embedded_hal::spi::SpiDevice<Error: std::fmt::Debug>,
 {
     fn is_mounted(&self) -> bool {
         self.mounted
@@ -293,64 +370,6 @@ where
             }
             Err(_) => false,
         }
-    }
-}
-
-impl<SPI, CS> SdCardResource<SPI, CS, FreeRtosDelay>
-where
-    SPI: embedded_hal::spi::SpiBus,
-    CS: embedded_hal::digital::OutputPin,
-{
-    /// Create a new SD card resource with FreeRtos delay
-    pub fn new(
-        spi: SPI,
-        cs: CS,
-    ) -> Result<Self, Box<dyn Error>> {
-        log::info!("Initializing SD card...");
-
-        // Create SPI device with CS control
-        use embedded_hal_bus::spi::ExclusiveDevice;
-        let delay = FreeRtosDelay;
-        let spi_device = ExclusiveDevice::new(spi, cs, FreeRtosDelay)
-            .map_err(|_| "Failed to create SPI device")?;
-
-        // Create SD card
-        let sd_card = embedded_sdmmc::SdCard::new(spi_device, delay);
-
-        // Create volume manager
-        let time_source = SimpleTimeSource;
-        let volume_mgr = VolumeManager::new(sd_card, time_source);
-
-        log::info!("SD card initialized successfully");
-
-        Ok(Self {
-            volume_mgr,
-            mounted: true,
-        })
-    }
-}
-
-/// Copy-able delay wrapper for FreeRtos
-#[derive(Clone, Copy)]
-pub struct FreeRtosDelay;
-
-impl embedded_hal::delay::DelayNs for FreeRtosDelay {
-    fn delay_ns(&mut self, ns: u32) {
-        // Use microsecond precision instead of rounding to milliseconds
-        // This is critical for SD card performance
-        if ns >= 1_000_000 {
-            // 1ms or more - use millisecond delay
-            let ms = ns / 1_000_000;
-            esp_idf_svc::hal::delay::FreeRtos.delay_ms(ms);
-        } else if ns >= 1_000 {
-            // 1us or more - use microsecond delay
-            let us = ns / 1_000;
-            esp_idf_svc::hal::delay::FreeRtos.delay_us(us);
-        } else if ns > 0 {
-            // Less than 1us - use minimum 1us delay
-            esp_idf_svc::hal::delay::FreeRtos.delay_us(1);
-        }
-        // If ns == 0, no delay needed
     }
 }
 

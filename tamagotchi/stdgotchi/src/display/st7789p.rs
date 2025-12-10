@@ -102,12 +102,13 @@ impl ColorMode {
 }
 
 /// ST7789P Driver for ESP-IDF with standard SPI support
+/// Supports shared SPI bus (using &'static SpiDriver reference)
 pub struct St7789pDriver<'a, DC, RST>
 where
     DC: esp_idf_svc::hal::gpio::OutputPin,
     RST: esp_idf_svc::hal::gpio::OutputPin,
 {
-    spi: SpiDeviceDriver<'a, esp_idf_svc::hal::spi::SpiDriver<'a>>,
+    spi: SpiDeviceDriver<'a, &'a esp_idf_svc::hal::spi::SpiDriver<'a>>,
     dc: PinDriver<'a, DC, Output>,
     rst: PinDriver<'a, RST, Output>,
     framebuffer: Vec<u8>,
@@ -132,7 +133,7 @@ where
     /// * `height` - Display height in pixels
     /// * `color_mode` - Color mode (RGB565 or RGB888)
     pub fn new(
-        spi: SpiDeviceDriver<'a, esp_idf_svc::hal::spi::SpiDriver<'a>>,
+        spi: SpiDeviceDriver<'a, &'a esp_idf_svc::hal::spi::SpiDriver<'a>>,
         dc: PinDriver<'a, DC, Output>,
         rst: PinDriver<'a, RST, Output>,
         width: u16,
