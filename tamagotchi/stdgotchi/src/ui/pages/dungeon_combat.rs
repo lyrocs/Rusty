@@ -133,21 +133,20 @@ pub struct DungeonCombatPage {
 
     // Species IDs for loading animations
     enemy_species: String,
-    player_species: String,
+    player_species: [String; 3],  // All team monster species (preloaded)
 
     // Raw animation players loaded from SD card
-    // During IDLE: both loaded (~13KB each)
-    // During ACTION: only the action animation loaded, other is None
+    // Enemy: loaded on demand
+    // Player team: ALL preloaded at combat start for instant swapping (~13KB each)
     enemy_anim: Option<RawAnimPlayer>,
-    player_anim: Option<RawAnimPlayer>,
+    player_anims: [Option<RawAnimPlayer>; 3],  // All team animations preloaded
 
     // Current animation state
     enemy_anim_type: AnimType,
     player_anim_type: AnimType,
 
-    // Pending animation loads (loaded by navigation system)
+    // Pending animation loads (only enemy now, player team is preloaded)
     pending_enemy_anim: Option<AnimType>,
-    pending_player_anim: Option<AnimType>,
 
     // Action animation state
     action_target: ActiveAnim,
@@ -165,18 +164,32 @@ struct DamagePopup {
 impl DungeonCombatPage {
     pub fn new(combat_state: CombatState, dungeon_name: String, sd_card: Option<&mut SdCardWrapper>) -> Self {
         let enemy_species = combat_state.enemy.species_id.clone();
-        let player_species = combat_state.active_monster()
-            .map(|m| m.species_id.clone())
-            .unwrap_or_else(|| "poring".to_string());
 
-        // Load only IDLE animations to save memory - other animations loaded on-demand
-        let (enemy_anim, player_anim) = if let Some(sd) = sd_card {
-            log::info!("Loading idle raw animations for {} and {}", enemy_species, player_species);
+        // Collect all team monster species for preloading
+        let mut player_species: [String; 3] = [String::new(), String::new(), String::new()];
+        for (i, monster) in combat_state.player_monsters.iter().take(3).enumerate() {
+            player_species[i] = monster.species_id.clone();
+        }
+
+        // Load enemy and ALL player team idle animations for instant swapping
+        let (enemy_anim, player_anims) = if let Some(sd) = sd_card {
+            log::info!("Loading idle raw animations for enemy {} and {} team monsters",
+                enemy_species, combat_state.player_monsters.len());
+
             let enemy = load_raw_from_sd(sd, &enemy_species, AnimType::Idle);
-            let player = load_raw_from_sd(sd, &player_species, AnimType::Idle);
-            (enemy, player)
+
+            // Preload ALL team monster animations (~13KB each, ~39KB total)
+            let mut player_anims: [Option<RawAnimPlayer>; 3] = [None, None, None];
+            for (i, species) in player_species.iter().enumerate() {
+                if !species.is_empty() {
+                    log::info!("Preloading team slot {} animation: {}", i, species);
+                    player_anims[i] = load_raw_from_sd(sd, species, AnimType::Idle);
+                }
+            }
+
+            (enemy, player_anims)
         } else {
-            (None, None)
+            (None, [None, None, None])
         };
 
         Self {
@@ -191,29 +204,21 @@ impl DungeonCombatPage {
             enemy_species,
             player_species,
             enemy_anim,
-            player_anim,
+            player_anims,
             enemy_anim_type: AnimType::Idle,
             player_anim_type: AnimType::Idle,
             pending_enemy_anim: None,
-            pending_player_anim: None,
             action_target: ActiveAnim::None,
             action_timer: 0.0,
         }
     }
 
-    /// Reload player species animation (after swap) - loads idle
-    pub fn reload_player_species(&mut self, sd_card: &mut SdCardWrapper) {
-        if let Some(monster) = self.combat_state.active_monster() {
-            if monster.species_id != self.player_species {
-                self.player_species = monster.species_id.clone();
-                log::info!("Reloading idle raw animation for swapped monster: {}", self.player_species);
-                // Drop old animation FIRST to free memory
-                self.player_anim = None;
-                self.player_anim = load_raw_from_sd(sd_card, &self.player_species, AnimType::Idle);
-                self.player_anim_type = AnimType::Idle;
-                self.pending_player_anim = None;
-            }
-        }
+    /// Reload player species animation (after swap)
+    /// Note: With preloading, this is now a no-op since all team animations are preloaded
+    pub fn reload_player_species(&mut self, _sd_card: &mut SdCardWrapper) {
+        // All team monster animations are preloaded at combat start
+        // Swap just changes active_index, no loading needed
+        log::info!("Player swap: using preloaded animation for slot {}", self.combat_state.active_index);
     }
 
     /// Reload enemy species animation (for new wave) - loads idle
@@ -238,7 +243,9 @@ impl DungeonCombatPage {
     /// Check if any animation needs its current frame loaded from SD card
     pub fn needs_frame_reload(&self) -> bool {
         let enemy_needs = self.enemy_anim.as_ref().map(|a| a.needs_frame_load()).unwrap_or(false);
-        let player_needs = self.player_anim.as_ref().map(|a| a.needs_frame_load()).unwrap_or(false);
+        // Check active player animation
+        let active_idx = self.combat_state.active_index as usize;
+        let player_needs = self.player_anims[active_idx].as_ref().map(|a| a.needs_frame_load()).unwrap_or(false);
         enemy_needs || player_needs
     }
 
@@ -254,8 +261,9 @@ impl DungeonCombatPage {
             }
         }
 
-        // Reload player animation current frame if needed
-        if let Some(ref mut anim) = self.player_anim {
+        // Reload active player animation current frame if needed
+        let active_idx = self.combat_state.active_index as usize;
+        if let Some(ref mut anim) = self.player_anims[active_idx] {
             if anim.needs_frame_load() {
                 let current_frame = anim.current_frame();
                 if let Err(e) = anim.load_frame(current_frame, sd_card) {
@@ -267,27 +275,21 @@ impl DungeonCombatPage {
 
     /// Check if there are pending animation loads
     pub fn has_pending_animations(&self) -> bool {
-        self.pending_enemy_anim.is_some() || self.pending_player_anim.is_some()
+        // Only enemy animations are loaded dynamically now
+        // Player team is preloaded at combat start
+        self.pending_enemy_anim.is_some()
     }
 
     /// Load pending animations from SD card
-    /// Note: Only loads Idle animations. Action animations use idle + visual effects.
+    /// Note: Only enemy animations loaded here. Player team is preloaded at combat start.
     pub fn load_pending_animations(&mut self, sd_card: &mut SdCardWrapper) {
-        // Only load Idle animations - action animations use visual effects with idle
+        // Only load enemy animations - player team is preloaded
         if let Some(anim_type) = self.pending_enemy_anim.take() {
             if anim_type == AnimType::Idle {
                 log::info!("Loading pending enemy raw animation: {:?}", anim_type);
                 self.enemy_anim = None;
                 self.enemy_anim = load_raw_from_sd(sd_card, &self.enemy_species, anim_type);
                 self.enemy_anim_type = anim_type;
-            }
-        }
-        if let Some(anim_type) = self.pending_player_anim.take() {
-            if anim_type == AnimType::Idle {
-                log::info!("Loading pending player raw animation: {:?}", anim_type);
-                self.player_anim = None;
-                self.player_anim = load_raw_from_sd(sd_card, &self.player_species, anim_type);
-                self.player_anim_type = anim_type;
             }
         }
     }
@@ -302,18 +304,11 @@ impl DungeonCombatPage {
     /// Note: We don't actually load action animations due to SD card speed constraints.
     /// Instead, we use the idle animation with position offsets (lunge effect).
     fn queue_animation(&mut self, target: ActiveAnim, anim_type: AnimType) {
-        // Only queue Idle animations for actual loading
+        // Only queue Idle animations for actual loading (enemy only)
+        // Player team is preloaded, so no loading needed
         // Action animations (Attack/Hurt/Death) use idle + visual effects
-        if anim_type == AnimType::Idle {
-            match target {
-                ActiveAnim::Enemy => {
-                    self.pending_enemy_anim = Some(anim_type);
-                }
-                ActiveAnim::Player => {
-                    self.pending_player_anim = Some(anim_type);
-                }
-                _ => {}
-            }
+        if anim_type == AnimType::Idle && target == ActiveAnim::Enemy {
+            self.pending_enemy_anim = Some(anim_type);
         }
         // Set action state for visual effect (lunge)
         self.action_target = target;
@@ -399,16 +394,10 @@ impl DungeonCombatPage {
                 });
             }
             CombatEvent::MonsterSwap { .. } => {
-                // Update player species - mark for reload
-                // The actual reload will happen when navigation system calls reload_player_species()
-                if let Some(monster) = self.combat_state.active_monster() {
-                    if monster.species_id != self.player_species {
-                        self.player_species = monster.species_id.clone();
-                        self.player_anim_type = AnimType::Idle;
-                        self.player_anim = None; // Mark for reload
-                        self.pending_player_anim = None;
-                    }
-                }
+                // With preloading, swap is instant - no loading needed!
+                // The render function uses active_index to pick the correct preloaded animation
+                log::info!("Monster swap: instant switch to preloaded animation slot {}",
+                    self.combat_state.active_index);
             }
             CombatEvent::Victory { .. } => {
                 if self.action_target == ActiveAnim::None {
@@ -613,7 +602,9 @@ impl Page for DungeonCombatPage {
         }
 
         // Render player animation using raw format (flipped)
-        if let Some(ref anim) = self.player_anim {
+        // Uses preloaded animation from array based on active monster index
+        let active_idx = self.combat_state.active_index as usize;
+        if let Some(ref anim) = self.player_anims[active_idx] {
             anim.render(display, player_x, center_y, true);
         }
 
@@ -760,12 +751,13 @@ impl Page for DungeonCombatPage {
         }
 
         // Update action animation timer
+        let active_idx = self.combat_state.active_index as usize;
         if self.action_target != ActiveAnim::None {
             self.action_timer += delta;
 
             // Get frame count for the active animation
             let enemy_frame_count = self.enemy_anim.as_ref().map(|a| a.frame_count()).unwrap_or(1);
-            let player_frame_count = self.player_anim.as_ref().map(|a| a.frame_count()).unwrap_or(1);
+            let player_frame_count = self.player_anims[active_idx].as_ref().map(|a| a.frame_count()).unwrap_or(1);
             let (frame_count, current_frame, is_death) = match self.action_target {
                 ActiveAnim::Enemy => (
                     enemy_frame_count,
@@ -774,7 +766,7 @@ impl Page for DungeonCombatPage {
                 ),
                 ActiveAnim::Player => (
                     player_frame_count,
-                    self.player_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
+                    self.player_anims[active_idx].as_ref().map(|a| a.current_frame()).unwrap_or(0),
                     self.player_anim_type == AnimType::Death
                 ),
                 _ => (1, 0, false),
@@ -783,7 +775,7 @@ impl Page for DungeonCombatPage {
             // Advance action frame using RawAnimPlayer's built-in update
             let frame_changed = match self.action_target {
                 ActiveAnim::Enemy => self.enemy_anim.as_mut().map(|a| a.update(delta)).unwrap_or(false),
-                ActiveAnim::Player => self.player_anim.as_mut().map(|a| a.update(delta)).unwrap_or(false),
+                ActiveAnim::Player => self.player_anims[active_idx].as_mut().map(|a| a.update(delta)).unwrap_or(false),
                 _ => false,
             };
 
@@ -791,7 +783,7 @@ impl Page for DungeonCombatPage {
             if frame_changed {
                 let new_frame = match self.action_target {
                     ActiveAnim::Enemy => self.enemy_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
-                    ActiveAnim::Player => self.player_anim.as_ref().map(|a| a.current_frame()).unwrap_or(0),
+                    ActiveAnim::Player => self.player_anims[active_idx].as_ref().map(|a| a.current_frame()).unwrap_or(0),
                     _ => 0,
                 };
 
@@ -806,7 +798,7 @@ impl Page for DungeonCombatPage {
                                 }
                             }
                             ActiveAnim::Player => {
-                                if let Some(ref mut anim) = self.player_anim {
+                                if let Some(ref mut anim) = self.player_anims[active_idx] {
                                     anim.set_frame(frame_count.saturating_sub(1));
                                 }
                             }
@@ -825,7 +817,7 @@ impl Page for DungeonCombatPage {
                 }
             }
             if self.player_anim_type == AnimType::Idle {
-                if let Some(ref mut anim) = self.player_anim {
+                if let Some(ref mut anim) = self.player_anims[active_idx] {
                     anim.update(delta);
                 }
             }
