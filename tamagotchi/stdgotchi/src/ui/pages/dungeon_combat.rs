@@ -151,6 +151,12 @@ pub struct DungeonCombatPage {
     // Action animation state
     action_target: ActiveAnim,
     action_timer: f32,
+
+    // Loading state - shows "Loading..." before animations are loaded
+    // Two-phase: is_loading=true, loading_drawn=false → draw "Loading..."
+    //            is_loading=true, loading_drawn=true → ready to load animations
+    is_loading: bool,
+    loading_drawn: bool,
 }
 
 struct DamagePopup {
@@ -162,36 +168,18 @@ struct DamagePopup {
 }
 
 impl DungeonCombatPage {
-    pub fn new(combat_state: CombatState, dungeon_name: String, sd_card: Option<&mut SdCardWrapper>) -> Self {
+    /// Create combat page in loading state (animations loaded later via load_initial_animations)
+    /// This allows showing "Loading..." screen before the slow SD card reads
+    pub fn new(combat_state: CombatState, dungeon_name: String) -> Self {
         let enemy_species = combat_state.enemy.species_id.clone();
 
-        // Collect all team monster species for preloading
+        // Collect all team monster species for later loading
         let mut player_species: [String; 3] = [String::new(), String::new(), String::new()];
         for (i, monster) in combat_state.player_monsters.iter().take(3).enumerate() {
             player_species[i] = monster.species_id.clone();
         }
 
-        // Load enemy and ALL player team idle animations for instant swapping
-        let (enemy_anim, player_anims) = if let Some(sd) = sd_card {
-            log::info!("Loading idle raw animations for enemy {} and {} team monsters",
-                enemy_species, combat_state.player_monsters.len());
-
-            let enemy = load_raw_from_sd(sd, &enemy_species, AnimType::Idle);
-
-            // Preload ALL team monster animations (~13KB each, ~39KB total)
-            let mut player_anims: [Option<RawAnimPlayer>; 3] = [None, None, None];
-            for (i, species) in player_species.iter().enumerate() {
-                if !species.is_empty() {
-                    log::info!("Preloading team slot {} animation: {}", i, species);
-                    player_anims[i] = load_raw_from_sd(sd, species, AnimType::Idle);
-                }
-            }
-
-            (enemy, player_anims)
-        } else {
-            (None, [None, None, None])
-        };
-
+        // Don't load animations yet - will be done in load_initial_animations()
         Self {
             combat_state,
             last_update: Instant::now(),
@@ -203,14 +191,48 @@ impl DungeonCombatPage {
             end_delay: 0.0,
             enemy_species,
             player_species,
-            enemy_anim,
-            player_anims,
+            enemy_anim: None,
+            player_anims: [None, None, None],
             enemy_anim_type: AnimType::Idle,
             player_anim_type: AnimType::Idle,
             pending_enemy_anim: None,
             action_target: ActiveAnim::None,
             action_timer: 0.0,
+            is_loading: true,  // Start in loading state
+            loading_drawn: false,  // Not drawn yet - wait for first render
         }
+    }
+
+    /// Check if the page needs initial animation loading
+    /// Only returns true AFTER the loading screen has been drawn at least once
+    pub fn needs_initial_load(&self) -> bool {
+        self.is_loading && self.loading_drawn
+    }
+
+    /// Load all animations from SD card (enemy + all player team)
+    /// Call this after showing the loading screen
+    pub fn load_initial_animations(&mut self, sd_card: &mut SdCardWrapper) {
+        if !self.is_loading {
+            return;
+        }
+
+        log::info!("Loading idle raw animations for enemy {} and {} team monsters",
+            self.enemy_species, self.combat_state.player_monsters.len());
+
+        // Load enemy animation
+        self.enemy_anim = load_raw_from_sd(sd_card, &self.enemy_species, AnimType::Idle);
+
+        // Preload ALL team monster animations (~13KB each, ~39KB total)
+        for (i, species) in self.player_species.iter().enumerate() {
+            if !species.is_empty() {
+                log::info!("Preloading team slot {} animation: {}", i, species);
+                self.player_anims[i] = load_raw_from_sd(sd_card, species, AnimType::Idle);
+            }
+        }
+
+        self.is_loading = false;
+        self.dirty = true;
+        log::info!("Combat animations loaded, ready to fight!");
     }
 
     /// Reload player species animation (after swap)
@@ -458,6 +480,21 @@ impl DungeonCombatPage {
 
 impl Page for DungeonCombatPage {
     fn draw(&mut self, display: &mut St7789pDriver, full_redraw: bool) -> Result<(), Box<dyn Error>> {
+        // Show loading screen while animations are being loaded
+        if self.is_loading {
+            let bg = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&bg, Rgb888::new(40, 40, 50))?;
+
+            let loading_style = MonoTextStyle::new(&FONT_7X13, Rgb888::WHITE);
+            Text::new("Loading...", Point::new(85, 142), loading_style).draw(display)?;
+
+            display.flush()?;
+
+            // Mark that loading screen has been drawn - allows navigation system to load on next frame
+            self.loading_drawn = true;
+            return Ok(());
+        }
+
         let text_style = MonoTextStyle::new(&FONT_6X10, Rgb888::BLACK);
         let dim_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(100, 100, 100));
 

@@ -72,13 +72,11 @@ pub fn map_navigation_system(
                         }
                         TouchAction::StartDungeon { dungeon_id, start_floor } => {
                             log::info!("Map -> Dungeon Combat: {} from floor {}", dungeon_id, start_floor);
-                            // Start dungeon combat
-                            let sd_card_mut = sd_card_res.as_deref_mut();
+                            // Start dungeon combat (page starts in loading state)
                             if let Some((combat_page, dungeon_run)) = create_dungeon_combat(
                                 game_manager,
                                 &dungeon_id,
                                 start_floor,
-                                sd_card_mut,
                             ) {
                                 game_manager.dungeon_combat_page = Some(combat_page);
                                 game_manager.active_dungeon_run = Some(dungeon_run);
@@ -125,7 +123,6 @@ fn create_dungeon_combat(
     game_manager: &mut GameManager,
     dungeon_id: &str,
     start_floor: u16,
-    sd_card: Option<&mut SdCardWrapper>,
 ) -> Option<(DungeonCombatPage, DungeonRun)> {
     // Clone dungeon data to avoid borrow conflict
     let dungeon = game_manager.tamer_data.get_dungeon(dungeon_id)?.clone();
@@ -164,8 +161,8 @@ fn create_dungeon_combat(
     // Create combat state with waves
     let combat_state = CombatState::with_waves(player_monsters, wave_enemies, start_floor);
 
-    // Create combat page
-    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name, sd_card);
+    // Create combat page (starts in loading state, animations loaded by navigation system)
+    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name);
 
     Some((combat_page, dungeon_run))
 }

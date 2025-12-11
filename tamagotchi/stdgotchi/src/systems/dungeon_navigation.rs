@@ -35,6 +35,10 @@ pub fn dungeon_combat_navigation_system(
     if let (Some(ref mut combat_page), Some(ref mut sd_card)) =
         (&mut game_manager.dungeon_combat_page, &mut sd_card_res)
     {
+        // First check: initial loading (shows "Loading..." screen first)
+        if combat_page.needs_initial_load() {
+            combat_page.load_initial_animations(sd_card);
+        }
         // Load pending animations (attack, hurt, death queued by combat events)
         if combat_page.has_pending_animations() {
             combat_page.load_pending_animations(sd_card);
@@ -255,14 +259,12 @@ pub fn between_floors_navigation_system(
                                 .map(|p| p.team_status.iter().map(|m| (m.hp_current, m.hp_max)).collect())
                                 .unwrap_or_default();
 
-                            // Create next combat
-                            let sd_card_mut = sd_card_res.as_deref_mut();
+                            // Create next combat (starts in loading state)
                             if let Some((combat_page, _)) = create_next_floor_combat(
                                 game_manager,
                                 dungeon_id,
                                 next_floor,
                                 &team_hp,
-                                sd_card_mut,
                             ) {
                                 game_manager.dungeon_combat_page = Some(combat_page);
                                 game_manager.between_floors_page = None;
@@ -404,8 +406,7 @@ pub fn dungeon_defeat_navigation_system(
                                 // Generate wave enemies for checkpoint floor
                                 if let Some(wave_enemies) = generate_floor_waves(&*game_manager, &dungeon, checkpoint) {
                                     let combat_state = CombatState::with_waves(player_monsters, wave_enemies, checkpoint);
-                                    let sd_card_mut = sd_card_res.as_deref_mut();
-                                    game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone(), sd_card_mut));
+                                    game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone()));
                                     app_state.current_mode = AppMode::DungeonCombat;
                                     app_state.needs_redraw = true;
                                 } else {
@@ -500,7 +501,6 @@ fn create_next_floor_combat(
     dungeon_id: &str,
     floor: u16,
     team_hp: &[(u16, u16)],
-    sd_card: Option<&mut SdCardWrapper>,
 ) -> Option<(DungeonCombatPage, ())> {
     use rand::Rng;
 
@@ -553,8 +553,8 @@ fn create_next_floor_combat(
         persistent_skill_bar,
     );
 
-    // Create combat page
-    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name, sd_card);
+    // Create combat page (starts in loading state, animations loaded by navigation system)
+    let combat_page = DungeonCombatPage::new(combat_state, dungeon_name);
 
     Some((combat_page, ()))
 }
