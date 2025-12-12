@@ -152,6 +152,16 @@ pub struct DungeonCombatPage {
     //            is_loading=true, loading_drawn=true → ready to load animations
     is_loading: bool,
     loading_drawn: bool,
+
+    // Death animation state
+    // When enemy dies: spin and fly off screen to the left
+    death_anim_active: bool,
+    death_anim_timer: f32,
+    death_anim_species: String,  // Species of the dying enemy (for rendering)
+
+    // Hide enemy after death animation until next wave is set up
+    // This prevents the dead enemy from briefly reappearing
+    hide_enemy_until_next_wave: bool,
 }
 
 struct DamagePopup {
@@ -184,6 +194,10 @@ impl DungeonCombatPage {
             action_timer: 0.0,
             is_loading: true,  // Start in loading state
             loading_drawn: false,  // Not drawn yet - wait for first render
+            death_anim_active: false,
+            death_anim_timer: 0.0,
+            death_anim_species: String::new(),
+            hide_enemy_until_next_wave: false,
         }
     }
 
@@ -259,6 +273,8 @@ impl DungeonCombatPage {
         // Wave transition just changes current enemy, no loading needed
         log::info!("New wave: using cached animation for {}", self.combat_state.enemy.species_id);
         self.enemy_anim_type = AnimType::Idle;
+        // Clear the hide flag - new enemy is ready to be shown
+        self.hide_enemy_until_next_wave = false;
     }
 
     /// Check if enemy needs animation reload (new wave)
@@ -324,6 +340,25 @@ impl DungeonCombatPage {
     pub fn load_pending_animations(&mut self, _sd_card: &mut SdCardWrapper) {
         // All animations are preloaded at combat start, nothing to do
     }
+
+    /// Start the death animation for the current enemy
+    /// Call this when enemy HP reaches 0
+    pub fn start_death_animation(&mut self) {
+        if !self.death_anim_active {
+            self.death_anim_active = true;
+            self.death_anim_timer = 0.0;
+            self.death_anim_species = self.combat_state.enemy.species_id.clone();
+            log::info!("Starting death animation for {}", self.death_anim_species);
+        }
+    }
+
+    /// Check if death animation is currently playing
+    pub fn is_death_anim_playing(&self) -> bool {
+        self.death_anim_active
+    }
+
+    /// Death animation duration in seconds
+    const DEATH_ANIM_DURATION: f32 = 0.8;
 
     /// End action animation and return to idle
     /// Note: We no longer free idle animations, so no reload needed
@@ -430,15 +465,26 @@ impl DungeonCombatPage {
                 log::info!("Monster swap: instant switch to preloaded animation slot {}",
                     self.combat_state.active_index);
             }
+            CombatEvent::WaveComplete { wave, total } => {
+                // Enemy died, more waves remain - start death animation
+                log::info!("Wave {}/{} complete - starting death animation", wave, total);
+                self.start_death_animation();
+            }
             CombatEvent::Victory { .. } => {
-                if self.action_target == ActiveAnim::None {
-                    self.queue_animation(ActiveAnim::Enemy, AnimType::Death);
-                }
+                // Final enemy died - start death animation
+                log::info!("Victory! Starting final death animation");
+                self.start_death_animation();
             }
             CombatEvent::Defeat => {
                 if self.action_target == ActiveAnim::None {
                     self.queue_animation(ActiveAnim::Player, AnimType::Death);
                 }
+            }
+            CombatEvent::WaveStart { wave, .. } => {
+                // New wave started - clear the hide flag so new enemy is visible
+                log::info!("Wave {} starting - showing new enemy", wave);
+                self.hide_enemy_until_next_wave = false;
+                self.enemy_anim_type = AnimType::Idle;
             }
             _ => {}
         }
@@ -642,12 +688,37 @@ impl Page for DungeonCombatPage {
         let enemy_x = base_enemy_x + enemy_offset;
         let player_x = base_player_x + player_offset;
 
-        // Render enemy animation using raw format (fast!)
-        // Look up from cache by species_id
-        let enemy_species = &self.combat_state.enemy.species_id;
-        if let Some(anim) = self.anim_cache.get(enemy_species) {
-            anim.render(display, enemy_x, center_y, false);
+        // Render enemy animation (or death animation if playing)
+        if self.death_anim_active {
+            // Death animation: spin and fly off to the left
+            let progress = (self.death_anim_timer / Self::DEATH_ANIM_DURATION).min(1.0);
+
+            // Position: start at base_enemy_x, fly off screen to the left
+            let death_x = base_enemy_x - (progress * 150.0) as i32;
+
+            // Vertical bob: sin wave for a wobbly effect
+            let bob_y = (progress * 12.0 * std::f32::consts::PI).sin() * 10.0;
+            let death_y = center_y + bob_y as i32;
+
+            // Spin effect: alternate flip_h rapidly (every ~0.1 seconds)
+            let spin_flip = ((self.death_anim_timer * 10.0) as i32 % 2) == 0;
+
+            // Render the dying enemy (using stored species from when death started)
+            if let Some(anim) = self.anim_cache.get(&self.death_anim_species) {
+                // Only render if still on screen
+                if death_x > -80 {
+                    anim.render(display, death_x, death_y, spin_flip);
+                }
+            }
+        } else if !self.hide_enemy_until_next_wave {
+            // Normal enemy rendering (only if not hidden after death animation)
+            let enemy_species = &self.combat_state.enemy.species_id;
+            if let Some(anim) = self.anim_cache.get(enemy_species) {
+                anim.render(display, enemy_x, center_y, false);
+            }
         }
+        // If hide_enemy_until_next_wave is true, don't render any enemy
+        // This prevents the dead enemy from briefly reappearing before the next wave
 
         // Render player animation using raw format (flipped)
         // Look up from cache by active monster's species_id
@@ -797,6 +868,18 @@ impl Page for DungeonCombatPage {
         let events = self.combat_state.update(delta);
         for event in events {
             self.handle_combat_event(event);
+        }
+
+        // Update death animation timer
+        if self.death_anim_active {
+            self.death_anim_timer += delta;
+            if self.death_anim_timer >= Self::DEATH_ANIM_DURATION {
+                // Death animation complete - hide enemy until next wave is set up
+                self.death_anim_active = false;
+                self.death_anim_timer = 0.0;
+                self.hide_enemy_until_next_wave = true;  // Don't show old enemy at normal position
+                log::info!("Death animation complete for {}, hiding until next wave", self.death_anim_species);
+            }
         }
 
         // Get species IDs for cache lookups
