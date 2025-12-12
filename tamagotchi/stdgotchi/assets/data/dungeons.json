@@ -11,7 +11,7 @@
         {
           "floor_min": 1,
           "floor_max": 10,
-          "species": ["poring"],
+          "species": ["poring", "hornet"],
           "enemies_per_floor": 1
         },
         {

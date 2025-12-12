@@ -108,6 +108,44 @@ def get_frame_delay(gif):
         return 100
 
 
+# Maximum number of frames to keep (for memory-constrained devices)
+MAX_FRAMES = 4
+
+
+def select_frames(n_frames, max_frames=MAX_FRAMES):
+    """
+    Select which frame indices to keep.
+    Keeps first, last, and evenly distributed middle frames.
+
+    Examples:
+      n_frames=1 -> [0]
+      n_frames=2 -> [0, 1]
+      n_frames=3 -> [0, 1, 2]
+      n_frames=4 -> [0, 1, 2, 3]
+      n_frames=5 -> [0, 1, 3, 4]  (first, middle1, middle2, last)
+      n_frames=8 -> [0, 2, 5, 7]  (first, 1/3, 2/3, last)
+      n_frames=17 -> [0, 5, 11, 16] (first, 1/3, 2/3, last)
+    """
+    if n_frames <= max_frames:
+        return list(range(n_frames))
+
+    # Always include first (0) and last (n_frames-1)
+    # Distribute middle frames evenly
+    indices = [0]
+
+    # Add middle frames (evenly distributed)
+    middle_count = max_frames - 2
+    for i in range(1, middle_count + 1):
+        # Calculate position as fraction of total range
+        pos = int(i * (n_frames - 1) / (max_frames - 1))
+        indices.append(pos)
+
+    # Add last frame
+    indices.append(n_frames - 1)
+
+    return indices
+
+
 def convert_gif_to_raw(input_path, output_path, verbose=True):
     """Convert a single GIF file to raw format"""
     if verbose:
@@ -122,8 +160,13 @@ def convert_gif_to_raw(input_path, output_path, verbose=True):
     width, height = gif.size
     n_frames = getattr(gif, 'n_frames', 1)
 
+    # Select which frames to keep (max 4 frames for memory efficiency)
+    selected_indices = select_frames(n_frames, MAX_FRAMES)
+
     if verbose:
-        print(f"  Size: {width}x{height}, Frames: {n_frames}")
+        print(f"  Size: {width}x{height}, Original frames: {n_frames}")
+        if n_frames > MAX_FRAMES:
+            print(f"  Reducing to {len(selected_indices)} frames: {selected_indices}")
 
     # Check for transparency
     check_transparency = has_transparency(gif)
@@ -132,13 +175,18 @@ def convert_gif_to_raw(input_path, output_path, verbose=True):
     if verbose and check_transparency:
         print(f"  Has transparency: yes")
 
-    # Collect all frames
+    # Collect selected frames only
     frames = []
     delays = []
 
     try:
         for frame_num in range(n_frames):
             gif.seek(frame_num)
+
+            # Skip frames not in our selection
+            if frame_num not in selected_indices:
+                continue
+
             # Make a copy and convert
             frame = gif.copy()
             delay = get_frame_delay(gif)
