@@ -162,6 +162,9 @@ pub struct DungeonCombatPage {
     // Hide enemy after death animation until next wave is set up
     // This prevents the dead enemy from briefly reappearing
     hide_enemy_until_next_wave: bool,
+
+    // Reaction popup (displayed when elemental reaction triggers)
+    reaction_popup: Option<ReactionPopup>,
 }
 
 struct DamagePopup {
@@ -170,6 +173,11 @@ struct DamagePopup {
     is_heal: bool,
     y_offset: f32,
     alpha: f32,
+}
+
+struct ReactionPopup {
+    name: String,
+    timer: f32,  // Seconds remaining to display
 }
 
 impl DungeonCombatPage {
@@ -198,6 +206,7 @@ impl DungeonCombatPage {
             death_anim_timer: 0.0,
             death_anim_species: String::new(),
             hide_enemy_until_next_wave: false,
+            reaction_popup: None,
         }
     }
 
@@ -412,7 +421,7 @@ impl DungeonCombatPage {
 
     fn handle_combat_event(&mut self, event: CombatEvent) {
         match event {
-            CombatEvent::PlayerAttack { damage, .. } => {
+            CombatEvent::PlayerAttack { damage, reaction, heal_amount, .. } => {
                 // Player attacks - queue player attack animation
                 if self.action_target == ActiveAnim::None {
                     self.queue_animation(ActiveAnim::Player, AnimType::Attack);
@@ -424,6 +433,27 @@ impl DungeonCombatPage {
                     y_offset: 0.0,
                     alpha: 1.0,
                 });
+
+                // Show reaction popup if a reaction occurred
+                if let Some(reaction_name) = reaction {
+                    self.reaction_popup = Some(ReactionPopup {
+                        name: reaction_name,
+                        timer: 1.5, // Show for 1.5 seconds
+                    });
+                }
+
+                // Show heal popup if BLOOM healed the team
+                if let Some(heal) = heal_amount {
+                    if heal > 0 {
+                        self.damage_popups.push(DamagePopup {
+                            damage: heal,
+                            is_player_damage: false,
+                            is_heal: true,
+                            y_offset: 0.0,
+                            alpha: 1.0,
+                        });
+                    }
+                }
             }
             CombatEvent::EnemyAttack { damage, .. } => {
                 // Enemy attacks - queue enemy attack animation
@@ -624,6 +654,20 @@ impl Page for DungeonCombatPage {
             display.fill_solid(&skl_fill, Rgb888::new(150, 100, 200))?;
         }
 
+        // Enemy aura indicator (small colored box next to HP bar)
+        if let Some(aura_element) = self.combat_state.enemy_aura {
+            let aura_color = Self::element_color(aura_element);
+            let aura_x = bar_x + bar_w as i32 + 4;
+            let aura_rect = Rectangle::new(Point::new(aura_x, bar_y), Size::new(8, 8));
+            display.fill_solid(&aura_rect, aura_color)?;
+            // Draw border
+            let border_style = PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::WHITE)
+                .stroke_width(1)
+                .build();
+            aura_rect.into_styled(border_style).draw(display)?;
+        }
+
         // Player stats card
         if let Some(monster) = self.combat_state.active_monster() {
             let player_card = Rectangle::new(Point::new(122, stats_y), Size::new(card_width, card_height));
@@ -742,6 +786,37 @@ impl Page for DungeonCombatPage {
             let popup_y = (center_y as f32 - 20.0 - popup.y_offset) as i32;
             let popup_text = if popup.is_heal { format!("+{}", popup.damage) } else { format!("-{}", popup.damage) };
             Text::new(&popup_text, Point::new(popup_x, popup_y), popup_style).draw(display)?;
+        }
+
+        // Reaction popup (centered, above animations)
+        if let Some(ref reaction) = self.reaction_popup {
+            // Get reaction color based on name
+            let reaction_color = match reaction.name.as_str() {
+                "VAPORIZE" => Rgb888::new(255, 150, 50),   // Orange
+                "BLOOM" => Rgb888::new(100, 220, 100),     // Green
+                "ELECTROCUTE" => Rgb888::new(255, 255, 100), // Yellow
+                _ => Rgb888::new(255, 255, 255),          // White default
+            };
+
+            // Draw background box
+            let text_len = reaction.name.len() as u32 * 7 + 10;
+            let box_x = 120 - (text_len as i32 / 2);
+            let box_rect = Rectangle::new(Point::new(box_x, anim_y + 10), Size::new(text_len, 18));
+            let box_rounded = RoundedRectangle::new(box_rect, CornerRadii::new(Size::new(4, 4)));
+            box_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(40, 40, 50))
+                .build())
+                .draw(display)?;
+            box_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(reaction_color)
+                .stroke_width(2)
+                .build())
+                .draw(display)?;
+
+            // Draw reaction text
+            let reaction_style = MonoTextStyle::new(&FONT_7X13, reaction_color);
+            let text_x = 120 - (reaction.name.len() as i32 * 7 / 2);
+            Text::new(&reaction.name, Point::new(text_x, anim_y + 23), reaction_style).draw(display)?;
         }
 
         // ===== BOTTOM: Swap buttons + Skill =====
@@ -973,6 +1048,14 @@ impl Page for DungeonCombatPage {
             popup.alpha -= delta * 2.0;
             popup.alpha > 0.0
         });
+
+        // Update reaction popup timer
+        if let Some(ref mut reaction) = self.reaction_popup {
+            reaction.timer -= delta;
+            if reaction.timer <= 0.0 {
+                self.reaction_popup = None;
+            }
+        }
 
         self.dirty = true;
         true

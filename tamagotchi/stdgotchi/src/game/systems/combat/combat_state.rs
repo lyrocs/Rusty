@@ -5,7 +5,6 @@
 use crate::game::core::{Element, Monster, SkillEffectType};
 use crate::game::calculations::combat::{
     update_atk_bar, update_skl_bar_after_attack, update_swap_cooldown,
-    AURA_DURATION_AUTO,
 };
 use crate::game::calculations::damage::calculate_final_damage;
 
@@ -21,7 +20,7 @@ pub struct CombatState {
 
     // Enemy
     pub enemy: Monster,
-    pub enemy_aura: Option<(Element, f32)>, // Element + time remaining
+    pub enemy_aura: Option<Element>, // Element aura (persists until reaction)
 
     // Wave system
     pub current_wave: u8,
@@ -192,13 +191,7 @@ impl CombatState {
         self.player_stunned = (self.player_stunned - delta_time).max(0.0);
         self.enemy_stunned = (self.enemy_stunned - delta_time).max(0.0);
 
-        // Update enemy aura duration
-        if let Some((_, ref mut duration)) = self.enemy_aura {
-            *duration -= delta_time;
-            if *duration <= 0.0 {
-                self.enemy_aura = None;
-            }
-        }
+        // Aura persists until reaction (no time decay)
 
         // Player ATK bar update (if not stunned)
         if self.player_stunned <= 0.0 {
@@ -274,15 +267,15 @@ impl CombatState {
         let def = self.enemy.def;
         let enemy_element = self.enemy.element;
 
-        // Calculate damage
-        let reaction_mult = self.check_reaction(element);
+        // Check for reaction (returns multiplier and optional reaction name)
+        let (reaction_mult, reaction_name, heal_amount) = self.check_reaction(element);
         let damage = calculate_final_damage(atk, def, element, enemy_element, reaction_mult);
 
         // Apply damage to enemy
         self.enemy.take_damage(damage);
 
-        // Apply aura to enemy
-        self.enemy_aura = Some((element, AURA_DURATION_AUTO));
+        // Apply aura to enemy (persists until next reaction)
+        self.enemy_aura = Some(element);
 
         // Update bars
         self.player_atk_bar = 0.0;
@@ -291,7 +284,8 @@ impl CombatState {
         Some(CombatEvent::PlayerAttack {
             damage,
             element,
-            reaction: if reaction_mult > 1.0 { Some(reaction_mult) } else { None }
+            reaction: reaction_name,
+            heal_amount,
         })
     }
 
@@ -328,38 +322,55 @@ impl CombatState {
         Some(CombatEvent::EnemyAttack { damage, element: enemy_element })
     }
 
-    /// Check for elemental reaction and return multiplier
-    fn check_reaction(&mut self, attack_element: Element) -> f32 {
-        if let Some((aura_element, _)) = self.enemy_aura {
-            // Check for reactions based on GDD
-            let reaction = match (aura_element, attack_element) {
+    /// Check for elemental reaction and return (multiplier, reaction_name, heal_amount)
+    fn check_reaction(&mut self, attack_element: Element) -> (f32, Option<String>, Option<u16>) {
+        if let Some(aura_element) = self.enemy_aura {
+            // Check for reactions based on element_config.json
+            let (mult, name, heal) = match (aura_element, attack_element) {
                 // Water aura + Fire = VAPORIZE (x2 damage)
-                (Element::Water, Element::Fire) => Some(2.0),
-                // Water aura + Thunder = ELECTROCUTE (x1.5 + stun)
+                (Element::Water, Element::Fire) => (2.0, Some("VAPORIZE"), None),
+                // Fire aura + Water = VAPORIZE (x2 damage)
+                (Element::Fire, Element::Water) => (2.0, Some("VAPORIZE"), None),
+                // Water aura + Thunder = ELECTROCUTE (stun 1 sec)
                 (Element::Water, Element::Thunder) => {
                     self.enemy_stunned = 1.0;
-                    Some(1.5)
+                    (1.0, Some("ELECTROCUTE"), None)
                 },
-                // Fire aura + Water = VAPORIZE (x2 damage)
-                (Element::Fire, Element::Water) => Some(2.0),
-                // Earth aura + Water = BLOOM (heal - not damage mult)
-                (Element::Earth, Element::Water) => Some(1.0),
-                // Fire aura + Wind = MELT (x1.5 damage)
-                (Element::Fire, Element::Wind) => Some(1.5),
-                // Wind aura + Fire = BURNING (DoT)
-                (Element::Wind, Element::Fire) => Some(1.5),
-                _ => None,
+                // Water aura + Earth = BLOOM (heal team 15%)
+                (Element::Water, Element::Earth) => {
+                    // Calculate heal amount (15% of max HP for each alive monster)
+                    let heal_amount = self.calculate_bloom_heal();
+                    (1.0, Some("BLOOM"), Some(heal_amount))
+                },
+                _ => (1.0, None, None),
             };
 
-            if reaction.is_some() {
+            if name.is_some() {
                 // Clear aura after reaction
                 self.enemy_aura = None;
             }
 
-            reaction.unwrap_or(1.0)
+            (mult, name.map(|s| s.to_string()), heal)
         } else {
-            1.0
+            (1.0, None, None)
         }
+    }
+
+    /// Calculate and apply BLOOM heal (15% of max HP to all alive monsters)
+    fn calculate_bloom_heal(&mut self) -> u16 {
+        let mut total_healed = 0u16;
+
+        for monster in &mut self.player_monsters {
+            if monster.is_alive() {
+                let heal_amount = (monster.hp_max as f32 * 0.15) as u16;
+                let old_hp = monster.hp_current;
+                monster.hp_current = (monster.hp_current + heal_amount).min(monster.hp_max);
+                total_healed += monster.hp_current - old_hp;
+            }
+        }
+
+        log::info!("BLOOM reaction: healed team for {} total HP", total_healed);
+        total_healed
     }
 
     /// Use player skill (requires full SKL bar)
@@ -401,7 +412,7 @@ impl CombatState {
             _ => {
                 // Damage skills
                 let atk = monster.atk;
-                let reaction_mult = self.check_reaction(element);
+                let (reaction_mult, _reaction_name, _heal) = self.check_reaction(element);
                 let damage = calculate_final_damage(
                     atk,
                     self.enemy.def,
@@ -413,8 +424,8 @@ impl CombatState {
                 // Apply damage
                 self.enemy.take_damage(damage);
 
-                // Apply longer aura from skill
-                self.enemy_aura = Some((element, 4.0));
+                // Apply aura from skill (persists until reaction)
+                self.enemy_aura = Some(element);
 
                 // Reset skill bar
                 self.player_skl_bar = 0.0;
@@ -467,7 +478,8 @@ pub enum CombatEvent {
     PlayerAttack {
         damage: u16,
         element: Element,
-        reaction: Option<f32>,
+        reaction: Option<String>,  // Reaction name (e.g., "VAPORIZE", "BLOOM")
+        heal_amount: Option<u16>,  // Heal from BLOOM reaction
     },
     /// Enemy attacked
     EnemyAttack {
