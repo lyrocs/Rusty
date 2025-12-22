@@ -20,10 +20,11 @@ pub struct ExpeditionRewards {
 }
 
 /// Base XP values before multiplier (kept low, multiplier applied at runtime)
-const BASE_XP_SHORT: u32 = 5;
-const BASE_XP_MEDIUM: u32 = 12;
-const BASE_XP_LONG: u32 = 35;
-const BASE_XP_OVERNIGHT: u32 = 60;
+/// Increased 10x from original values for better progression
+const BASE_XP_SHORT: u32 = 50;
+const BASE_XP_MEDIUM: u32 = 120;
+const BASE_XP_LONG: u32 = 350;
+const BASE_XP_OVERNIGHT: u32 = 600;
 
 /// Get base rewards for a duration
 /// Based on GDD table 2.2.3

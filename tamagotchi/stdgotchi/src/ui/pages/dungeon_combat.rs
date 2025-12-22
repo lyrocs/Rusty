@@ -58,8 +58,6 @@ pub enum TurnPhase {
     EnemyActionExecuting { timer: f32 },
     /// Brief pause after enemy action to show damage (0.5s)
     EnemyActionComplete { timer: f32 },
-    /// Wave transition (enemy died, next wave coming)
-    WaveTransition { timer: f32 },
     /// Combat ended (victory or defeat)
     CombatEnded { victory: bool },
 }
@@ -67,8 +65,9 @@ pub enum TurnPhase {
 /// Player action for turn-based combat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnAction {
-    Attack,
-    Skill,
+    /// Use skill from slot (0, 1, or 2)
+    UseSkill { slot: u8 },
+    /// Swap to another monster
     Swap { target_index: u8 },
 }
 
@@ -140,7 +139,6 @@ pub enum DungeonCombatAction {
 /// Animation timing constants
 const ACTION_ANIM_DURATION: f32 = 0.4;  // Time for attack/action animation
 const POST_ACTION_DELAY: f32 = 0.5;     // Time to show damage before next turn
-const WAVE_TRANSITION_DELAY: f32 = 1.5; // Delay between waves
 
 /// Dungeon combat page with fast raw RGB565 animations
 ///
@@ -154,8 +152,7 @@ pub struct DungeonCombatPage {
     dirty: bool,
 
     // Touch areas for turn-based actions
-    attack_button_area: Option<Rectangle>,
-    skill_button_area: Option<Rectangle>,
+    skill_button_areas: [Option<Rectangle>; 3],  // 3 skill buttons
     swap_button_area: Option<Rectangle>,
 
     // Swap popup (when swap button tapped)
@@ -198,10 +195,6 @@ pub struct DungeonCombatPage {
     death_anim_timer: f32,
     death_anim_species: String,  // Species of the dying enemy (for rendering)
 
-    // Hide enemy after death animation until next wave is set up
-    // This prevents the dead enemy from briefly reappearing
-    hide_enemy_until_next_wave: bool,
-
     // Reaction popup (displayed when elemental reaction triggers)
     reaction_popup: Option<ReactionPopup>,
 
@@ -239,8 +232,7 @@ impl DungeonCombatPage {
             combat_state,
             last_update: Instant::now(),
             dirty: true,
-            attack_button_area: None,
-            skill_button_area: None,
+            skill_button_areas: [None; 3],
             swap_button_area: None,
             show_swap_popup: false,
             swap_popup_buttons: [None; 3],
@@ -258,7 +250,6 @@ impl DungeonCombatPage {
             death_anim_active: false,
             death_anim_timer: 0.0,
             death_anim_species: String::new(),
-            hide_enemy_until_next_wave: false,
             reaction_popup: None,
             // Turn-based state
             turn_phase: TurnPhase::DeterminingTurnOrder,
@@ -294,13 +285,6 @@ impl DungeonCombatPage {
         let enemy_species = &self.combat_state.enemy.species_id;
         if !unique_species.contains(enemy_species) {
             unique_species.push(enemy_species.clone());
-        }
-
-        // All wave enemies (future waves)
-        for wave_enemy in &self.combat_state.wave_enemies {
-            if !unique_species.contains(&wave_enemy.species_id) {
-                unique_species.push(wave_enemy.species_id.clone());
-            }
         }
 
         // All player team monsters
@@ -339,12 +323,10 @@ impl DungeonCombatPage {
     /// Reload enemy species animation (for new wave)
     /// Note: With cache, this is now a no-op since all wave enemies are preloaded
     pub fn reload_enemy_species(&mut self, _sd_card: &mut SdCardWrapper) {
-        // All wave enemy species are preloaded at combat start in the cache
-        // Wave transition just changes current enemy, no loading needed
-        log::info!("New wave: using cached animation for {}", self.combat_state.enemy.species_id);
+        // With single enemy per floor, this is now a no-op
+        // Kept for API compatibility
+        log::info!("Enemy species reload: {}", self.combat_state.enemy.species_id);
         self.enemy_anim_type = AnimType::Idle;
-        // Clear the hide flag - new enemy is ready to be shown
-        self.hide_enemy_until_next_wave = false;
     }
 
     /// Check if enemy needs animation reload (new wave)
@@ -490,10 +472,24 @@ impl DungeonCombatPage {
         }
     }
 
-    /// Check if player can use skill (SKL bar >= 1.0)
-    fn can_use_skill(&self) -> bool {
-        self.combat_state.player_skl_bar >= 1.0 &&
-        self.combat_state.active_monster().map(|m| m.is_alive()).unwrap_or(false)
+    /// Check if player can use a skill at the given slot
+    /// Returns true if:
+    /// - Monster is alive
+    /// - Skill exists at that slot
+    /// - Skill is not on cooldown
+    fn can_use_skill_slot(&self, slot: u8) -> bool {
+        let monster = match self.combat_state.active_monster() {
+            Some(m) if m.is_alive() => m,
+            _ => return false,
+        };
+
+        // Check if skill exists at this slot
+        if slot as usize >= monster.equipped_skills.len() {
+            return false;
+        }
+
+        // Check if skill is on cooldown
+        !monster.is_skill_on_cooldown(slot as usize)
     }
 
     /// Check if player can swap (any other alive teammate)
@@ -503,36 +499,24 @@ impl DungeonCombatPage {
             .any(|(i, m)| i != self.combat_state.active_index as usize && m.is_alive())
     }
 
-    /// Execute player attack action
-    fn execute_player_attack(&mut self) {
-        self.turn_phase = TurnPhase::PlayerActionExecuting {
-            action_type: TurnAction::Attack,
-            timer: 0.0,
-        };
-        self.action_target = ActiveAnim::Player;
-        self.last_player_action = Some(TurnAction::Attack);
+    /// Execute player skill action from a specific slot
+    fn execute_player_skill_slot(&mut self, slot: u8) {
+        if !self.can_use_skill_slot(slot) { return; }
 
         if let Some(monster) = self.combat_state.active_monster() {
-            self.action_message = Some(format!("{} attacks!", monster.name));
-            self.message_timer = 0.5;
-        }
-    }
-
-    /// Execute player skill action
-    fn execute_player_skill(&mut self) {
-        if !self.can_use_skill() { return; }
-
-        if let Some(monster) = self.combat_state.active_monster() {
-            self.action_message = Some(format!("{} uses {}!", monster.name, monster.skill.name));
+            let skill_name = monster.equipped_skills.get(slot as usize)
+                .map(|s| s.name.as_str())
+                .unwrap_or("Skill");
+            self.action_message = Some(format!("{} uses {}!", monster.name, skill_name));
             self.message_timer = 1.0;
         }
 
         self.turn_phase = TurnPhase::PlayerActionExecuting {
-            action_type: TurnAction::Skill,
+            action_type: TurnAction::UseSkill { slot },
             timer: 0.0,
         };
         self.action_target = ActiveAnim::Player;
-        self.last_player_action = Some(TurnAction::Skill);
+        self.last_player_action = Some(TurnAction::UseSkill { slot });
     }
 
     /// Execute player swap action
@@ -558,13 +542,8 @@ impl DungeonCombatPage {
     /// Execute the actual action effect (damage, heal, etc.)
     fn apply_action_effect(&mut self, action_type: TurnAction) {
         match action_type {
-            TurnAction::Attack => {
-                if let Some(event) = self.execute_turn_attack() {
-                    self.handle_combat_event(event);
-                }
-            }
-            TurnAction::Skill => {
-                if let Some(event) = self.combat_state.use_skill() {
+            TurnAction::UseSkill { slot } => {
+                if let Some(event) = self.execute_skill_at_slot(slot) {
                     self.handle_combat_event(event);
                 }
             }
@@ -615,6 +594,124 @@ impl DungeonCombatPage {
             reaction: reaction_name,
             heal_amount,
         })
+    }
+
+    /// Execute skill at specified slot
+    fn execute_skill_at_slot(&mut self, slot: u8) -> Option<CombatEvent> {
+        use crate::game::calculations::damage::calculate_final_damage;
+        use crate::game::core::SkillEffectType;
+
+        let monster = self.combat_state.active_monster()?;
+        if !monster.is_alive() { return None; }
+
+        let skill = monster.equipped_skills.get(slot as usize)?.clone();
+        let monster_atk = monster.atk;
+        let monster_element = monster.element;
+        let skill_element = skill.element;
+        let enemy_def = self.combat_state.enemy.def;
+        let enemy_element = self.combat_state.enemy.element;
+
+        // Start cooldown for this skill
+        if let Some(monster_mut) = self.combat_state.active_monster_mut() {
+            monster_mut.start_skill_cooldown(slot as usize);
+        }
+
+        self.last_actor_was_player = true;
+
+        // Handle different skill types
+        match skill.effect_type {
+            SkillEffectType::Heal => {
+                // Heal skill - heal active monster by percentage of max HP
+                let monster_mut = self.combat_state.active_monster_mut()?;
+                let heal_amount = (monster_mut.hp_max as f32 * skill.effect_value) as u16;
+                let old_hp = monster_mut.hp_current;
+                monster_mut.hp_current = (monster_mut.hp_current + heal_amount).min(monster_mut.hp_max);
+                let actual_heal = monster_mut.hp_current - old_hp;
+
+                log::info!("Heal skill used: {} healed for {} HP", skill.name, actual_heal);
+
+                Some(CombatEvent::PlayerSkillHeal {
+                    skill_name: skill.name.clone(),
+                    heal_amount: actual_heal,
+                })
+            }
+            SkillEffectType::Buff => {
+                // Buff skill - for now just log it
+                log::info!("Buff skill used: {}", skill.name);
+                Some(CombatEvent::PlayerSkill {
+                    skill_name: skill.name.clone(),
+                    damage: 0,
+                    element: skill_element,
+                })
+            }
+            SkillEffectType::Debuff => {
+                // Debuff skill - for now just log it
+                log::info!("Debuff skill used: {}", skill.name);
+                Some(CombatEvent::PlayerSkill {
+                    skill_name: skill.name.clone(),
+                    damage: 0,
+                    element: skill_element,
+                })
+            }
+            _ => {
+                // Damage skills (Damage, DamageDot, DamageIgnoreDef)
+                // Check for accuracy - random roll
+                let hit_roll: u8 = (self.last_update.elapsed().as_millis() % 100) as u8;
+                if hit_roll >= skill.accuracy {
+                    // Miss!
+                    log::info!("Skill {} missed! (roll {} >= acc {})", skill.name, hit_roll, skill.accuracy);
+                    return Some(CombatEvent::PlayerSkill {
+                        skill_name: format!("{} (MISS)", skill.name),
+                        damage: 0,
+                        element: skill_element,
+                    });
+                }
+
+                // Calculate damage using skill power
+                // Base damage = (ATK * power / 100) - DEF * modifier
+                let def_modifier = match skill.effect_type {
+                    SkillEffectType::DamageIgnoreDef => 0.5, // Ignore 50% DEF
+                    _ => 1.0,
+                };
+                let effective_def = (enemy_def as f32 * def_modifier) as u16;
+
+                // Check for reaction
+                let (reaction_mult, reaction_name, heal_amount) = self.check_reaction(skill_element);
+
+                // Calculate damage: ATK * (power/100) vs DEF, with element multiplier
+                let base_damage = (monster_atk as f32 * skill.power as f32 / 100.0) as u16;
+                let damage = calculate_final_damage(base_damage, effective_def, skill_element, enemy_element, reaction_mult);
+
+                // Apply damage to enemy
+                self.combat_state.enemy.take_damage(damage);
+
+                // Apply aura to enemy (for reactions)
+                self.combat_state.enemy_aura = Some(skill_element);
+
+                // Handle DoT if applicable
+                if skill.dot_damage > 0 && skill.dot_duration > 0 {
+                    log::info!("Skill {} applied DoT: {} dmg for {} turns", skill.name, skill.dot_damage, skill.dot_duration);
+                    // DoT would be tracked in combat_state - for now just log
+                }
+
+                // Handle reaction heal if BLOOM
+                if let Some(heal) = heal_amount {
+                    self.damage_popups.push(DamagePopup {
+                        damage: heal,
+                        is_player_damage: true,
+                        is_heal: true,
+                        y_offset: 0.0,
+                        alpha: 1.0,
+                    });
+                }
+
+                Some(CombatEvent::PlayerSkill {
+                    skill_name: skill.name.clone(),
+                    damage,
+                    element: skill_element,
+                })
+            }
+        }
     }
 
     /// Execute enemy turn attack
@@ -683,23 +780,30 @@ impl DungeonCombatPage {
         total_healed
     }
 
-    /// Handle enemy death (victory or next wave)
+    /// Handle enemy death (victory)
     fn handle_enemy_death(&mut self) {
-        // Award rewards
-        self.combat_state.crystals_earned += 5 + (self.combat_state.current_floor as u32 / 5);
-        self.combat_state.xp_earned += 20 + (self.combat_state.current_floor as u32 * 5);
+        // Calculate and award rewards for this floor
+        let base_crystals = 10 + (self.combat_state.current_floor as u32 / 3);
+        let base_xp = 50 + (self.combat_state.current_floor as u32 * 15);
 
-        if !self.combat_state.wave_enemies.is_empty() {
-            // More waves - start death animation and transition
-            self.turn_phase = TurnPhase::WaveTransition { timer: 0.0 };
-            self.start_death_animation();
+        if self.combat_state.is_boss_floor {
+            self.combat_state.crystals_earned = base_crystals * 3;
+            self.combat_state.xp_earned = base_xp * 2;
         } else {
-            // Victory!
-            self.turn_phase = TurnPhase::CombatEnded { victory: true };
-            self.combat_state.combat_ended = true;
-            self.combat_state.player_won = true;
-            self.start_death_animation();
+            self.combat_state.crystals_earned = base_crystals;
+            self.combat_state.xp_earned = base_xp;
         }
+
+        log::info!("Enemy defeated on floor {}! Rewards: {} crystals, {} XP",
+            self.combat_state.current_floor,
+            self.combat_state.crystals_earned,
+            self.combat_state.xp_earned);
+
+        // Victory!
+        self.turn_phase = TurnPhase::CombatEnded { victory: true };
+        self.combat_state.combat_ended = true;
+        self.combat_state.player_won = true;
+        self.start_death_animation();
     }
 
     /// Handle touch input (turn-based version)
@@ -738,21 +842,14 @@ impl DungeonCombatPage {
             return DungeonCombatAction::None;
         }
 
-        // Check attack button
-        if let Some(rect) = self.attack_button_area {
-            if rect.contains(point) {
-                self.execute_player_attack();
-                self.dirty = true;
-                return DungeonCombatAction::None;
-            }
-        }
-
-        // Check skill button
-        if let Some(rect) = self.skill_button_area {
-            if rect.contains(point) && self.can_use_skill() {
-                self.execute_player_skill();
-                self.dirty = true;
-                return DungeonCombatAction::UseSkill;
+        // Check skill buttons (3 slots)
+        for slot in 0..3 {
+            if let Some(rect) = self.skill_button_areas[slot] {
+                if rect.contains(point) && self.can_use_skill_slot(slot as u8) {
+                    self.execute_player_skill_slot(slot as u8);
+                    self.dirty = true;
+                    return DungeonCombatAction::UseSkill;
+                }
             }
         }
 
@@ -844,26 +941,15 @@ impl DungeonCombatPage {
                 log::info!("Monster swap: instant switch to preloaded animation slot {}",
                     self.combat_state.active_index);
             }
-            CombatEvent::WaveComplete { wave, total } => {
-                // Enemy died, more waves remain - start death animation
-                log::info!("Wave {}/{} complete - starting death animation", wave, total);
-                self.start_death_animation();
-            }
             CombatEvent::Victory { .. } => {
-                // Final enemy died - start death animation
-                log::info!("Victory! Starting final death animation");
+                // Enemy died - start death animation
+                log::info!("Victory! Starting death animation");
                 self.start_death_animation();
             }
             CombatEvent::Defeat => {
                 if self.action_target == ActiveAnim::None {
                     self.queue_animation(ActiveAnim::Player, AnimType::Death);
                 }
-            }
-            CombatEvent::WaveStart { wave, .. } => {
-                // New wave started - clear the hide flag so new enemy is visible
-                log::info!("Wave {} starting - showing new enemy", wave);
-                self.hide_enemy_until_next_wave = false;
-                self.enemy_anim_type = AnimType::Idle;
             }
             _ => {}
         }
@@ -945,9 +1031,9 @@ impl Page for DungeonCombatPage {
             .build())
             .draw(display)?;
 
-        let dungeon_name = if self.dungeon_name.len() > 10 { &self.dungeon_name[..10] } else { &self.dungeon_name };
-        let header_text = format!("{} F{} W{}/{}", dungeon_name, self.combat_state.current_floor,
-            self.combat_state.current_wave, self.combat_state.total_waves);
+        let dungeon_name = if self.dungeon_name.len() > 12 { &self.dungeon_name[..12] } else { &self.dungeon_name };
+        let floor_type = if self.combat_state.is_boss_floor { "BOSS" } else { "F" };
+        let header_text = format!("{} {}{}", dungeon_name, floor_type, self.combat_state.current_floor);
         Text::new(&header_text, Point::new(10, 14), text_style).draw(display)?;
 
         let reward_text = format!("+{}", self.combat_state.crystals_earned);
@@ -1096,15 +1182,13 @@ impl Page for DungeonCombatPage {
                     anim.render(display, death_x, death_y, spin_flip);
                 }
             }
-        } else if !self.hide_enemy_until_next_wave {
-            // Normal enemy rendering (only if not hidden after death animation)
+        } else {
+            // Normal enemy rendering
             let enemy_species = &self.combat_state.enemy.species_id;
             if let Some(anim) = self.anim_cache.get(enemy_species) {
                 anim.render(display, enemy_x, center_y, false);
             }
         }
-        // If hide_enemy_until_next_wave is true, don't render any enemy
-        // This prevents the dead enemy from briefly reappearing before the next wave
 
         // Render player animation using raw format (flipped)
         // Look up from cache by active monster's species_id
@@ -1165,7 +1249,6 @@ impl Page for DungeonCombatPage {
         let indicator_text = match &self.turn_phase {
             TurnPhase::PlayerSelectAction => Some(("YOUR TURN", Rgb888::new(100, 200, 100))),
             TurnPhase::EnemyActionExecuting { .. } => Some(("ENEMY TURN", Rgb888::new(200, 100, 100))),
-            TurnPhase::WaveTransition { .. } => Some(("WAVE CLEARED!", Rgb888::new(200, 150, 50))),
             TurnPhase::CombatEnded { victory } => {
                 if *victory {
                     Some(("VICTORY!", Rgb888::new(50, 180, 50)))
@@ -1191,53 +1274,77 @@ impl Page for DungeonCombatPage {
             }
         }
 
-        // ===== BOTTOM: 3 Action Buttons =====
-        let bottom_y = 204;
-        let button_y = bottom_y;
-        let button_w = 74u32;
-        let button_h = 36u32;
+        // ===== BOTTOM: 3 Skill Buttons + Swap =====
+        let bottom_y = 200;
+        let skill_button_y = bottom_y;
+        let skill_button_w = 74u32;
+        let skill_button_h = 32u32;
         let button_spacing = 4;
 
         // Only show action buttons during player's turn
         let show_buttons = matches!(self.turn_phase, TurnPhase::PlayerSelectAction);
 
-        // ATTACK button
-        let attack_x = 4;
-        let attack_enabled = show_buttons && self.combat_state.active_monster().map(|m| m.is_alive()).unwrap_or(false);
-        let (attack_bg, attack_border) = if attack_enabled {
-            (Rgb888::new(240, 180, 180), Rgb888::new(200, 100, 100))
-        } else {
-            (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145))
-        };
-        let attack_rect = Rectangle::new(Point::new(attack_x, button_y), Size::new(button_w, button_h));
-        let attack_rounded = RoundedRectangle::new(attack_rect, CornerRadii::new(Size::new(6, 6)));
-        attack_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(attack_bg).build()).draw(display)?;
-        attack_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(attack_border).stroke_width(2).build()).draw(display)?;
-        let attack_text_color = if attack_enabled { Rgb888::new(150, 50, 50) } else { Rgb888::new(100, 100, 100) };
-        let attack_style = MonoTextStyle::new(&FONT_7X13, attack_text_color);
-        Text::new("ATTACK", Point::new(attack_x + 10, button_y + 23), attack_style).draw(display)?;
-        self.attack_button_area = if attack_enabled { Some(attack_rect) } else { None };
+        // Get active monster's skills for button labels
+        let monster_skills: Vec<(String, u8, bool)> = self.combat_state.active_monster()
+            .map(|m| {
+                (0..3).map(|slot| {
+                    let skill_name = m.equipped_skills.get(slot)
+                        .map(|s| if s.name.len() > 8 { s.name[..8].to_string() } else { s.name.clone() })
+                        .unwrap_or_else(|| "---".to_string());
+                    let cooldown = m.get_skill_cooldown(slot);
+                    let usable = slot < m.equipped_skills.len() && !m.is_skill_on_cooldown(slot) && m.is_alive();
+                    (skill_name, cooldown, usable)
+                }).collect()
+            })
+            .unwrap_or_else(|| vec![("---".to_string(), 0, false); 3]);
 
-        // SKILL button
-        let skill_x = attack_x + button_w as i32 + button_spacing;
-        let skill_ready = self.combat_state.player_skl_bar >= 1.0;
-        let skill_enabled = show_buttons && skill_ready && self.combat_state.active_monster().map(|m| m.is_alive()).unwrap_or(false);
-        let (skill_bg, skill_border) = if skill_enabled {
-            (Rgb888::new(200, 180, 240), Rgb888::new(150, 100, 200))
-        } else {
-            (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145))
-        };
-        let skill_rect = Rectangle::new(Point::new(skill_x, button_y), Size::new(button_w, button_h));
-        let skill_rounded = RoundedRectangle::new(skill_rect, CornerRadii::new(Size::new(6, 6)));
-        skill_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(skill_bg).build()).draw(display)?;
-        skill_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(skill_border).stroke_width(2).build()).draw(display)?;
-        let skill_text_color = if skill_enabled { Rgb888::new(100, 50, 150) } else { Rgb888::new(100, 100, 100) };
-        let skill_style = MonoTextStyle::new(&FONT_7X13, skill_text_color);
-        Text::new("SKILL", Point::new(skill_x + 14, button_y + 23), skill_style).draw(display)?;
-        self.skill_button_area = if skill_enabled { Some(skill_rect) } else { None };
+        // Draw 3 skill buttons
+        for (slot, (skill_name, cooldown, usable)) in monster_skills.iter().enumerate() {
+            let btn_x = 4 + (slot as i32) * (skill_button_w as i32 + button_spacing);
+            let enabled = show_buttons && *usable;
 
-        // SWAP button
-        let swap_x = skill_x + button_w as i32 + button_spacing;
+            // Button colors based on state
+            let (bg, border, text_color) = if enabled {
+                // Ready to use - colored based on slot
+                match slot {
+                    0 => (Rgb888::new(240, 180, 180), Rgb888::new(200, 100, 100), Rgb888::new(150, 50, 50)),
+                    1 => (Rgb888::new(200, 180, 240), Rgb888::new(150, 100, 200), Rgb888::new(100, 50, 150)),
+                    _ => (Rgb888::new(180, 220, 180), Rgb888::new(100, 180, 100), Rgb888::new(50, 120, 50)),
+                }
+            } else if *cooldown > 0 {
+                // On cooldown - dim red
+                (Rgb888::new(200, 160, 160), Rgb888::new(180, 100, 100), Rgb888::new(120, 70, 70))
+            } else {
+                // Disabled/no skill
+                (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145), Rgb888::new(100, 100, 100))
+            };
+
+            let btn_rect = Rectangle::new(Point::new(btn_x, skill_button_y), Size::new(skill_button_w, skill_button_h));
+            let btn_rounded = RoundedRectangle::new(btn_rect, CornerRadii::new(Size::new(6, 6)));
+            btn_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(bg).build()).draw(display)?;
+            btn_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(border).stroke_width(2).build()).draw(display)?;
+
+            // Skill name (centered)
+            let name_style = MonoTextStyle::new(&FONT_6X10, text_color);
+            let name_x = btn_x + (skill_button_w as i32 - skill_name.len() as i32 * 6) / 2;
+            Text::new(skill_name, Point::new(name_x, skill_button_y + 14), name_style).draw(display)?;
+
+            // Cooldown indicator (if on cooldown)
+            if *cooldown > 0 {
+                let cd_text = format!("CD:{}", cooldown);
+                let cd_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 100, 100));
+                let cd_x = btn_x + (skill_button_w as i32 - cd_text.len() as i32 * 6) / 2;
+                Text::new(&cd_text, Point::new(cd_x, skill_button_y + 26), cd_style).draw(display)?;
+            }
+
+            // Store button area for touch
+            self.skill_button_areas[slot] = if enabled { Some(btn_rect) } else { None };
+        }
+
+        // SWAP button (below skill buttons)
+        let swap_y = skill_button_y + skill_button_h as i32 + 4;
+        let swap_w = 232u32;
+        let swap_h = 28u32;
         let can_swap = self.can_swap();
         let swap_enabled = show_buttons && can_swap;
         let (swap_bg, swap_border) = if swap_enabled {
@@ -1245,32 +1352,14 @@ impl Page for DungeonCombatPage {
         } else {
             (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145))
         };
-        let swap_rect = Rectangle::new(Point::new(swap_x, button_y), Size::new(button_w, button_h));
+        let swap_rect = Rectangle::new(Point::new(4, swap_y), Size::new(swap_w, swap_h));
         let swap_rounded = RoundedRectangle::new(swap_rect, CornerRadii::new(Size::new(6, 6)));
         swap_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(swap_bg).build()).draw(display)?;
         swap_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(swap_border).stroke_width(2).build()).draw(display)?;
         let swap_text_color = if swap_enabled { Rgb888::new(50, 100, 150) } else { Rgb888::new(100, 100, 100) };
         let swap_style = MonoTextStyle::new(&FONT_7X13, swap_text_color);
-        Text::new("SWAP", Point::new(swap_x + 18, button_y + 23), swap_style).draw(display)?;
+        Text::new("SWAP", Point::new(100, swap_y + 19), swap_style).draw(display)?;
         self.swap_button_area = if swap_enabled { Some(swap_rect) } else { None };
-
-        // SKL bar below buttons
-        let skl_bar_y = button_y + button_h as i32 + 4;
-        let skl_bar_w = 232u32;
-        let skl_bg = Rectangle::new(Point::new(4, skl_bar_y), Size::new(skl_bar_w, 8));
-        display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
-        let skl_fill_w = (skl_bar_w as f32 * self.combat_state.player_skl_bar.min(1.0)) as u32;
-        if skl_fill_w > 0 {
-            let skl_color = if skill_ready { Rgb888::new(220, 150, 255) } else { Rgb888::new(150, 100, 200) };
-            let skl_fill = Rectangle::new(Point::new(4, skl_bar_y), Size::new(skl_fill_w, 8));
-            display.fill_solid(&skl_fill, skl_color)?;
-        }
-
-        // Skill name label
-        if let Some(monster) = self.combat_state.active_monster() {
-            let skill_name = if monster.skill.name.len() > 20 { &monster.skill.name[..20] } else { &monster.skill.name };
-            Text::new(skill_name, Point::new(4, skl_bar_y + 18), dim_style).draw(display)?;
-        }
 
         // ===== SWAP POPUP =====
         if self.show_swap_popup {
@@ -1374,8 +1463,7 @@ impl Page for DungeonCombatPage {
             if self.death_anim_timer >= Self::DEATH_ANIM_DURATION {
                 self.death_anim_active = false;
                 self.death_anim_timer = 0.0;
-                self.hide_enemy_until_next_wave = true;
-                log::info!("Death animation complete for {}, hiding until next wave", self.death_anim_species);
+                log::info!("Death animation complete for {}", self.death_anim_species);
             }
         }
 
@@ -1389,6 +1477,10 @@ impl Page for DungeonCombatPage {
             TurnPhase::DeterminingTurnOrder => {
                 let player_goes = self.determine_next_turn();
                 if player_goes {
+                    // Tick cooldowns at start of player's turn
+                    if let Some(monster) = self.combat_state.active_monster_mut() {
+                        monster.tick_cooldowns();
+                    }
                     self.turn_phase = TurnPhase::PlayerSelectAction;
                     log::info!("Player's turn!");
                 } else {
@@ -1468,30 +1560,6 @@ impl Page for DungeonCombatPage {
                     self.turn_phase = TurnPhase::DeterminingTurnOrder;
                 } else {
                     self.turn_phase = TurnPhase::EnemyActionComplete { timer: new_timer };
-                }
-            }
-
-            TurnPhase::WaveTransition { timer } => {
-                let new_timer = timer + delta;
-                // Wait for death animation + transition delay
-                if new_timer >= Self::DEATH_ANIM_DURATION + WAVE_TRANSITION_DELAY {
-                    // Spawn next enemy
-                    if !self.combat_state.wave_enemies.is_empty() {
-                        let next_enemy = self.combat_state.wave_enemies.remove(0);
-                        self.combat_state.enemy = next_enemy;
-                        self.combat_state.current_wave += 1;
-                        self.combat_state.enemy_aura = None;
-                        self.hide_enemy_until_next_wave = false;
-
-                        // Reset turn counters for new wave
-                        self.player_turn_counter = 0.0;
-                        self.enemy_turn_counter = 0.0;
-
-                        self.turn_phase = TurnPhase::DeterminingTurnOrder;
-                        log::info!("Wave {} starting", self.combat_state.current_wave);
-                    }
-                } else {
-                    self.turn_phase = TurnPhase::WaveTransition { timer: new_timer };
                 }
             }
 

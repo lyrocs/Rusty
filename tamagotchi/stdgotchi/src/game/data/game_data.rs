@@ -118,21 +118,28 @@ impl TamerGameData {
     }
 
     /// Create a new monster from a species ID
+    /// Monster will have all skills it can learn at its base level
     pub fn create_monster(&self, species_id: &str) -> Option<Monster> {
         let species = self.get_species(species_id)?;
-        let skill = self.get_skill(&species.skill_id)
-            .cloned()
-            .unwrap_or_default();
-        Some(create_monster(species, &skill))
+        let initial_skills = self.get_skills_for_level(species, species.base_level);
+        Some(create_monster(species, initial_skills))
     }
 
     /// Create a monster at a specific level
+    /// Monster will have all skills it can learn up to the specified level
     pub fn create_monster_at_level(&self, species_id: &str, level: u8) -> Option<Monster> {
         let species = self.get_species(species_id)?;
-        let skill = self.get_skill(&species.skill_id)
-            .cloned()
-            .unwrap_or_default();
-        Some(create_monster_at_level(species, &skill, level))
+        let initial_skills = self.get_skills_for_level(species, level);
+        Some(create_monster_at_level(species, initial_skills, level))
+    }
+
+    /// Get all skills a species can learn at a given level
+    fn get_skills_for_level(&self, species: &Species, level: u8) -> Vec<Skill> {
+        species.learnable_skills
+            .iter()
+            .filter(|ls| ls.level_required <= level)
+            .filter_map(|ls| self.get_skill(&ls.skill_id).cloned())
+            .collect()
     }
 
     /// Get capturable species for a zone

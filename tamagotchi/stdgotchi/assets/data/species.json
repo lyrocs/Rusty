@@ -10,7 +10,11 @@
       "base_def": 8,
       "base_spd": 15,
       "base_exp": 27,
-      "skill_id": "heal",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "cure", "level_required": 5 },
+        { "skill_id": "heal", "level_required": 10 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null
     },
@@ -24,7 +28,11 @@
       "base_def": 0,
       "base_spd": 25,
       "base_exp": 6,
-      "skill_id": "quick_hit",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "wind_blade", "level_required": 3 },
+        { "skill_id": "gust", "level_required": 8 }
+      ],
       "zones": ["prontera"],
       "swap_talent": "quick"
     },
@@ -38,7 +46,11 @@
       "base_def": 24,
       "base_spd": 18,
       "base_exp": 54,
-      "skill_id": "poison_spore",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "stone_fling", "level_required": 6 },
+        { "skill_id": "poison_attack", "level_required": 12 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null
     },
@@ -52,7 +64,10 @@
       "base_def": 10,
       "base_spd": 5,
       "base_exp": 36,
-      "skill_id": "harden",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "stone_fling", "level_required": 4 }
+      ],
       "zones": ["prontera"],
       "swap_talent": "shield"
     },
@@ -66,7 +81,11 @@
       "base_def": 5,
       "base_spd": 30,
       "base_exp": 19,
-      "skill_id": "gust",
+      "learnable_skills": [
+        { "skill_id": "wind_blade", "level_required": 1 },
+        { "skill_id": "gust", "level_required": 8 },
+        { "skill_id": "arrow_shower", "level_required": 15 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null
     },
@@ -80,7 +99,11 @@
       "base_def": 5,
       "base_spd": 28,
       "base_exp": 17,
-      "skill_id": "steal",
+      "learnable_skills": [
+        { "skill_id": "double_attack", "level_required": 1 },
+        { "skill_id": "envenom", "level_required": 6 },
+        { "skill_id": "dark_soul", "level_required": 12 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null
     },
@@ -94,7 +117,11 @@
       "base_def": 0,
       "base_spd": 32,
       "base_exp": 28,
-      "skill_id": "soul_strike",
+      "learnable_skills": [
+        { "skill_id": "double_attack", "level_required": 1 },
+        { "skill_id": "dark_soul", "level_required": 8 },
+        { "skill_id": "soul_strike", "level_required": 15 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null
     },
@@ -108,7 +135,11 @@
       "base_def": 0,
       "base_spd": 30,
       "base_exp": 329,
-      "skill_id": "fang",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "bash", "level_required": 10 },
+        { "skill_id": "pierce", "level_required": 25 }
+      ],
       "zones": ["payon"],
       "swap_talent": null
     },
@@ -122,7 +153,11 @@
       "base_def": 0,
       "base_spd": 25,
       "base_exp": 95,
-      "skill_id": "poison",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "envenom", "level_required": 8 },
+        { "skill_id": "poison_attack", "level_required": 15 }
+      ],
       "zones": ["payon"],
       "swap_talent": null
     },
@@ -136,7 +171,11 @@
       "base_def": 10,
       "base_spd": 45,
       "base_exp": 2812,
-      "skill_id": "fire_bolt",
+      "learnable_skills": [
+        { "skill_id": "fire_bolt", "level_required": 1 },
+        { "skill_id": "fire_ball", "level_required": 20 },
+        { "skill_id": "magnum_break", "level_required": 40 }
+      ],
       "zones": ["payon"],
       "swap_talent": "dodge"
     },
@@ -150,7 +189,11 @@
       "base_def": 0,
       "base_spd": 48,
       "base_exp": 591,
-      "skill_id": "soul_strike",
+      "learnable_skills": [
+        { "skill_id": "soul_strike", "level_required": 1 },
+        { "skill_id": "dark_soul", "level_required": 20 },
+        { "skill_id": "sonic_blow", "level_required": 34 }
+      ],
       "zones": ["payon"],
       "swap_talent": "dodge"
     },
@@ -164,7 +207,12 @@
       "base_def": 0,
       "base_spd": 33,
       "base_exp": 739,
-      "skill_id": "heal",
+      "learnable_skills": [
+        { "skill_id": "cold_bolt", "level_required": 1 },
+        { "skill_id": "cure", "level_required": 10 },
+        { "skill_id": "heal", "level_required": 20 },
+        { "skill_id": "water_ball", "level_required": 33 }
+      ],
       "zones": ["payon"],
       "swap_talent": "regen"
     },
@@ -178,7 +226,11 @@
       "base_def": 0,
       "base_spd": 22,
       "base_exp": 483,
-      "skill_id": "arrow_shot",
+      "learnable_skills": [
+        { "skill_id": "double_attack", "level_required": 1 },
+        { "skill_id": "arrow_shower", "level_required": 15 },
+        { "skill_id": "dark_soul", "level_required": 31 }
+      ],
       "zones": ["geffen"],
       "swap_talent": null
     },
@@ -192,7 +244,12 @@
       "base_def": 25,
       "base_spd": 50,
       "base_exp": 1517,
-      "skill_id": "gust",
+      "learnable_skills": [
+        { "skill_id": "wind_blade", "level_required": 1 },
+        { "skill_id": "gust", "level_required": 15 },
+        { "skill_id": "arrow_shower", "level_required": 30 },
+        { "skill_id": "increase_agi", "level_required": 42 }
+      ],
       "zones": ["geffen"],
       "swap_talent": "quick"
     },
@@ -206,7 +263,11 @@
       "base_def": 0,
       "base_spd": 35,
       "base_exp": 1078,
-      "skill_id": "soul_strike",
+      "learnable_skills": [
+        { "skill_id": "soul_strike", "level_required": 1 },
+        { "skill_id": "dark_soul", "level_required": 20 },
+        { "skill_id": "provoke", "level_required": 30 }
+      ],
       "zones": ["geffen"],
       "swap_talent": null
     },
@@ -220,7 +281,11 @@
       "base_def": 10,
       "base_spd": 38,
       "base_exp": 3709,
-      "skill_id": "dark_strike",
+      "learnable_skills": [
+        { "skill_id": "dark_soul", "level_required": 1 },
+        { "skill_id": "envenom", "level_required": 20 },
+        { "skill_id": "sonic_blow", "level_required": 40 }
+      ],
       "zones": ["morroc"],
       "swap_talent": "shield"
     },
@@ -234,7 +299,11 @@
       "base_def": 5,
       "base_spd": 20,
       "base_exp": 800,
-      "skill_id": "curse",
+      "learnable_skills": [
+        { "skill_id": "tackle", "level_required": 1 },
+        { "skill_id": "provoke", "level_required": 15 },
+        { "skill_id": "dark_soul", "level_required": 30 }
+      ],
       "zones": ["morroc"],
       "swap_talent": "shield"
     },
@@ -248,7 +317,12 @@
       "base_def": 15,
       "base_spd": 28,
       "base_exp": 2750,
-      "skill_id": "meteor",
+      "learnable_skills": [
+        { "skill_id": "fire_bolt", "level_required": 1 },
+        { "skill_id": "bash", "level_required": 20 },
+        { "skill_id": "fire_ball", "level_required": 35 },
+        { "skill_id": "magnum_break", "level_required": 52 }
+      ],
       "zones": ["morroc"],
       "swap_talent": null
     },
@@ -262,7 +336,12 @@
       "base_def": 40,
       "base_spd": 38,
       "base_exp": 14300,
-      "skill_id": "steal",
+      "learnable_skills": [
+        { "skill_id": "double_attack", "level_required": 1 },
+        { "skill_id": "fire_bolt", "level_required": 30 },
+        { "skill_id": "magnum_break", "level_required": 50 },
+        { "skill_id": "mammonite", "level_required": 64 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null,
       "is_boss": true
@@ -277,7 +356,12 @@
       "base_def": 45,
       "base_spd": 35,
       "base_exp": 42900,
-      "skill_id": "soul_strike",
+      "learnable_skills": [
+        { "skill_id": "earth_spike", "level_required": 1 },
+        { "skill_id": "poison_attack", "level_required": 30 },
+        { "skill_id": "soul_strike", "level_required": 50 },
+        { "skill_id": "thunder_storm", "level_required": 81 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null,
       "is_boss": true
@@ -292,7 +376,12 @@
       "base_def": 35,
       "base_spd": 42,
       "base_exp": 5000,
-      "skill_id": "soul_strike",
+      "learnable_skills": [
+        { "skill_id": "double_attack", "level_required": 1 },
+        { "skill_id": "soul_strike", "level_required": 20 },
+        { "skill_id": "dark_soul", "level_required": 35 },
+        { "skill_id": "sonic_blow", "level_required": 45 }
+      ],
       "zones": ["prontera"],
       "swap_talent": null,
       "is_boss": true
@@ -301,12 +390,12 @@
   "swap_talents": {
     "shield": {
       "name": "Shield",
-      "description": "Gagne un bouclier (absorbe 30 dégâts)",
+      "description": "Gagne un bouclier (absorbe 30 degats)",
       "shield_value": 30
     },
     "quick": {
       "name": "Quick",
-      "description": "Première attaque instantanée",
+      "description": "Premiere attaque instantanee",
       "instant_attack": true
     },
     "regen": {

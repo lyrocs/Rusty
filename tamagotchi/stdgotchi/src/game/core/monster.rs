@@ -1,10 +1,13 @@
 //! Monster Instance
 //!
 //! A Monster is an instance of a Species owned by the player.
-//! It has stats, level, XP, and status.
+//! It has stats, level, XP, skills (Pokemon-style), and status.
 
 use serde::{Deserialize, Serialize};
 use super::{Element, Skill};
+
+/// Maximum number of equipped skills for battle
+pub const MAX_EQUIPPED_SKILLS: usize = 3;
 
 /// Monster status - where the monster currently is
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,8 +54,15 @@ pub struct Monster {
     pub def: u16,
     pub spd: u16,
 
-    /// The monster's unique skill
-    pub skill: Skill,
+    /// Equipped skills for battle (up to 3)
+    pub equipped_skills: Vec<Skill>,
+
+    /// All skill IDs this monster has learned (for skill management)
+    pub learned_skill_ids: Vec<String>,
+
+    /// Cooldown timers for each equipped skill slot (turns remaining)
+    #[serde(default)]
+    pub skill_cooldowns: [u8; MAX_EQUIPPED_SKILLS],
 
     /// Current status
     pub status: MonsterStatus,
@@ -104,5 +114,65 @@ impl Monster {
         } else {
             self.xp as f32 / self.xp_to_next as f32
         }
+    }
+
+    /// Get equipped skill by slot index (0-2)
+    pub fn get_skill(&self, slot: usize) -> Option<&Skill> {
+        self.equipped_skills.get(slot)
+    }
+
+    /// Check if a skill slot is on cooldown
+    pub fn is_skill_on_cooldown(&self, slot: usize) -> bool {
+        slot < MAX_EQUIPPED_SKILLS && self.skill_cooldowns[slot] > 0
+    }
+
+    /// Get remaining cooldown for a skill slot
+    pub fn get_skill_cooldown(&self, slot: usize) -> u8 {
+        if slot < MAX_EQUIPPED_SKILLS {
+            self.skill_cooldowns[slot]
+        } else {
+            0
+        }
+    }
+
+    /// Start cooldown for a skill slot after using it
+    pub fn start_skill_cooldown(&mut self, slot: usize) {
+        if slot < MAX_EQUIPPED_SKILLS {
+            if let Some(skill) = self.equipped_skills.get(slot) {
+                self.skill_cooldowns[slot] = skill.cooldown;
+            }
+        }
+    }
+
+    /// Decrement all skill cooldowns by 1 (call at end of turn)
+    pub fn tick_cooldowns(&mut self) {
+        for cd in &mut self.skill_cooldowns {
+            *cd = cd.saturating_sub(1);
+        }
+    }
+
+    /// Reset all cooldowns to 0 (for start of combat or after boss)
+    pub fn reset_cooldowns(&mut self) {
+        self.skill_cooldowns = [0; MAX_EQUIPPED_SKILLS];
+    }
+
+    /// Check if monster has any usable skills (not on cooldown)
+    pub fn has_usable_skill(&self) -> bool {
+        for (i, _skill) in self.equipped_skills.iter().enumerate() {
+            if !self.is_skill_on_cooldown(i) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get the first usable skill index (for AI/enemy use)
+    pub fn get_first_usable_skill_index(&self) -> Option<usize> {
+        for (i, _skill) in self.equipped_skills.iter().enumerate() {
+            if !self.is_skill_on_cooldown(i) {
+                return Some(i);
+            }
+        }
+        None
     }
 }

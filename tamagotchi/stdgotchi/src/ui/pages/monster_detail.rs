@@ -59,6 +59,11 @@ pub struct MonsterDetailPage {
 
 impl MonsterDetailPage {
     pub fn new(monster: &Monster, is_in_team: bool) -> Self {
+        // Get first equipped skill for display
+        let (skill_name, skill_description) = monster.equipped_skills.first()
+            .map(|s| (s.name.clone(), s.description.clone()))
+            .unwrap_or_else(|| ("No Skill".to_string(), "No skill equipped".to_string()));
+
         Self {
             name: monster.name.clone(),
             species_id: monster.species_id.clone(),
@@ -73,8 +78,8 @@ impl MonsterDetailPage {
             xp: monster.xp,
             xp_to_next: monster.xp_to_next,
             power: monster.power(),
-            skill_name: monster.skill.name.clone(),
-            skill_description: monster.skill.description.clone(),
+            skill_name,
+            skill_description,
             is_in_team,
             back_area: None,
             team_button_area: None,

@@ -1,6 +1,7 @@
 //! Combat State
 //!
-//! Manages real-time combat state, bars, and transitions.
+//! Manages turn-based combat state for dungeon floor battles.
+//! Each floor has a single enemy (no wave system).
 
 use crate::game::core::{Element, Monster, SkillEffectType};
 use crate::game::calculations::combat::{
@@ -8,28 +9,18 @@ use crate::game::calculations::combat::{
 };
 use crate::game::calculations::damage::calculate_final_damage;
 
-/// Delay between waves in seconds
-pub const WAVE_TRANSITION_DELAY: f32 = 1.5;
-
-/// Combat state for real-time battles
+/// Combat state for turn-based floor battles
 pub struct CombatState {
     // Player team
     pub player_monsters: Vec<Monster>,
     pub active_index: u8,
     pub swap_cooldowns: [f32; 3],
 
-    // Enemy
+    // Enemy (single enemy per floor)
     pub enemy: Monster,
     pub enemy_aura: Option<Element>, // Element aura (persists until reaction)
 
-    // Wave system
-    pub current_wave: u8,
-    pub total_waves: u8,
-    pub wave_enemies: Vec<Monster>,  // Remaining enemies for next waves
-    pub wave_transition_timer: f32,  // Countdown for wave transition
-    pub is_wave_transitioning: bool, // True during delay between waves
-
-    // Combat bars (0.0 to 1.0)
+    // Combat bars (0.0 to 1.0) - legacy, may be removed
     pub player_atk_bar: f32,
     pub player_skl_bar: f32,
     pub enemy_atk_bar: f32,
@@ -41,6 +32,7 @@ pub struct CombatState {
 
     // Run info
     pub current_floor: u16,
+    pub is_boss_floor: bool,
     pub crystals_earned: u32,
     pub xp_earned: u32,
 
@@ -50,7 +42,7 @@ pub struct CombatState {
 }
 
 impl CombatState {
-    /// Create new combat state (single wave, backwards compatible)
+    /// Create new combat state for a floor battle
     pub fn new(player_monsters: Vec<Monster>, enemy: Monster, current_floor: u16) -> Self {
         Self {
             player_monsters,
@@ -58,11 +50,6 @@ impl CombatState {
             swap_cooldowns: [0.0; 3],
             enemy,
             enemy_aura: None,
-            current_wave: 1,
-            total_waves: 1,
-            wave_enemies: Vec::new(),
-            wave_transition_timer: 0.0,
-            is_wave_transitioning: false,
             player_atk_bar: 0.0,
             player_skl_bar: 0.0,
             enemy_atk_bar: 0.0,
@@ -70,6 +57,7 @@ impl CombatState {
             player_stunned: 0.0,
             enemy_stunned: 0.0,
             current_floor,
+            is_boss_floor: current_floor > 0 && current_floor % 10 == 0,
             crystals_earned: 0,
             xp_earned: 0,
             combat_ended: false,
@@ -77,26 +65,19 @@ impl CombatState {
         }
     }
 
-    /// Create new combat state with multiple waves
-    pub fn with_waves(
+    /// Create new combat state with boss floor flag
+    pub fn for_floor(
         player_monsters: Vec<Monster>,
-        mut wave_enemies: Vec<Monster>,
+        enemy: Monster,
         current_floor: u16,
+        is_boss_floor: bool,
     ) -> Self {
-        let total_waves = wave_enemies.len() as u8;
-        let first_enemy = wave_enemies.remove(0);
-
         Self {
             player_monsters,
             active_index: 0,
             swap_cooldowns: [0.0; 3],
-            enemy: first_enemy,
+            enemy,
             enemy_aura: None,
-            current_wave: 1,
-            total_waves,
-            wave_enemies,
-            wave_transition_timer: 0.0,
-            is_wave_transitioning: false,
             player_atk_bar: 0.0,
             player_skl_bar: 0.0,
             enemy_atk_bar: 0.0,
@@ -104,35 +85,12 @@ impl CombatState {
             player_stunned: 0.0,
             enemy_stunned: 0.0,
             current_floor,
+            is_boss_floor,
             crystals_earned: 0,
             xp_earned: 0,
             combat_ended: false,
             player_won: false,
         }
-    }
-
-    /// Create new combat state with initial skill bar (for dungeon floor continuation)
-    pub fn with_initial_skill_bar(
-        player_monsters: Vec<Monster>,
-        enemy: Monster,
-        current_floor: u16,
-        initial_skill_bar: f32,
-    ) -> Self {
-        let mut state = Self::new(player_monsters, enemy, current_floor);
-        state.player_skl_bar = initial_skill_bar.clamp(0.0, 1.0);
-        state
-    }
-
-    /// Create combat state with waves and initial skill bar
-    pub fn with_waves_and_skill_bar(
-        player_monsters: Vec<Monster>,
-        wave_enemies: Vec<Monster>,
-        current_floor: u16,
-        initial_skill_bar: f32,
-    ) -> Self {
-        let mut state = Self::with_waves(player_monsters, wave_enemies, current_floor);
-        state.player_skl_bar = initial_skill_bar.clamp(0.0, 1.0);
-        state
     }
 
     /// Get the active player monster
@@ -158,28 +116,6 @@ impl CombatState {
         // Don't update if combat ended
         if self.combat_ended {
             return events;
-        }
-
-        // Handle wave transition delay
-        if self.is_wave_transitioning {
-            self.wave_transition_timer -= delta_time;
-            if self.wave_transition_timer <= 0.0 {
-                // Spawn next wave enemy (remove first to maintain order)
-                if !self.wave_enemies.is_empty() {
-                    let next_enemy = self.wave_enemies.remove(0);
-                    self.enemy = next_enemy;
-                    self.current_wave += 1;
-                    self.is_wave_transitioning = false;
-                    self.enemy_atk_bar = 0.0;
-                    self.enemy_skl_bar = 0.0;
-                    self.enemy_aura = None;
-                    events.push(CombatEvent::WaveStart {
-                        wave: self.current_wave,
-                        total: self.total_waves,
-                    });
-                }
-            }
-            return events; // Don't process combat during transition
         }
 
         // Update swap cooldowns
@@ -224,28 +160,26 @@ impl CombatState {
 
         // Check win/lose conditions
         if !self.enemy.is_alive() {
-            // Award rewards for this wave
-            self.crystals_earned += 5 + (self.current_floor as u32 / 5);
-            self.xp_earned += 20 + (self.current_floor as u32 * 5);
+            // Award rewards for this floor (increased for better progression)
+            let base_crystals = 10 + (self.current_floor as u32 / 3);
+            let base_xp = 50 + (self.current_floor as u32 * 15);
 
-            // Check if more waves remain
-            if !self.wave_enemies.is_empty() {
-                // Start wave transition
-                self.is_wave_transitioning = true;
-                self.wave_transition_timer = WAVE_TRANSITION_DELAY;
-                events.push(CombatEvent::WaveComplete {
-                    wave: self.current_wave,
-                    total: self.total_waves,
-                });
+            // Boss floors give bonus rewards
+            if self.is_boss_floor {
+                self.crystals_earned += base_crystals * 3;
+                self.xp_earned += base_xp * 2;
             } else {
-                // All waves complete - victory!
-                self.combat_ended = true;
-                self.player_won = true;
-                events.push(CombatEvent::Victory {
-                    crystals: self.crystals_earned,
-                    xp: self.xp_earned
-                });
+                self.crystals_earned += base_crystals;
+                self.xp_earned += base_xp;
             }
+
+            // Victory!
+            self.combat_ended = true;
+            self.player_won = true;
+            events.push(CombatEvent::Victory {
+                crystals: self.crystals_earned,
+                xp: self.xp_earned
+            });
         } else if self.all_players_dead() {
             self.combat_ended = true;
             self.player_won = false;
@@ -374,6 +308,7 @@ impl CombatState {
     }
 
     /// Use player skill (requires full SKL bar)
+    /// Uses the first equipped skill (slot 0) for now - will be updated for multi-skill battle UI
     pub fn use_skill(&mut self) -> Option<CombatEvent> {
         if self.player_skl_bar < 1.0 {
             return None;
@@ -384,10 +319,12 @@ impl CombatState {
             return None;
         }
 
+        // Get first equipped skill (fallback for old system)
+        let skill = monster.equipped_skills.first()?.clone();
         let element = monster.element;
-        let skill_name = monster.skill.name.clone();
-        let skill_effect = monster.skill.effect_type.clone();
-        let skill_value = monster.skill.effect_value;
+        let skill_name = skill.name.clone();
+        let skill_effect = skill.effect_type.clone();
+        let skill_value = skill.effect_value;
 
         // Handle different skill types
         match skill_effect {
@@ -501,16 +438,6 @@ pub enum CombatEvent {
     MonsterSwap {
         from_index: u8,
         to_index: u8,
-    },
-    /// Wave completed (enemy defeated, more waves remain)
-    WaveComplete {
-        wave: u8,
-        total: u8,
-    },
-    /// New wave started
-    WaveStart {
-        wave: u8,
-        total: u8,
     },
     /// Combat won
     Victory {

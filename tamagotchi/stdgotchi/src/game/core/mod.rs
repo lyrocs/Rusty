@@ -13,6 +13,7 @@ pub mod monster_factory;
 pub mod zone;
 pub mod tamer_map;
 pub mod dungeon;
+pub mod bonus;
 
 pub use element::*;
 pub use skill::*;
@@ -24,3 +25,4 @@ pub use monster_factory::*;
 pub use zone::*;
 pub use tamer_map::*;
 pub use dungeon::*;
+pub use bonus::*;

@@ -9,7 +9,8 @@ use crate::game::systems::combat::CombatState;
 use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
 use crate::game::systems::progression::leveling::apply_xp_to_monster;
 use crate::input_thread::{InputEvent, SwipeDirection};
-use crate::ui::pages::{BetweenFloorsPage, BetweenFloorsAction, MonsterStatusData, DungeonCombatPage, DungeonDefeatPage, DungeonDefeatAction};
+use crate::ui::pages::{BetweenFloorsPage, BetweenFloorsAction, MonsterStatusData, DungeonCombatPage, DungeonDefeatPage, DungeonDefeatAction, BonusSelectionPage, BonusSelectionAction};
+use crate::game::core::{DungeonBonus, ActiveBonus, ActiveBonusType};
 
 /// System to handle dungeon combat navigation
 pub fn dungeon_combat_navigation_system(
@@ -88,6 +89,9 @@ pub fn dungeon_combat_navigation_system(
                 hp_current: m.hp_current,
                 hp_max: m.hp_max,
                 is_alive: m.is_alive(),
+                xp_current: m.xp,
+                xp_to_next: m.xp_to_next,
+                xp_gained: 0, // Will be updated after combat
             }).collect()
         })
         .unwrap_or_default();
@@ -99,7 +103,7 @@ pub fn dungeon_combat_navigation_system(
         .unwrap_or(0.0);
 
     if victory {
-        // Player won - transition to between floors
+        // Player won
         let current_floor = game_manager.active_dungeon_run
             .as_ref()
             .map(|r| r.current_floor)
@@ -111,46 +115,133 @@ pub fn dungeon_combat_navigation_system(
             .map(|d| d.name.clone())
             .unwrap_or_else(|| "Unknown Dungeon".to_string());
 
+        // Check if this was a boss floor
+        let is_boss_floor = game_manager.dungeon_combat_page
+            .as_ref()
+            .map(|p| p.combat_state().is_boss_floor)
+            .unwrap_or(false);
+
         // Update dungeon run and save skill bar progress
         if let Some(ref mut run) = game_manager.active_dungeon_run {
             run.advance_floor(crystals, xp);
             run.persistent_skill_bar = skill_bar_progress;
         }
 
-        let floors_cleared = game_manager.active_dungeon_run
-            .as_ref()
-            .map(|r| r.floors_cleared())
-            .unwrap_or(0);
+        // Apply XP to team monsters
+        let team_ids = game_manager.team.monster_ids().to_vec();
+        let alive_monsters: Vec<_> = team_ids.iter()
+            .filter(|id| game_manager.get_monster(id).map(|m| m.is_alive()).unwrap_or(false))
+            .cloned()
+            .collect();
+        let alive_count = alive_monsters.len();
+        let xp_per_monster = if alive_count > 0 { xp / alive_count as u32 } else { 0 };
 
-        let total_crystals = game_manager.active_dungeon_run
-            .as_ref()
-            .map(|r| r.crystals_earned)
-            .unwrap_or(crystals);
-
-        let total_xp = game_manager.active_dungeon_run
-            .as_ref()
-            .map(|r| r.xp_earned)
-            .unwrap_or(xp);
-
-        // Create between floors page
-        game_manager.between_floors_page = Some(BetweenFloorsPage::new(
-            dungeon_name,
-            current_floor,
-            floors_cleared,
-            total_crystals,
-            total_xp,
-            team_status,
-        ));
+        for monster_id in &alive_monsters {
+            if let Some(monster) = game_manager.get_monster_mut(monster_id) {
+                let levels_gained = apply_xp_to_monster(monster, xp_per_monster);
+                if levels_gained > 0 {
+                    log::info!("{} gained {} XP and leveled up {} times to Lv.{}!",
+                        monster.name, xp_per_monster, levels_gained, monster.level);
+                } else {
+                    log::info!("{} gained {} XP ({}/{})",
+                        monster.name, xp_per_monster, monster.xp, monster.xp_to_next);
+                }
+            }
+        }
 
         // Clean up combat page
         game_manager.dungeon_combat_page = None;
 
-        // Transition to between floors
-        app_state.current_mode = AppMode::BetweenFloors;
-        app_state.needs_redraw = true;
+        if is_boss_floor {
+            // Boss floor: Full heal team and go to BetweenFloors (skip bonus selection)
+            log::info!("Boss floor {} cleared! Full heal applied", current_floor);
 
-        log::info!("Combat victory! Floor {} cleared. Total: +{} crystals, +{} XP",
-            current_floor, total_crystals, total_xp);
+            // Full heal all team monsters
+            let team_ids = game_manager.team.monster_ids().to_vec();
+            for monster_id in &team_ids {
+                if let Some(monster) = game_manager.get_monster_mut(monster_id) {
+                    monster.hp_current = monster.hp_max;
+                }
+            }
+
+            // Calculate XP per monster (divide among alive monsters)
+            let alive_count = team_ids.iter()
+                .filter_map(|id| game_manager.get_monster(id))
+                .filter(|m| m.is_alive())
+                .count();
+            let xp_per_monster = if alive_count > 0 { xp / alive_count as u32 } else { 0 };
+
+            // Get updated team status after heal
+            let team_status_healed: Vec<MonsterStatusData> = team_ids.iter()
+                .filter_map(|id| game_manager.get_monster(id))
+                .map(|m| MonsterStatusData {
+                    name: m.name.clone(),
+                    level: m.level,
+                    hp_current: m.hp_current,
+                    hp_max: m.hp_max,
+                    element: m.element,
+                    is_alive: m.is_alive(),
+                    xp_current: m.xp,
+                    xp_to_next: m.xp_to_next,
+                    xp_gained: if m.is_alive() { xp_per_monster } else { 0 },
+                })
+                .collect();
+
+            let floors_cleared = game_manager.active_dungeon_run
+                .as_ref()
+                .map(|r| r.floors_cleared())
+                .unwrap_or(0);
+
+            let total_crystals = game_manager.active_dungeon_run
+                .as_ref()
+                .map(|r| r.crystals_earned)
+                .unwrap_or(crystals);
+
+            let total_xp = game_manager.active_dungeon_run
+                .as_ref()
+                .map(|r| r.xp_earned)
+                .unwrap_or(xp);
+
+            let active_bonuses = game_manager.active_dungeon_run
+                .as_ref()
+                .map(|r| r.active_bonuses.clone())
+                .unwrap_or_default();
+
+            // Create between floors page
+            game_manager.between_floors_page = Some(BetweenFloorsPage::new(
+                dungeon_name,
+                current_floor,
+                floors_cleared,
+                total_crystals,
+                total_xp,
+                team_status_healed,
+                active_bonuses,
+            ));
+
+            app_state.current_mode = AppMode::BetweenFloors;
+            app_state.needs_redraw = true;
+        } else {
+            // Non-boss floor: Go to bonus selection first
+            log::info!("Floor {} cleared! Showing bonus selection, floor XP: {}", current_floor, xp);
+
+            // Check if any team member is dead (for revive bonus option)
+            let team_ids = game_manager.team.monster_ids().to_vec();
+            let has_dead = team_ids.iter()
+                .any(|id| game_manager.get_monster(id).map(|m| !m.is_alive()).unwrap_or(false));
+
+            // Generate 3 random bonus options
+            let bonuses = DungeonBonus::generate_options(current_floor, has_dead);
+
+            game_manager.bonus_selection_page = Some(BonusSelectionPage::new(
+                bonuses,
+                current_floor,
+                dungeon_name,
+                xp, // Pass this floor's XP
+            ));
+
+            app_state.current_mode = AppMode::BonusSelection;
+            app_state.needs_redraw = true;
+        }
     } else {
         // Player lost - show defeat page
         let current_floor = game_manager.active_dungeon_run
@@ -340,31 +431,14 @@ pub fn dungeon_defeat_navigation_system(
                             .map(|p| (p.dungeon_id().to_string(), p.retry_checkpoint(), p.floor_reached()))
                             .unwrap_or_default();
 
-                        // Apply rewards from this run before retrying
+                        // Apply crystal rewards from this run before retrying
+                        // (XP was already applied per floor during combat victories)
                         let crystals = game_manager.dungeon_defeat_page
                             .as_ref()
                             .map(|p| p.crystals_earned())
                             .unwrap_or(0);
-                        let xp_earned = game_manager.dungeon_defeat_page
-                            .as_ref()
-                            .map(|p| p.xp_earned())
-                            .unwrap_or(0);
 
                         game_manager.player.crystals += crystals;
-
-                        // Apply XP to team monsters before retrying
-                        let team_ids = game_manager.team.monster_ids().to_vec();
-                        for monster_id in team_ids {
-                            if let Some(monster) = game_manager.monsters.iter_mut()
-                                .find(|m| m.id == monster_id)
-                            {
-                                let levels_gained = apply_xp_to_monster(monster, xp_earned);
-                                if levels_gained > 0 {
-                                    log::info!("{} gained {} XP and leveled up to level {}!",
-                                        monster.name, xp_earned, monster.level);
-                                }
-                            }
-                        }
 
                         // Update record if we beat our previous best
                         let is_new_record = game_manager.dungeon_defeat_page
@@ -403,14 +477,15 @@ pub fn dungeon_defeat_navigation_system(
                             }
 
                             if !player_monsters.is_empty() {
-                                // Generate wave enemies for checkpoint floor
-                                if let Some(wave_enemies) = generate_floor_waves(&*game_manager, &dungeon, checkpoint) {
-                                    let combat_state = CombatState::with_waves(player_monsters, wave_enemies, checkpoint);
+                                // Generate enemy for checkpoint floor
+                                if let Some(enemy) = generate_floor_enemy(&*game_manager, &dungeon, checkpoint) {
+                                    let is_boss = dungeon.is_boss_floor(checkpoint);
+                                    let combat_state = CombatState::for_floor(player_monsters, enemy, checkpoint, is_boss);
                                     game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone()));
                                     app_state.current_mode = AppMode::DungeonCombat;
                                     app_state.needs_redraw = true;
                                 } else {
-                                    log::warn!("Failed to generate enemies for retry");
+                                    log::warn!("Failed to generate enemy for retry");
                                     app_state.current_mode = AppMode::Home;
                                     app_state.needs_redraw = true;
                                 }
@@ -450,29 +525,14 @@ pub fn dungeon_defeat_navigation_system(
 }
 
 /// End dungeon run and apply rewards
+/// Note: XP is now applied per floor during combat, so we only apply crystals here
 fn end_dungeon_run(game_manager: &mut GameManager) {
     if let Some(ref run) = game_manager.active_dungeon_run {
         // Apply crystal rewards to player
         game_manager.player.crystals += run.crystals_earned;
 
-        // Apply XP rewards to team monsters
-        let xp_earned = run.xp_earned;
-        let team_ids = game_manager.team.monster_ids().to_vec();
-
-        for monster_id in team_ids {
-            if let Some(monster) = game_manager.monsters.iter_mut()
-                .find(|m| m.id == monster_id)
-            {
-                let levels_gained = apply_xp_to_monster(monster, xp_earned);
-                if levels_gained > 0 {
-                    log::info!("{} gained {} XP and leveled up {} times to level {}!",
-                        monster.name, xp_earned, levels_gained, monster.level);
-                } else {
-                    log::info!("{} gained {} XP ({}/{})",
-                        monster.name, xp_earned, monster.xp, monster.xp_to_next);
-                }
-            }
-        }
+        // XP was already applied per floor during combat victories
+        // No need to apply again here
 
         // Update dungeon progress if we set a new record
         let dungeon_id = run.dungeon_id.clone();
@@ -483,8 +543,8 @@ fn end_dungeon_run(game_manager: &mut GameManager) {
             log::info!("New dungeon record! {} floor {}", dungeon_id, highest_floor);
         }
 
-        log::info!("Dungeon run ended: +{} crystals, +{} XP, floor {} reached",
-            run.crystals_earned, xp_earned, run.current_floor);
+        log::info!("Dungeon run ended: +{} crystals, +{} XP total, floor {} reached",
+            run.crystals_earned, run.xp_earned, run.current_floor);
     }
 
     // Clean up
@@ -514,6 +574,23 @@ fn create_next_floor_combat(
         .map(|r| r.persistent_skill_bar)
         .unwrap_or(0.0);
 
+    // Get stat boosts from active dungeon run
+    use crate::game::core::bonus::StatBoostType;
+    let (atk_boost, def_boost, spd_boost) = game_manager.active_dungeon_run
+        .as_ref()
+        .map(|run| (
+            run.get_stat_boost(StatBoostType::Atk),
+            run.get_stat_boost(StatBoostType::Def),
+            run.get_stat_boost(StatBoostType::Spd),
+        ))
+        .unwrap_or((0.0, 0.0, 0.0));
+
+    let has_boosts = atk_boost > 0.0 || def_boost > 0.0 || spd_boost > 0.0;
+    if has_boosts {
+        log::info!("Applying stat boosts: ATK +{}%, DEF +{}%, SPD +{}%",
+            (atk_boost * 100.0) as u8, (def_boost * 100.0) as u8, (spd_boost * 100.0) as u8);
+    }
+
     // Get player's team monsters
     let team_ids = game_manager.team.monster_ids().to_vec();
     let mut player_monsters: Vec<crate::game::core::Monster> = Vec::new();
@@ -527,6 +604,16 @@ fn create_next_floor_combat(
                 combat_monster.hp_current = team_hp[i].0;
                 combat_monster.hp_max = team_hp[i].1;
             }
+            // Apply stat boosts from active bonuses
+            if atk_boost > 0.0 {
+                combat_monster.atk = (combat_monster.atk as f32 * (1.0 + atk_boost)) as u16;
+            }
+            if def_boost > 0.0 {
+                combat_monster.def = (combat_monster.def as f32 * (1.0 + def_boost)) as u16;
+            }
+            if spd_boost > 0.0 {
+                combat_monster.spd = (combat_monster.spd as f32 * (1.0 + spd_boost)) as u16;
+            }
             player_monsters.push(combat_monster);
         }
     }
@@ -539,18 +626,19 @@ fn create_next_floor_combat(
         return None;
     }
 
-    // Generate wave enemies for this floor
-    let wave_enemies = generate_floor_waves(game_manager, &dungeon, floor)?;
+    // Generate enemy for this floor
+    let enemy = generate_floor_enemy(game_manager, &dungeon, floor)?;
+    let is_boss = dungeon.is_boss_floor(floor);
 
-    log::info!("Next floor combat: {} monsters vs {} waves on floor {}, skill bar: {:.0}%",
-        player_monsters.len(), wave_enemies.len(), floor, persistent_skill_bar * 100.0);
+    log::info!("Next floor combat: {} monsters vs enemy on floor {} (boss: {})",
+        player_monsters.len(), floor, is_boss);
 
-    // Create combat state with waves and preserved skill bar
-    let combat_state = CombatState::with_waves_and_skill_bar(
+    // Create combat state for floor
+    let combat_state = CombatState::for_floor(
         player_monsters,
-        wave_enemies,
+        enemy,
         floor,
-        persistent_skill_bar,
+        is_boss,
     );
 
     // Create combat page (starts in loading state, animations loaded by navigation system)
@@ -605,91 +693,184 @@ fn generate_floor_enemy(
     Some(enemy)
 }
 
-/// Generate all wave enemies for a dungeon floor
-/// Boss floors (every 5th): 5 waves - 4 normal enemies + 1 boss
-/// Normal floors: random 2-5 normal enemies
-fn generate_floor_waves(
-    game_manager: &GameManager,
-    dungeon: &crate::game::core::Dungeon,
-    floor: u16,
-) -> Option<Vec<crate::game::core::Monster>> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let mut waves = Vec::new();
-
-    let is_boss = dungeon.is_boss_floor(floor);
-
-    if is_boss {
-        // Boss floor: 4 normal waves + 1 boss wave
-        for _ in 0..4 {
-            if let Some(enemy) = generate_regular_enemy(game_manager, dungeon, floor, &mut rng) {
-                waves.push(enemy);
-            }
-        }
-        // Add boss as final wave
-        if let Some(boss) = generate_boss_enemy(game_manager, dungeon, floor) {
-            waves.push(boss);
-        }
-    } else {
-        // Normal floor: random 2-5 waves
-        let wave_count = rng.gen_range(2..=5);
-        for _ in 0..wave_count {
-            if let Some(enemy) = generate_regular_enemy(game_manager, dungeon, floor, &mut rng) {
-                waves.push(enemy);
-            }
-        }
+/// System to handle bonus selection navigation
+pub fn bonus_selection_navigation_system(
+    mut app_state: ResMut<AppState>,
+    pending_events: Res<PendingInputEvents>,
+    mut game_manager: Option<NonSendMut<GameManager>>,
+) {
+    // Only process in BonusSelection mode
+    if app_state.current_mode != AppMode::BonusSelection {
+        return;
     }
 
-    if waves.is_empty() {
-        None
-    } else {
-        log::info!("Generated {} waves for floor {} (boss: {})", waves.len(), floor, is_boss);
-        Some(waves)
+    if !app_state.screen_on {
+        return;
+    }
+
+    let Some(ref mut game_manager) = game_manager else {
+        return;
+    };
+
+    // Process touch events
+    for event in pending_events.events.iter() {
+        if let InputEvent::Touch { x, y } = event {
+            // Get bonus selection result (extract data before borrowing game_manager mutably)
+            let selection_data = game_manager.bonus_selection_page.as_mut().and_then(|bonus_page| {
+                let action = bonus_page.handle_touch(*x as i32, *y as i32);
+                if let BonusSelectionAction::Selected(index) = action {
+                    if let Some(bonus) = bonus_page.get_bonus(index).cloned() {
+                        let floor_xp = bonus_page.floor_xp();
+                        return Some((bonus, floor_xp));
+                    }
+                }
+                None
+            });
+
+            if let Some((bonus, floor_xp)) = selection_data {
+                log::info!("Bonus selected: {:?}, floor XP: {}", bonus, floor_xp);
+
+                // Apply the bonus
+                apply_bonus(&mut *game_manager, &bonus);
+
+                // Get current floor info for BetweenFloors page
+                let current_floor = game_manager.active_dungeon_run
+                    .as_ref()
+                    .map(|r| r.current_floor)
+                    .unwrap_or(1);
+
+                let dungeon_name = game_manager.selected_dungeon_id
+                    .as_ref()
+                    .and_then(|id| game_manager.tamer_data.get_dungeon(id))
+                    .map(|d| d.name.clone())
+                    .unwrap_or_else(|| "Unknown Dungeon".to_string());
+
+                let floors_cleared = game_manager.active_dungeon_run
+                    .as_ref()
+                    .map(|r| r.floors_cleared())
+                    .unwrap_or(0);
+
+                let total_crystals = game_manager.active_dungeon_run
+                    .as_ref()
+                    .map(|r| r.crystals_earned)
+                    .unwrap_or(0);
+
+                let total_xp = game_manager.active_dungeon_run
+                    .as_ref()
+                    .map(|r| r.xp_earned)
+                    .unwrap_or(0);
+
+                let active_bonuses = game_manager.active_dungeon_run
+                    .as_ref()
+                    .map(|r| r.active_bonuses.clone())
+                    .unwrap_or_default();
+
+                // Get team status
+                let team_ids = game_manager.team.monster_ids().to_vec();
+                let alive_count = team_ids.iter()
+                    .filter_map(|id| game_manager.get_monster(id))
+                    .filter(|m| m.is_alive())
+                    .count();
+                // XP per monster is this floor's XP divided by alive monsters
+                let xp_per_monster = if alive_count > 0 { floor_xp / alive_count as u32 } else { 0 };
+
+                let team_status: Vec<MonsterStatusData> = team_ids.iter()
+                    .filter_map(|id| game_manager.get_monster(id))
+                    .map(|m| MonsterStatusData {
+                        name: m.name.clone(),
+                        level: m.level,
+                        hp_current: m.hp_current,
+                        hp_max: m.hp_max,
+                        element: m.element,
+                        is_alive: m.is_alive(),
+                        xp_current: m.xp,
+                        xp_to_next: m.xp_to_next,
+                        xp_gained: if m.is_alive() { xp_per_monster } else { 0 },
+                    })
+                    .collect();
+
+                // Create between floors page
+                game_manager.between_floors_page = Some(BetweenFloorsPage::new(
+                    dungeon_name,
+                    current_floor,
+                    floors_cleared,
+                    total_crystals,
+                    total_xp,
+                    team_status,
+                    active_bonuses,
+                ));
+
+                // Clean up bonus page
+                game_manager.bonus_selection_page = None;
+
+                // Transition to between floors
+                app_state.current_mode = AppMode::BetweenFloors;
+                app_state.needs_redraw = true;
+            }
+        }
     }
 }
 
-/// Generate a regular (non-boss) enemy
-fn generate_regular_enemy(
-    game_manager: &GameManager,
-    dungeon: &crate::game::core::Dungeon,
-    floor: u16,
-    rng: &mut impl rand::Rng,
-) -> Option<crate::game::core::Monster> {
-    let pool = dungeon.get_enemy_pool(floor)?;
-    if pool.species.is_empty() {
-        return None;
+/// Apply a dungeon bonus to the game state
+fn apply_bonus(game_manager: &mut GameManager, bonus: &DungeonBonus) {
+    match bonus {
+        DungeonBonus::HealTeam { percent } => {
+            let team_ids = game_manager.team.monster_ids().to_vec();
+            for monster_id in &team_ids {
+                if let Some(monster) = game_manager.get_monster_mut(monster_id) {
+                    if monster.is_alive() {
+                        let heal = (monster.hp_max as f32 * percent) as u16;
+                        monster.hp_current = (monster.hp_current + heal).min(monster.hp_max);
+                    }
+                }
+            }
+            log::info!("Applied Team Heal: {}%", (percent * 100.0) as u8);
+        }
+        DungeonBonus::ExtraCrystals { amount } => {
+            game_manager.player.crystals += amount;
+            if let Some(ref mut run) = game_manager.active_dungeon_run {
+                run.crystals_earned += amount;
+            }
+            log::info!("Applied Extra Crystals: +{}", amount);
+        }
+        DungeonBonus::ReviveMonster { hp_percent } => {
+            // Find first dead monster and revive it
+            let team_ids = game_manager.team.monster_ids().to_vec();
+            for monster_id in &team_ids {
+                if let Some(monster) = game_manager.get_monster_mut(monster_id) {
+                    if !monster.is_alive() {
+                        monster.hp_current = (monster.hp_max as f32 * hp_percent) as u16;
+                        log::info!("Revived {} at {}% HP", monster.name, (hp_percent * 100.0) as u8);
+                        break;
+                    }
+                }
+            }
+        }
+        DungeonBonus::StatBoost { stat, percent, floors } => {
+            if let Some(ref mut run) = game_manager.active_dungeon_run {
+                run.add_bonus(ActiveBonus {
+                    bonus_type: ActiveBonusType::StatBoost { stat: *stat, percent: *percent },
+                    floors_remaining: *floors,
+                });
+            }
+            log::info!("Applied {:?} boost: +{}% for {} floors",
+                stat, (percent * 100.0) as u8, floors);
+        }
+        DungeonBonus::CaptureBoost { multiplier, floors } => {
+            if let Some(ref mut run) = game_manager.active_dungeon_run {
+                run.add_bonus(ActiveBonus {
+                    bonus_type: ActiveBonusType::CaptureBoost { multiplier: *multiplier },
+                    floors_remaining: *floors,
+                });
+            }
+            log::info!("Applied Capture boost: {}x for {} floors", multiplier, floors);
+        }
+        DungeonBonus::SkipFloor => {
+            // Advance to next floor without combat
+            if let Some(ref mut run) = game_manager.active_dungeon_run {
+                run.current_floor += 1;
+                log::info!("Skipped floor! Now on floor {}", run.current_floor);
+            }
+        }
     }
-
-    let species_idx = rng.gen_range(0..pool.species.len());
-    let species_id = &pool.species[species_idx];
-    let enemy_level = (floor.min(99)) as u8;
-
-    let mut enemy = game_manager.tamer_data.create_monster_at_level(species_id, enemy_level)?;
-
-    let multiplier = floor_stat_multiplier(floor);
-    enemy.hp_max = (enemy.hp_max as f32 * multiplier) as u16;
-    enemy.hp_current = enemy.hp_max;
-    enemy.atk = (enemy.atk as f32 * multiplier) as u16;
-    enemy.def = (enemy.def as f32 * multiplier) as u16;
-
-    Some(enemy)
-}
-
-/// Generate a boss enemy
-fn generate_boss_enemy(
-    game_manager: &GameManager,
-    dungeon: &crate::game::core::Dungeon,
-    floor: u16,
-) -> Option<crate::game::core::Monster> {
-    let boss_species = dungeon.get_boss_species(floor)?;
-    let boss_level = (floor + 5).min(99) as u8;
-    let mut boss = game_manager.tamer_data.create_monster_at_level(boss_species, boss_level)?;
-
-    let multiplier = floor_stat_multiplier(floor);
-    boss.hp_max = (boss.hp_max as f32 * multiplier * 1.5) as u16;
-    boss.hp_current = boss.hp_max;
-    boss.atk = (boss.atk as f32 * multiplier * 1.2) as u16;
-    boss.def = (boss.def as f32 * multiplier * 1.2) as u16;
-
-    Some(boss)
 }

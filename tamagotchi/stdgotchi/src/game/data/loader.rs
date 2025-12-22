@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, de::DeserializeOwned};
 use std::collections::HashMap;
-use crate::game::core::{Species, Skill, SkillEffectType, Element, Zone, TamerMap, UnlockCondition, EssenceReward, MapBaseRewards, Dungeon, EnemyPool};
+use crate::game::core::{Species, Skill, SkillEffectType, StatType, Element, Zone, TamerMap, UnlockCondition, EssenceReward, MapBaseRewards, Dungeon, EnemyPool, LearnableSkill};
 
 /// Load JSON data from embedded asset
 pub fn load_json<T: DeserializeOwned>(json_str: &str) -> Result<T, serde_json::Error> {
@@ -17,6 +17,13 @@ struct SpeciesFile {
     species: Vec<SpeciesData>,
     #[serde(default)]
     swap_talents: HashMap<String, serde_json::Value>,
+}
+
+/// Learnable skill data from JSON
+#[derive(Debug, Deserialize)]
+struct LearnableSkillData {
+    skill_id: String,
+    level_required: u8,
 }
 
 /// Species data from JSON (slightly different from core Species)
@@ -33,7 +40,8 @@ struct SpeciesData {
     base_spd: u16,
     #[serde(default)]
     base_exp: u32,
-    skill_id: String,
+    /// Skills this species can learn at specific levels
+    learnable_skills: Vec<LearnableSkillData>,
     zones: Vec<String>,
     #[serde(default)]
     swap_talent: Option<String>,
@@ -47,6 +55,14 @@ fn default_level() -> u8 {
 
 impl SpeciesData {
     fn to_species(&self) -> Species {
+        let learnable_skills: Vec<LearnableSkill> = self.learnable_skills
+            .iter()
+            .map(|ls| LearnableSkill {
+                skill_id: ls.skill_id.clone(),
+                level_required: ls.level_required,
+            })
+            .collect();
+
         Species {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -57,7 +73,7 @@ impl SpeciesData {
             base_def: self.base_def,
             base_spd: self.base_spd,
             base_exp: self.base_exp,
-            skill_id: self.skill_id.clone(),
+            learnable_skills,
             zones: self.zones.clone(),
         }
     }
@@ -69,7 +85,7 @@ struct SkillsFile {
     skills: Vec<SkillData>,
 }
 
-/// Skill data from JSON
+/// Skill data from JSON (Pokemon-style with power, accuracy, cooldown)
 #[derive(Debug, Deserialize)]
 struct SkillData {
     id: String,
@@ -77,34 +93,38 @@ struct SkillData {
     element: String,
     description: String,
     effect_type: String,
+    /// Base power for damage calculation (0 for non-damage skills)
     #[serde(default)]
-    damage_multiplier: Option<f32>,
+    power: u16,
+    /// Accuracy percentage (0-100, 100 = always hits)
+    #[serde(default = "default_accuracy")]
+    accuracy: u8,
+    /// Cooldown in turns after use (0 = no cooldown)
     #[serde(default)]
-    heal_percent: Option<f32>,
-    #[serde(default)]
-    dot_damage: Option<u16>,
-    #[serde(default)]
-    dot_duration: Option<f32>,
-    #[serde(default)]
-    dot_tick_interval: Option<f32>,
+    cooldown: u8,
+    /// Effect value (heal percent, buff percent, etc.)
+    #[serde(default = "default_effect_value")]
+    effect_value: f32,
+    /// Stat affected by buff/debuff
     #[serde(default)]
     buff_stat: Option<String>,
+    /// Buff/debuff duration in turns
     #[serde(default)]
-    buff_percent: Option<f32>,
+    buff_duration: u8,
+    /// DoT damage per turn
     #[serde(default)]
-    buff_duration: Option<f32>,
+    dot_damage: u16,
+    /// DoT duration in turns
     #[serde(default)]
-    debuff_stat: Option<String>,
-    #[serde(default)]
-    debuff_percent: Option<f32>,
-    #[serde(default)]
-    debuff_duration: Option<f32>,
-    #[serde(default)]
-    def_ignore_percent: Option<f32>,
-    #[serde(default)]
-    applies_aura: Option<String>,
-    #[serde(default)]
-    aura_duration: Option<f32>,
+    dot_duration: u8,
+}
+
+fn default_accuracy() -> u8 {
+    100
+}
+
+fn default_effect_value() -> f32 {
+    1.0
 }
 
 impl SkillData {
@@ -112,21 +132,20 @@ impl SkillData {
         let effect_type = match self.effect_type.as_str() {
             "damage" => SkillEffectType::Damage,
             "damage_dot" => SkillEffectType::DamageDot,
-            "damage_aura" => SkillEffectType::Damage, // Simplified
-            "damage_pierce" => SkillEffectType::DamageIgnoreDef,
-            "damage_swirl" => SkillEffectType::Damage,
-            "damage_steal" => SkillEffectType::Damage,
+            "damage_pierce" | "damage_ignore_def" => SkillEffectType::DamageIgnoreDef,
             "heal" => SkillEffectType::Heal,
-            "buff" | "debuff" => SkillEffectType::Buff,
+            "buff" => SkillEffectType::Buff,
+            "debuff" => SkillEffectType::Debuff,
             _ => SkillEffectType::Damage,
         };
 
-        // Get the primary effect value
-        let effect_value = self.damage_multiplier
-            .or(self.heal_percent)
-            .or(self.buff_percent)
-            .or(self.debuff_percent)
-            .unwrap_or(1.0);
+        // Parse buff stat if present
+        let buff_stat = self.buff_stat.as_ref().map(|s| match s.to_lowercase().as_str() {
+            "atk" => StatType::Atk,
+            "def" => StatType::Def,
+            "spd" => StatType::Spd,
+            _ => StatType::Atk,
+        });
 
         Skill {
             id: self.id.clone(),
@@ -134,9 +153,14 @@ impl SkillData {
             element: parse_element(&self.element),
             description: self.description.clone(),
             effect_type,
-            effect_value,
-            dot_duration: self.dot_duration.unwrap_or(0.0),
-            buff_duration: self.buff_duration.or(self.debuff_duration).unwrap_or(0.0),
+            power: self.power,
+            accuracy: self.accuracy,
+            cooldown: self.cooldown,
+            effect_value: self.effect_value,
+            buff_stat,
+            buff_duration: self.buff_duration,
+            dot_damage: self.dot_damage,
+            dot_duration: self.dot_duration,
         }
     }
 }

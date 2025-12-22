@@ -20,7 +20,7 @@ use crate::game::systems::expedition::Expedition;
 use crate::game::systems::dungeon::DungeonRun;
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, DungeonCombatPage, BetweenFloorsPage, DungeonDefeatPage, MonsterUpgradePage, InventoryPage, CollectionPage};
+use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, DungeonCombatPage, BetweenFloorsPage, BonusSelectionPage, DungeonDefeatPage, MonsterUpgradePage, InventoryPage, CollectionPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource<'a> {
@@ -194,6 +194,7 @@ pub struct GameManager {
     // Dungeon combat (Phase 4)
     pub dungeon_combat_page: Option<DungeonCombatPage>,
     pub between_floors_page: Option<BetweenFloorsPage>,
+    pub bonus_selection_page: Option<BonusSelectionPage>,
     pub dungeon_defeat_page: Option<DungeonDefeatPage>,
     pub active_dungeon_run: Option<DungeonRun>,
     pub selected_dungeon_id: Option<String>,
@@ -248,6 +249,7 @@ impl GameManager {
             selected_expedition_map_id: None,
             dungeon_combat_page: None,
             between_floors_page: None,
+            bonus_selection_page: None,
             dungeon_defeat_page: None,
             active_dungeon_run: None,
             selected_dungeon_id: None,
@@ -307,6 +309,7 @@ impl GameManager {
             selected_expedition_map_id: None,
             dungeon_combat_page: None,
             between_floors_page: None,
+            bonus_selection_page: None,
             dungeon_defeat_page: None,
             active_dungeon_run: None,
             selected_dungeon_id: None,
@@ -379,6 +382,9 @@ impl GameManager {
             }
             AppMode::BetweenFloors => {
                 self.between_floors_page.as_mut().map(|p| p as &mut dyn Page)
+            }
+            AppMode::BonusSelection => {
+                self.bonus_selection_page.as_mut().map(|p| p as &mut dyn Page)
             }
             AppMode::DungeonDefeat => {
                 self.dungeon_defeat_page.as_mut().map(|p| p as &mut dyn Page)
@@ -489,6 +495,8 @@ pub enum AppMode {
     DungeonCombat,
     /// Between dungeon floors
     BetweenFloors,
+    /// Bonus selection after clearing a floor
+    BonusSelection,
     /// Dungeon defeat screen
     DungeonDefeat,
     /// Collection tracker screen

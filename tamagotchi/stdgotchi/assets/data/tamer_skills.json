@@ -1,173 +1,319 @@
 {
   "skills": [
     {
-      "id": "meteor",
-      "name": "Meteor",
+      "id": "tackle",
+      "name": "Tackle",
+      "element": "earth",
+      "description": "A basic physical tackle attack",
+      "effect_type": "damage",
+      "power": 40,
+      "accuracy": 100,
+      "cooldown": 0
+    },
+    {
+      "id": "bash",
+      "name": "Bash",
+      "element": "earth",
+      "description": "A powerful striking attack",
+      "effect_type": "damage",
+      "power": 80,
+      "accuracy": 95,
+      "cooldown": 1
+    },
+    {
+      "id": "magnum_break",
+      "name": "Magnum Break",
       "element": "fire",
-      "description": "Gros dégâts + applique Burn (DoT)",
-      "effect_type": "damage_dot",
-      "damage_multiplier": 2.0,
-      "dot_damage": 10,
-      "dot_duration": 5.0,
-      "dot_tick_interval": 0.5
-    },
-    {
-      "id": "tidal_wave",
-      "name": "Tidal Wave",
-      "element": "water",
-      "description": "Dégâts + applique Wet",
-      "effect_type": "damage_aura",
-      "damage_multiplier": 1.5,
-      "applies_aura": "water",
-      "aura_duration": 4.0
-    },
-    {
-      "id": "poison_spore",
-      "name": "Poison Spore",
-      "element": "earth",
-      "description": "DoT poison + applique Nature",
-      "effect_type": "damage_dot",
-      "damage_multiplier": 1.0,
-      "dot_damage": 8,
-      "dot_duration": 6.0,
-      "dot_tick_interval": 0.5,
-      "applies_aura": "earth"
-    },
-    {
-      "id": "thunder_bolt",
-      "name": "Thunder Bolt",
-      "element": "thunder",
-      "description": "Dégâts instantanés + applique Shock",
-      "effect_type": "damage_aura",
-      "damage_multiplier": 1.8,
-      "applies_aura": "thunder",
-      "aura_duration": 4.0
-    },
-    {
-      "id": "gust",
-      "name": "Gust",
-      "element": "wind",
-      "description": "Dégâts + Swirl (propage éléments)",
-      "effect_type": "damage_swirl",
-      "damage_multiplier": 1.3,
-      "propagates_aura": true
-    },
-    {
-      "id": "soul_strike",
-      "name": "Soul Strike",
-      "element": "shadow",
-      "description": "Dégâts ignorant 30% DEF",
-      "effect_type": "damage_pierce",
-      "damage_multiplier": 1.5,
-      "def_ignore_percent": 0.30
-    },
-    {
-      "id": "heal",
-      "name": "Heal",
-      "element": "holy",
-      "description": "Soigne le monstre actif",
-      "effect_type": "heal",
-      "heal_percent": 0.30
-    },
-    {
-      "id": "quick_hit",
-      "name": "Quick Hit",
-      "element": "earth",
-      "description": "Attaque rapide avec bonus de vitesse",
+      "description": "Explosive fire damage around the user",
       "effect_type": "damage",
-      "damage_multiplier": 1.2,
-      "speed_bonus": 0.50
-    },
-    {
-      "id": "harden",
-      "name": "Harden",
-      "element": "earth",
-      "description": "Augmente la DEF de 50% pendant 5 sec",
-      "effect_type": "buff",
-      "buff_stat": "def",
-      "buff_percent": 0.50,
-      "buff_duration": 5.0
-    },
-    {
-      "id": "steal",
-      "name": "Steal",
-      "element": "shadow",
-      "description": "Dégâts + chance de voler des ressources",
-      "effect_type": "damage_steal",
-      "damage_multiplier": 1.0,
-      "steal_chance": 0.25,
-      "steal_crystals_min": 5,
-      "steal_crystals_max": 15
-    },
-    {
-      "id": "fang",
-      "name": "Fang",
-      "element": "earth",
-      "description": "Morsure puissante",
-      "effect_type": "damage",
-      "damage_multiplier": 1.8
-    },
-    {
-      "id": "poison",
-      "name": "Poison",
-      "element": "earth",
-      "description": "Empoisonne l'ennemi",
-      "effect_type": "damage_dot",
-      "damage_multiplier": 1.0,
-      "dot_damage": 12,
-      "dot_duration": 8.0,
-      "dot_tick_interval": 0.5
+      "power": 120,
+      "accuracy": 90,
+      "cooldown": 2
     },
     {
       "id": "fire_bolt",
       "name": "Fire Bolt",
       "element": "fire",
-      "description": "Boule de feu",
-      "effect_type": "damage_aura",
-      "damage_multiplier": 1.6,
-      "applies_aura": "fire",
-      "aura_duration": 4.0
-    },
-    {
-      "id": "arrow_shot",
-      "name": "Arrow Shot",
-      "element": "shadow",
-      "description": "Tir à distance précis",
+      "description": "Launches a bolt of fire at the enemy",
       "effect_type": "damage",
-      "damage_multiplier": 1.7,
-      "crit_chance": 0.20
+      "power": 70,
+      "accuracy": 100,
+      "cooldown": 1
     },
     {
-      "id": "dark_strike",
-      "name": "Dark Strike",
-      "element": "shadow",
-      "description": "Frappe des ténèbres",
-      "effect_type": "damage_aura",
-      "damage_multiplier": 2.0,
-      "applies_aura": "shadow",
-      "aura_duration": 4.0
+      "id": "fire_ball",
+      "name": "Fire Ball",
+      "element": "fire",
+      "description": "A powerful ball of fire",
+      "effect_type": "damage",
+      "power": 100,
+      "accuracy": 95,
+      "cooldown": 2
     },
     {
-      "id": "curse",
-      "name": "Curse",
+      "id": "cold_bolt",
+      "name": "Cold Bolt",
+      "element": "water",
+      "description": "Launches a bolt of ice at the enemy",
+      "effect_type": "damage",
+      "power": 70,
+      "accuracy": 100,
+      "cooldown": 1
+    },
+    {
+      "id": "frost_diver",
+      "name": "Frost Diver",
+      "element": "water",
+      "description": "Freezing attack with high damage",
+      "effect_type": "damage",
+      "power": 110,
+      "accuracy": 85,
+      "cooldown": 2
+    },
+    {
+      "id": "water_ball",
+      "name": "Water Ball",
+      "element": "water",
+      "description": "Summons a sphere of water",
+      "effect_type": "damage",
+      "power": 90,
+      "accuracy": 95,
+      "cooldown": 1
+    },
+    {
+      "id": "lightning_bolt",
+      "name": "Lightning Bolt",
+      "element": "thunder",
+      "description": "Strikes the enemy with lightning",
+      "effect_type": "damage",
+      "power": 80,
+      "accuracy": 95,
+      "cooldown": 1
+    },
+    {
+      "id": "thunder_storm",
+      "name": "Thunder Storm",
+      "element": "thunder",
+      "description": "Calls down a devastating storm",
+      "effect_type": "damage",
+      "power": 130,
+      "accuracy": 80,
+      "cooldown": 3
+    },
+    {
+      "id": "stone_fling",
+      "name": "Stone Fling",
+      "element": "earth",
+      "description": "Throws a stone at the enemy",
+      "effect_type": "damage",
+      "power": 50,
+      "accuracy": 100,
+      "cooldown": 0
+    },
+    {
+      "id": "earth_spike",
+      "name": "Earth Spike",
+      "element": "earth",
+      "description": "Spikes erupt from the ground",
+      "effect_type": "damage",
+      "power": 90,
+      "accuracy": 90,
+      "cooldown": 2
+    },
+    {
+      "id": "wind_blade",
+      "name": "Wind Blade",
+      "element": "wind",
+      "description": "Slashes with a blade of wind",
+      "effect_type": "damage",
+      "power": 60,
+      "accuracy": 100,
+      "cooldown": 0
+    },
+    {
+      "id": "gust",
+      "name": "Gust",
+      "element": "wind",
+      "description": "A powerful gust of wind",
+      "effect_type": "damage",
+      "power": 85,
+      "accuracy": 95,
+      "cooldown": 1
+    },
+    {
+      "id": "soul_strike",
+      "name": "Soul Strike",
+      "element": "ghost",
+      "description": "Ghost attack that ignores defense",
+      "effect_type": "damage_ignore_def",
+      "power": 70,
+      "accuracy": 100,
+      "cooldown": 2
+    },
+    {
+      "id": "dark_soul",
+      "name": "Dark Soul",
       "element": "shadow",
-      "description": "Maudit l'ennemi, réduisant SPD de 30%",
+      "description": "Dark energy attack",
+      "effect_type": "damage",
+      "power": 75,
+      "accuracy": 95,
+      "cooldown": 1
+    },
+    {
+      "id": "double_attack",
+      "name": "Double Attack",
+      "element": "shadow",
+      "description": "Quick double strike, harder to land",
+      "effect_type": "damage",
+      "power": 90,
+      "accuracy": 80,
+      "cooldown": 0
+    },
+    {
+      "id": "sonic_blow",
+      "name": "Sonic Blow",
+      "element": "shadow",
+      "description": "Devastating multi-hit attack",
+      "effect_type": "damage",
+      "power": 150,
+      "accuracy": 75,
+      "cooldown": 3
+    },
+    {
+      "id": "heal",
+      "name": "Heal",
+      "element": "holy",
+      "description": "Heals 25% of max HP",
+      "effect_type": "heal",
+      "power": 0,
+      "accuracy": 100,
+      "cooldown": 2,
+      "effect_value": 0.25
+    },
+    {
+      "id": "cure",
+      "name": "Cure",
+      "element": "holy",
+      "description": "Light healing, 15% of max HP",
+      "effect_type": "heal",
+      "power": 0,
+      "accuracy": 100,
+      "cooldown": 1,
+      "effect_value": 0.15
+    },
+    {
+      "id": "blessing",
+      "name": "Blessing",
+      "element": "holy",
+      "description": "Increases ATK by 30% for 3 turns",
+      "effect_type": "buff",
+      "power": 0,
+      "accuracy": 100,
+      "cooldown": 3,
+      "effect_value": 0.30,
+      "buff_stat": "atk",
+      "buff_duration": 3
+    },
+    {
+      "id": "increase_agi",
+      "name": "Increase AGI",
+      "element": "holy",
+      "description": "Increases SPD by 25% for 3 turns",
+      "effect_type": "buff",
+      "power": 0,
+      "accuracy": 100,
+      "cooldown": 2,
+      "effect_value": 0.25,
+      "buff_stat": "spd",
+      "buff_duration": 3
+    },
+    {
+      "id": "provoke",
+      "name": "Provoke",
+      "element": "earth",
+      "description": "Decreases enemy DEF by 20% for 2 turns",
       "effect_type": "debuff",
-      "damage_multiplier": 0.5,
-      "debuff_stat": "spd",
-      "debuff_percent": 0.30,
-      "debuff_duration": 6.0
+      "power": 0,
+      "accuracy": 90,
+      "cooldown": 2,
+      "effect_value": 0.20,
+      "buff_stat": "def",
+      "buff_duration": 2
+    },
+    {
+      "id": "poison_attack",
+      "name": "Poison Attack",
+      "element": "earth",
+      "description": "Poisons the enemy for damage over time",
+      "effect_type": "damage_dot",
+      "power": 40,
+      "accuracy": 90,
+      "cooldown": 2,
+      "dot_damage": 15,
+      "dot_duration": 3
+    },
+    {
+      "id": "envenom",
+      "name": "Envenom",
+      "element": "shadow",
+      "description": "Venomous strike with lingering poison",
+      "effect_type": "damage_dot",
+      "power": 50,
+      "accuracy": 95,
+      "cooldown": 1,
+      "dot_damage": 10,
+      "dot_duration": 2
+    },
+    {
+      "id": "mammonite",
+      "name": "Mammonite",
+      "element": "earth",
+      "description": "Extremely powerful money-based attack",
+      "effect_type": "damage",
+      "power": 160,
+      "accuracy": 90,
+      "cooldown": 3
+    },
+    {
+      "id": "cart_revolution",
+      "name": "Cart Revolution",
+      "element": "earth",
+      "description": "Spinning cart attack",
+      "effect_type": "damage",
+      "power": 100,
+      "accuracy": 85,
+      "cooldown": 2
+    },
+    {
+      "id": "arrow_shower",
+      "name": "Arrow Shower",
+      "element": "wind",
+      "description": "Rain of arrows",
+      "effect_type": "damage",
+      "power": 95,
+      "accuracy": 90,
+      "cooldown": 2
+    },
+    {
+      "id": "pierce",
+      "name": "Pierce",
+      "element": "earth",
+      "description": "Piercing spear attack",
+      "effect_type": "damage_ignore_def",
+      "power": 85,
+      "accuracy": 90,
+      "cooldown": 2
+    },
+    {
+      "id": "holy_light",
+      "name": "Holy Light",
+      "element": "holy",
+      "description": "Beam of holy light",
+      "effect_type": "damage",
+      "power": 80,
+      "accuracy": 100,
+      "cooldown": 1
     }
-  ],
-  "effect_types": {
-    "damage": "Simple damage with multiplier",
-    "damage_dot": "Damage + damage over time",
-    "damage_aura": "Damage + applies elemental aura",
-    "damage_pierce": "Damage ignoring some DEF",
-    "damage_swirl": "Damage + propagate existing auras",
-    "damage_steal": "Damage + chance to steal resources",
-    "heal": "Heal the active monster",
-    "buff": "Apply positive stat modifier",
-    "debuff": "Apply negative stat modifier to enemy"
-  }
+  ]
 }
