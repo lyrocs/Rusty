@@ -43,6 +43,35 @@ enum AnimType {
     Death,
 }
 
+/// Turn-based combat phase
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TurnPhase {
+    /// Determining who goes first based on SPD
+    DeterminingTurnOrder,
+    /// Player's turn - waiting for action selection
+    PlayerSelectAction,
+    /// Player action is executing (animation playing)
+    PlayerActionExecuting { action_type: TurnAction, timer: f32 },
+    /// Brief pause after player action to show damage (0.5s)
+    PlayerActionComplete { timer: f32 },
+    /// Enemy's turn - executing attack
+    EnemyActionExecuting { timer: f32 },
+    /// Brief pause after enemy action to show damage (0.5s)
+    EnemyActionComplete { timer: f32 },
+    /// Wave transition (enemy died, next wave coming)
+    WaveTransition { timer: f32 },
+    /// Combat ended (victory or defeat)
+    CombatEnded { victory: bool },
+}
+
+/// Player action for turn-based combat
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnAction {
+    Attack,
+    Skill,
+    Swap { target_index: u8 },
+}
+
 impl AnimType {
     fn to_sprite_action(self) -> SpriteAction {
         match self {
@@ -108,6 +137,11 @@ pub enum DungeonCombatAction {
     CombatEnded { victory: bool },
 }
 
+/// Animation timing constants
+const ACTION_ANIM_DURATION: f32 = 0.4;  // Time for attack/action animation
+const POST_ACTION_DELAY: f32 = 0.5;     // Time to show damage before next turn
+const WAVE_TRANSITION_DELAY: f32 = 1.5; // Delay between waves
+
 /// Dungeon combat page with fast raw RGB565 animations
 ///
 /// Memory layout (optimized for ESP32-C6 with no PSRAM):
@@ -119,9 +153,14 @@ pub struct DungeonCombatPage {
     last_update: Instant,
     dirty: bool,
 
-    // Touch areas
+    // Touch areas for turn-based actions
+    attack_button_area: Option<Rectangle>,
     skill_button_area: Option<Rectangle>,
-    swap_button_areas: [Option<Rectangle>; 3],
+    swap_button_area: Option<Rectangle>,
+
+    // Swap popup (when swap button tapped)
+    show_swap_popup: bool,
+    swap_popup_buttons: [Option<Rectangle>; 3],
 
     // Damage feedback
     damage_popups: Vec<DamagePopup>,
@@ -165,6 +204,17 @@ pub struct DungeonCombatPage {
 
     // Reaction popup (displayed when elemental reaction triggers)
     reaction_popup: Option<ReactionPopup>,
+
+    // Turn-based combat state
+    turn_phase: TurnPhase,
+    player_turn_counter: f32,  // SPD accumulator for turn order
+    enemy_turn_counter: f32,   // SPD accumulator for turn order
+    last_actor_was_player: bool,  // For tie-breaking equal SPD
+    last_player_action: Option<TurnAction>,  // Track last action for swap penalty
+
+    // Turn indicator message
+    action_message: Option<String>,
+    message_timer: f32,
 }
 
 struct DamagePopup {
@@ -189,8 +239,11 @@ impl DungeonCombatPage {
             combat_state,
             last_update: Instant::now(),
             dirty: true,
+            attack_button_area: None,
             skill_button_area: None,
-            swap_button_areas: [None; 3],
+            swap_button_area: None,
+            show_swap_popup: false,
+            swap_popup_buttons: [None; 3],
             damage_popups: Vec::new(),
             dungeon_name,
             end_delay: 0.0,
@@ -207,6 +260,14 @@ impl DungeonCombatPage {
             death_anim_species: String::new(),
             hide_enemy_until_next_wave: false,
             reaction_popup: None,
+            // Turn-based state
+            turn_phase: TurnPhase::DeterminingTurnOrder,
+            player_turn_counter: 0.0,
+            enemy_turn_counter: 0.0,
+            last_actor_was_player: false,
+            last_player_action: None,
+            action_message: None,
+            message_timer: 0.0,
         }
     }
 
@@ -378,41 +439,329 @@ impl DungeonCombatPage {
     /// Queue an animation action (uses idle animation with visual effects)
     /// Note: We don't actually load action animations due to SD card speed constraints.
     /// Instead, we use the idle animation with position offsets (lunge effect).
-    fn queue_animation(&mut self, target: ActiveAnim, anim_type: AnimType) {
-        // Only queue Idle animations for actual loading (enemy only)
-        // Player team is preloaded, so no loading needed
-        // Action animations (Attack/Hurt/Death) use idle + visual effects
-        if anim_type == AnimType::Idle && target == ActiveAnim::Enemy {
-            self.pending_enemy_anim = Some(anim_type);
-        }
+    fn queue_animation(&mut self, target: ActiveAnim, _anim_type: AnimType) {
         // Set action state for visual effect (lunge)
         self.action_target = target;
         self.action_timer = 0.0;
     }
 
-    /// Handle touch input
-    pub fn handle_touch(&mut self, x: i32, y: i32) -> DungeonCombatAction {
-        if let Some(rect) = self.skill_button_area {
-            if rect.contains(Point::new(x, y)) {
-                if self.combat_state.player_skl_bar >= 1.0 {
-                    if let Some(event) = self.combat_state.use_skill() {
-                        self.handle_combat_event(event);
-                        self.dirty = true;
-                        return DungeonCombatAction::UseSkill;
-                    }
+    // ===== TURN-BASED COMBAT METHODS =====
+
+    /// Determine who goes next based on SPD
+    /// Returns true if player goes first
+    fn determine_next_turn(&mut self) -> bool {
+        let player_spd = self.combat_state.active_monster()
+            .map(|m| m.spd as f32)
+            .unwrap_or(0.0);
+        let enemy_spd = self.combat_state.enemy.spd as f32;
+
+        // Both accumulate SPD
+        self.player_turn_counter += player_spd;
+        self.enemy_turn_counter += enemy_spd;
+
+        const TURN_THRESHOLD: f32 = 100.0;
+
+        let player_ready = self.player_turn_counter >= TURN_THRESHOLD;
+        let enemy_ready = self.enemy_turn_counter >= TURN_THRESHOLD;
+
+        match (player_ready, enemy_ready) {
+            (true, true) => {
+                // Both ready - higher counter goes first
+                let player_goes = self.player_turn_counter >= self.enemy_turn_counter;
+                if player_goes {
+                    self.player_turn_counter -= TURN_THRESHOLD;
+                } else {
+                    self.enemy_turn_counter -= TURN_THRESHOLD;
                 }
+                player_goes
+            }
+            (true, false) => {
+                self.player_turn_counter -= TURN_THRESHOLD;
+                true
+            }
+            (false, true) => {
+                self.enemy_turn_counter -= TURN_THRESHOLD;
+                false
+            }
+            (false, false) => {
+                // Neither ready - keep accumulating (recursive)
+                self.determine_next_turn()
             }
         }
+    }
 
-        for (i, area) in self.swap_button_areas.iter().enumerate() {
-            if let Some(rect) = area {
-                if rect.contains(Point::new(x, y)) {
-                    if let Some(event) = self.combat_state.swap_monster(i as u8) {
-                        self.handle_combat_event(event);
+    /// Check if player can use skill (SKL bar >= 1.0)
+    fn can_use_skill(&self) -> bool {
+        self.combat_state.player_skl_bar >= 1.0 &&
+        self.combat_state.active_monster().map(|m| m.is_alive()).unwrap_or(false)
+    }
+
+    /// Check if player can swap (any other alive teammate)
+    fn can_swap(&self) -> bool {
+        self.combat_state.player_monsters.iter()
+            .enumerate()
+            .any(|(i, m)| i != self.combat_state.active_index as usize && m.is_alive())
+    }
+
+    /// Execute player attack action
+    fn execute_player_attack(&mut self) {
+        self.turn_phase = TurnPhase::PlayerActionExecuting {
+            action_type: TurnAction::Attack,
+            timer: 0.0,
+        };
+        self.action_target = ActiveAnim::Player;
+        self.last_player_action = Some(TurnAction::Attack);
+
+        if let Some(monster) = self.combat_state.active_monster() {
+            self.action_message = Some(format!("{} attacks!", monster.name));
+            self.message_timer = 0.5;
+        }
+    }
+
+    /// Execute player skill action
+    fn execute_player_skill(&mut self) {
+        if !self.can_use_skill() { return; }
+
+        if let Some(monster) = self.combat_state.active_monster() {
+            self.action_message = Some(format!("{} uses {}!", monster.name, monster.skill.name));
+            self.message_timer = 1.0;
+        }
+
+        self.turn_phase = TurnPhase::PlayerActionExecuting {
+            action_type: TurnAction::Skill,
+            timer: 0.0,
+        };
+        self.action_target = ActiveAnim::Player;
+        self.last_player_action = Some(TurnAction::Skill);
+    }
+
+    /// Execute player swap action
+    fn execute_player_swap(&mut self, target_index: u8) {
+        // Verify swap is valid
+        if target_index >= self.combat_state.player_monsters.len() as u8 { return; }
+        if !self.combat_state.player_monsters[target_index as usize].is_alive() { return; }
+        if target_index == self.combat_state.active_index { return; }
+
+        self.action_message = Some("Swapping...".to_string());
+        self.message_timer = 0.5;
+
+        self.turn_phase = TurnPhase::PlayerActionExecuting {
+            action_type: TurnAction::Swap { target_index },
+            timer: 0.0,
+        };
+        // No lunge animation for swap
+        self.action_target = ActiveAnim::None;
+        self.last_player_action = Some(TurnAction::Swap { target_index });
+        self.show_swap_popup = false;
+    }
+
+    /// Execute the actual action effect (damage, heal, etc.)
+    fn apply_action_effect(&mut self, action_type: TurnAction) {
+        match action_type {
+            TurnAction::Attack => {
+                if let Some(event) = self.execute_turn_attack() {
+                    self.handle_combat_event(event);
+                }
+            }
+            TurnAction::Skill => {
+                if let Some(event) = self.combat_state.use_skill() {
+                    self.handle_combat_event(event);
+                }
+            }
+            TurnAction::Swap { target_index } => {
+                // Perform the swap
+                let old_index = self.combat_state.active_index;
+                self.combat_state.active_index = target_index;
+                let event = CombatEvent::MonsterSwap {
+                    from_index: old_index,
+                    to_index: target_index,
+                };
+                self.handle_combat_event(event);
+            }
+        }
+    }
+
+    /// Execute turn-based attack (no bars, direct damage)
+    fn execute_turn_attack(&mut self) -> Option<CombatEvent> {
+        use crate::game::calculations::combat::update_skl_bar_after_attack;
+        use crate::game::calculations::damage::calculate_final_damage;
+
+        let monster = self.combat_state.active_monster()?;
+        if !monster.is_alive() { return None; }
+
+        let atk = monster.atk;
+        let element = monster.element;
+        let def = self.combat_state.enemy.def;
+        let enemy_element = self.combat_state.enemy.element;
+
+        // Check for reaction
+        let (reaction_mult, reaction_name, heal_amount) = self.check_reaction(element);
+        let damage = calculate_final_damage(atk, def, element, enemy_element, reaction_mult);
+
+        // Apply damage to enemy
+        self.combat_state.enemy.take_damage(damage);
+
+        // Apply aura to enemy
+        self.combat_state.enemy_aura = Some(element);
+
+        // Update skill bar (gains 20% per attack)
+        self.combat_state.player_skl_bar = update_skl_bar_after_attack(self.combat_state.player_skl_bar);
+
+        self.last_actor_was_player = true;
+
+        Some(CombatEvent::PlayerAttack {
+            damage,
+            element,
+            reaction: reaction_name,
+            heal_amount,
+        })
+    }
+
+    /// Execute enemy turn attack
+    fn execute_enemy_turn(&mut self) -> Option<CombatEvent> {
+        use crate::game::calculations::damage::calculate_final_damage;
+
+        if !self.combat_state.enemy.is_alive() { return None; }
+
+        let monster = self.combat_state.active_monster()?;
+        if !monster.is_alive() { return None; }
+
+        let enemy_atk = self.combat_state.enemy.atk;
+        let enemy_element = self.combat_state.enemy.element;
+        let def = monster.def;
+        let monster_element = monster.element;
+
+        let damage = calculate_final_damage(enemy_atk, def, enemy_element, monster_element, 1.0);
+
+        // Apply damage to player monster
+        if let Some(monster) = self.combat_state.active_monster_mut() {
+            monster.take_damage(damage);
+        }
+
+        self.last_actor_was_player = false;
+
+        Some(CombatEvent::EnemyAttack { damage, element: enemy_element })
+    }
+
+    /// Check for elemental reaction (copy from CombatState for turn-based use)
+    fn check_reaction(&mut self, attack_element: Element) -> (f32, Option<String>, Option<u16>) {
+        if let Some(aura_element) = self.combat_state.enemy_aura {
+            let (mult, name, heal) = match (aura_element, attack_element) {
+                // Water aura + Fire = VAPORIZE (x2 damage)
+                (Element::Water, Element::Fire) | (Element::Fire, Element::Water) => (2.0, Some("VAPORIZE"), None),
+                // Water aura + Thunder = ELECTROCUTE (stun - no effect in turn-based)
+                (Element::Water, Element::Thunder) => (1.5, Some("ELECTROCUTE"), None),
+                // Water aura + Earth = BLOOM (heal team 15%)
+                (Element::Water, Element::Earth) => {
+                    let heal_amount = self.calculate_bloom_heal();
+                    (1.0, Some("BLOOM"), Some(heal_amount))
+                },
+                _ => (1.0, None, None),
+            };
+
+            if name.is_some() {
+                self.combat_state.enemy_aura = None;
+            }
+
+            (mult, name.map(|s| s.to_string()), heal)
+        } else {
+            (1.0, None, None)
+        }
+    }
+
+    /// Calculate and apply BLOOM heal
+    fn calculate_bloom_heal(&mut self) -> u16 {
+        let mut total_healed = 0u16;
+        for monster in &mut self.combat_state.player_monsters {
+            if monster.is_alive() {
+                let heal_amount = (monster.hp_max as f32 * 0.15) as u16;
+                let old_hp = monster.hp_current;
+                monster.hp_current = (monster.hp_current + heal_amount).min(monster.hp_max);
+                total_healed += monster.hp_current - old_hp;
+            }
+        }
+        total_healed
+    }
+
+    /// Handle enemy death (victory or next wave)
+    fn handle_enemy_death(&mut self) {
+        // Award rewards
+        self.combat_state.crystals_earned += 5 + (self.combat_state.current_floor as u32 / 5);
+        self.combat_state.xp_earned += 20 + (self.combat_state.current_floor as u32 * 5);
+
+        if !self.combat_state.wave_enemies.is_empty() {
+            // More waves - start death animation and transition
+            self.turn_phase = TurnPhase::WaveTransition { timer: 0.0 };
+            self.start_death_animation();
+        } else {
+            // Victory!
+            self.turn_phase = TurnPhase::CombatEnded { victory: true };
+            self.combat_state.combat_ended = true;
+            self.combat_state.player_won = true;
+            self.start_death_animation();
+        }
+    }
+
+    /// Handle touch input (turn-based version)
+    pub fn handle_touch(&mut self, x: i32, y: i32) -> DungeonCombatAction {
+        let point = Point::new(x, y);
+
+        // Only handle touch during PlayerSelectAction phase
+        if self.turn_phase != TurnPhase::PlayerSelectAction {
+            // Allow closing swap popup even outside player turn
+            if self.show_swap_popup {
+                // Check if tap is outside popup - close it
+                let popup_area = Rectangle::new(Point::new(20, 100), Size::new(200, 100));
+                if !popup_area.contains(point) {
+                    self.show_swap_popup = false;
+                    self.dirty = true;
+                }
+            }
+            return DungeonCombatAction::None;
+        }
+
+        // Check swap popup first (if visible)
+        if self.show_swap_popup {
+            for (i, area) in self.swap_popup_buttons.iter().enumerate() {
+                if let Some(rect) = area {
+                    if rect.contains(point) {
+                        // Execute swap
+                        self.execute_player_swap(i as u8);
                         self.dirty = true;
                         return DungeonCombatAction::SwapMonster(i as u8);
                     }
                 }
+            }
+            // Tap outside popup closes it
+            self.show_swap_popup = false;
+            self.dirty = true;
+            return DungeonCombatAction::None;
+        }
+
+        // Check attack button
+        if let Some(rect) = self.attack_button_area {
+            if rect.contains(point) {
+                self.execute_player_attack();
+                self.dirty = true;
+                return DungeonCombatAction::None;
+            }
+        }
+
+        // Check skill button
+        if let Some(rect) = self.skill_button_area {
+            if rect.contains(point) && self.can_use_skill() {
+                self.execute_player_skill();
+                self.dirty = true;
+                return DungeonCombatAction::UseSkill;
+            }
+        }
+
+        // Check swap button
+        if let Some(rect) = self.swap_button_area {
+            if rect.contains(point) && self.can_swap() {
+                self.show_swap_popup = true;
+                self.dirty = true;
+                return DungeonCombatAction::None;
             }
         }
 
@@ -644,16 +993,6 @@ impl Page for DungeonCombatPage {
             display.fill_solid(&hp_fill, Rgb888::new(220, 80, 80))?;
         }
 
-        // Enemy SKL bar
-        let skl_y = bar_y + 10;
-        let skl_bg = Rectangle::new(Point::new(bar_x, skl_y), Size::new(bar_w, 5));
-        display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
-        let skl_fill_w = (bar_w as f32 * self.combat_state.enemy_skl_bar) as u32;
-        if skl_fill_w > 0 {
-            let skl_fill = Rectangle::new(Point::new(bar_x, skl_y), Size::new(skl_fill_w, 5));
-            display.fill_solid(&skl_fill, Rgb888::new(150, 100, 200))?;
-        }
-
         // Enemy aura indicator (small colored box next to HP bar)
         if let Some(aura_element) = self.combat_state.enemy_aura {
             let aura_color = Self::element_color(aura_element);
@@ -699,13 +1038,16 @@ impl Page for DungeonCombatPage {
                 display.fill_solid(&hp_fill, Rgb888::new(80, 200, 80))?;
             }
 
-            let atk_y = bar_y + 10;
-            let atk_bg = Rectangle::new(Point::new(p_bar_x, atk_y), Size::new(bar_w, 5));
-            display.fill_solid(&atk_bg, Rgb888::new(200, 200, 200))?;
-            let atk_fill_w = (bar_w as f32 * self.combat_state.player_atk_bar) as u32;
-            if atk_fill_w > 0 {
-                let atk_fill = Rectangle::new(Point::new(p_bar_x, atk_y), Size::new(atk_fill_w, 5));
-                display.fill_solid(&atk_fill, Rgb888::new(255, 180, 80))?;
+            // SKL bar (skill gauge) for turn-based
+            let skl_y = bar_y + 10;
+            let skill_ready = self.combat_state.player_skl_bar >= 1.0;
+            let skl_bg = Rectangle::new(Point::new(p_bar_x, skl_y), Size::new(bar_w, 5));
+            display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
+            let skl_fill_w = (bar_w as f32 * self.combat_state.player_skl_bar.min(1.0)) as u32;
+            if skl_fill_w > 0 {
+                let skl_color = if skill_ready { Rgb888::new(220, 150, 255) } else { Rgb888::new(150, 100, 200) };
+                let skl_fill = Rectangle::new(Point::new(p_bar_x, skl_y), Size::new(skl_fill_w, 5));
+                display.fill_solid(&skl_fill, skl_color)?;
             }
         }
 
@@ -819,106 +1161,193 @@ impl Page for DungeonCombatPage {
             Text::new(&reaction.name, Point::new(text_x, anim_y + 23), reaction_style).draw(display)?;
         }
 
-        // ===== BOTTOM: Swap buttons + Skill =====
-        let bottom_y = 204;
-        let swap_y = bottom_y;
-        let swap_btn_w = 74u32;
-        let swap_btn_h = 32u32;
+        // ===== TURN INDICATOR =====
+        let indicator_text = match &self.turn_phase {
+            TurnPhase::PlayerSelectAction => Some(("YOUR TURN", Rgb888::new(100, 200, 100))),
+            TurnPhase::EnemyActionExecuting { .. } => Some(("ENEMY TURN", Rgb888::new(200, 100, 100))),
+            TurnPhase::WaveTransition { .. } => Some(("WAVE CLEARED!", Rgb888::new(200, 150, 50))),
+            TurnPhase::CombatEnded { victory } => {
+                if *victory {
+                    Some(("VICTORY!", Rgb888::new(50, 180, 50)))
+                } else {
+                    Some(("DEFEAT", Rgb888::new(200, 80, 80)))
+                }
+            }
+            _ => None,
+        };
 
-        for (i, monster) in self.combat_state.player_monsters.iter().take(3).enumerate() {
-            let x = 4 + (i as i32 * 78);
-            let is_active = i == self.combat_state.active_index as usize;
-            let is_dead = !monster.is_alive();
-            let on_cooldown = self.combat_state.swap_cooldowns[i] > 0.0;
+        if let Some((text, color)) = indicator_text {
+            let indicator_style = MonoTextStyle::new(&FONT_7X13, color);
+            let text_x = 120 - (text.len() as i32 * 7 / 2);
+            Text::new(text, Point::new(text_x, anim_y + 15), indicator_style).draw(display)?;
+        }
 
-            let (bg_color, border_color) = if is_active {
-                (Rgb888::new(180, 230, 180), Rgb888::new(100, 180, 100))
-            } else if is_dead {
-                (Rgb888::new(230, 200, 200), Rgb888::new(180, 140, 140))
-            } else if on_cooldown {
-                (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
-            } else {
-                (Rgb888::new(200, 220, 240), Rgb888::new(140, 170, 200))
-            };
-
-            let rect = Rectangle::new(Point::new(x, swap_y), Size::new(swap_btn_w, swap_btn_h));
-            let rounded = RoundedRectangle::new(rect, CornerRadii::new(Size::new(6, 6)));
-            rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(bg_color).build()).draw(display)?;
-            rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(border_color).stroke_width(1).build()).draw(display)?;
-
-            let elem_color = Self::element_color(monster.element);
-            let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
-            let name = if monster.name.len() > 6 { &monster.name[..6] } else { &monster.name };
-            Text::new(&format!("{}{}", Self::element_char(monster.element), name),
-                Point::new(x + 4, swap_y + 12), elem_style).draw(display)?;
-
-            let status = if is_active { "ACTIVE" } else if is_dead { "KO" }
-                else if on_cooldown { &format!("{:.0}s", self.combat_state.swap_cooldowns[i]) }
-                else { "SWAP" };
-            Text::new(status, Point::new(x + 4, swap_y + 26), dim_style).draw(display)?;
-
-            if !is_active && !is_dead {
-                self.swap_button_areas[i] = Some(rect);
-            } else {
-                self.swap_button_areas[i] = None;
+        // ===== ACTION MESSAGE =====
+        if let Some(ref message) = self.action_message {
+            if self.message_timer > 0.0 {
+                let msg_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 220, 100));
+                let text_x = 120 - (message.len() as i32 * 6 / 2);
+                Text::new(message, Point::new(text_x, anim_y + anim_h - 10), msg_style).draw(display)?;
             }
         }
 
-        // Skill button
-        let skill_y = swap_y + swap_btn_h as i32 + 4;
-        let skill_ready = self.combat_state.player_skl_bar >= 1.0;
+        // ===== BOTTOM: 3 Action Buttons =====
+        let bottom_y = 204;
+        let button_y = bottom_y;
+        let button_w = 74u32;
+        let button_h = 36u32;
+        let button_spacing = 4;
 
-        let (skill_bg, skill_border) = if skill_ready {
-            (Rgb888::new(220, 200, 240), Rgb888::new(150, 100, 200))
+        // Only show action buttons during player's turn
+        let show_buttons = matches!(self.turn_phase, TurnPhase::PlayerSelectAction);
+
+        // ATTACK button
+        let attack_x = 4;
+        let attack_enabled = show_buttons && self.combat_state.active_monster().map(|m| m.is_alive()).unwrap_or(false);
+        let (attack_bg, attack_border) = if attack_enabled {
+            (Rgb888::new(240, 180, 180), Rgb888::new(200, 100, 100))
         } else {
-            (Rgb888::new(220, 220, 225), Rgb888::new(180, 180, 185))
+            (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145))
         };
+        let attack_rect = Rectangle::new(Point::new(attack_x, button_y), Size::new(button_w, button_h));
+        let attack_rounded = RoundedRectangle::new(attack_rect, CornerRadii::new(Size::new(6, 6)));
+        attack_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(attack_bg).build()).draw(display)?;
+        attack_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(attack_border).stroke_width(2).build()).draw(display)?;
+        let attack_text_color = if attack_enabled { Rgb888::new(150, 50, 50) } else { Rgb888::new(100, 100, 100) };
+        let attack_style = MonoTextStyle::new(&FONT_7X13, attack_text_color);
+        Text::new("ATTACK", Point::new(attack_x + 10, button_y + 23), attack_style).draw(display)?;
+        self.attack_button_area = if attack_enabled { Some(attack_rect) } else { None };
 
-        let skill_rect = Rectangle::new(Point::new(4, skill_y), Size::new(232, 36));
+        // SKILL button
+        let skill_x = attack_x + button_w as i32 + button_spacing;
+        let skill_ready = self.combat_state.player_skl_bar >= 1.0;
+        let skill_enabled = show_buttons && skill_ready && self.combat_state.active_monster().map(|m| m.is_alive()).unwrap_or(false);
+        let (skill_bg, skill_border) = if skill_enabled {
+            (Rgb888::new(200, 180, 240), Rgb888::new(150, 100, 200))
+        } else {
+            (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145))
+        };
+        let skill_rect = Rectangle::new(Point::new(skill_x, button_y), Size::new(button_w, button_h));
         let skill_rounded = RoundedRectangle::new(skill_rect, CornerRadii::new(Size::new(6, 6)));
         skill_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(skill_bg).build()).draw(display)?;
         skill_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(skill_border).stroke_width(2).build()).draw(display)?;
+        let skill_text_color = if skill_enabled { Rgb888::new(100, 50, 150) } else { Rgb888::new(100, 100, 100) };
+        let skill_style = MonoTextStyle::new(&FONT_7X13, skill_text_color);
+        Text::new("SKILL", Point::new(skill_x + 14, button_y + 23), skill_style).draw(display)?;
+        self.skill_button_area = if skill_enabled { Some(skill_rect) } else { None };
 
+        // SWAP button
+        let swap_x = skill_x + button_w as i32 + button_spacing;
+        let can_swap = self.can_swap();
+        let swap_enabled = show_buttons && can_swap;
+        let (swap_bg, swap_border) = if swap_enabled {
+            (Rgb888::new(180, 220, 240), Rgb888::new(100, 170, 200))
+        } else {
+            (Rgb888::new(180, 180, 185), Rgb888::new(140, 140, 145))
+        };
+        let swap_rect = Rectangle::new(Point::new(swap_x, button_y), Size::new(button_w, button_h));
+        let swap_rounded = RoundedRectangle::new(swap_rect, CornerRadii::new(Size::new(6, 6)));
+        swap_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(swap_bg).build()).draw(display)?;
+        swap_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(swap_border).stroke_width(2).build()).draw(display)?;
+        let swap_text_color = if swap_enabled { Rgb888::new(50, 100, 150) } else { Rgb888::new(100, 100, 100) };
+        let swap_style = MonoTextStyle::new(&FONT_7X13, swap_text_color);
+        Text::new("SWAP", Point::new(swap_x + 18, button_y + 23), swap_style).draw(display)?;
+        self.swap_button_area = if swap_enabled { Some(swap_rect) } else { None };
+
+        // SKL bar below buttons
+        let skl_bar_y = button_y + button_h as i32 + 4;
+        let skl_bar_w = 232u32;
+        let skl_bg = Rectangle::new(Point::new(4, skl_bar_y), Size::new(skl_bar_w, 8));
+        display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
+        let skl_fill_w = (skl_bar_w as f32 * self.combat_state.player_skl_bar.min(1.0)) as u32;
+        if skl_fill_w > 0 {
+            let skl_color = if skill_ready { Rgb888::new(220, 150, 255) } else { Rgb888::new(150, 100, 200) };
+            let skl_fill = Rectangle::new(Point::new(4, skl_bar_y), Size::new(skl_fill_w, 8));
+            display.fill_solid(&skl_fill, skl_color)?;
+        }
+
+        // Skill name label
         if let Some(monster) = self.combat_state.active_monster() {
-            let skill_name = if monster.skill.name.len() > 16 { &monster.skill.name[..16] } else { &monster.skill.name };
-            let skill_text = if skill_ready {
-                format!("SKILL: {}", skill_name)
-            } else {
-                format!("{}", skill_name)
-            };
-            Text::new(&skill_text, Point::new(12, skill_y + 14), text_style).draw(display)?;
+            let skill_name = if monster.skill.name.len() > 20 { &monster.skill.name[..20] } else { &monster.skill.name };
+            Text::new(skill_name, Point::new(4, skl_bar_y + 18), dim_style).draw(display)?;
+        }
 
-            let skl_bar_y = skill_y + 20;
-            let skl_bar_w = 210u32;
-            let skl_bg = Rectangle::new(Point::new(12, skl_bar_y), Size::new(skl_bar_w, 8));
-            display.fill_solid(&skl_bg, Rgb888::new(200, 200, 220))?;
+        // ===== SWAP POPUP =====
+        if self.show_swap_popup {
+            // Dim background
+            let dim_rect = Rectangle::new(Point::new(0, 0), Size::new(240, 284));
+            display.fill_solid(&dim_rect, Rgb888::new(30, 30, 40))?;
 
-            let skl_fill_w = (skl_bar_w as f32 * self.combat_state.player_skl_bar.min(1.0)) as u32;
-            if skl_fill_w > 0 {
-                let skl_color = if skill_ready { Rgb888::new(220, 150, 255) } else { Rgb888::new(150, 100, 200) };
-                let skl_fill = Rectangle::new(Point::new(12, skl_bar_y), Size::new(skl_fill_w, 8));
-                display.fill_solid(&skl_fill, skl_color)?;
+            // Popup background
+            let popup_rect = Rectangle::new(Point::new(20, 90), Size::new(200, 100));
+            let popup_rounded = RoundedRectangle::new(popup_rect, CornerRadii::new(Size::new(8, 8)));
+            popup_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(60, 60, 70))
+                .build())
+                .draw(display)?;
+            popup_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(100, 170, 200))
+                .stroke_width(2)
+                .build())
+                .draw(display)?;
+
+            // Title
+            let title_style = MonoTextStyle::new(&FONT_7X13, Rgb888::WHITE);
+            Text::new("Select teammate:", Point::new(55, 108), title_style).draw(display)?;
+
+            // Monster buttons
+            let popup_btn_w = 58u32;
+            let popup_btn_h = 50u32;
+            for (i, monster) in self.combat_state.player_monsters.iter().take(3).enumerate() {
+                let x = 25 + (i as i32 * 62);
+                let y = 118;
+                let is_active = i == self.combat_state.active_index as usize;
+                let is_dead = !monster.is_alive();
+
+                let (bg_color, border_color) = if is_active {
+                    (Rgb888::new(80, 100, 80), Rgb888::new(60, 80, 60))
+                } else if is_dead {
+                    (Rgb888::new(100, 70, 70), Rgb888::new(80, 50, 50))
+                } else {
+                    (Rgb888::new(80, 120, 160), Rgb888::new(60, 100, 140))
+                };
+
+                let btn_rect = Rectangle::new(Point::new(x, y), Size::new(popup_btn_w, popup_btn_h));
+                let btn_rounded = RoundedRectangle::new(btn_rect, CornerRadii::new(Size::new(4, 4)));
+                btn_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(bg_color).build()).draw(display)?;
+                btn_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(border_color).stroke_width(1).build()).draw(display)?;
+
+                let elem_color = Self::element_color(monster.element);
+                let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
+                let name = if monster.name.len() > 6 { &monster.name[..6] } else { &monster.name };
+                Text::new(&format!("{}{}", Self::element_char(monster.element), name),
+                    Point::new(x + 2, y + 15), elem_style).draw(display)?;
+
+                // HP bar
+                let hp_bar_y = y + 20;
+                let hp_bg = Rectangle::new(Point::new(x + 2, hp_bar_y), Size::new(54, 6));
+                display.fill_solid(&hp_bg, Rgb888::new(60, 60, 60))?;
+                let hp_pct = monster.hp_current as f32 / monster.hp_max as f32;
+                let hp_fill_w = (54.0 * hp_pct) as u32;
+                if hp_fill_w > 0 {
+                    let hp_fill = Rectangle::new(Point::new(x + 2, hp_bar_y), Size::new(hp_fill_w, 6));
+                    display.fill_solid(&hp_fill, Rgb888::new(80, 200, 80))?;
+                }
+
+                let status = if is_active { "ACTIVE" } else if is_dead { "KO" } else { "SELECT" };
+                let status_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(180, 180, 180));
+                Text::new(status, Point::new(x + 6, y + 44), status_style).draw(display)?;
+
+                // Only register touch area for selectable monsters
+                if !is_active && !is_dead {
+                    self.swap_popup_buttons[i] = Some(btn_rect);
+                } else {
+                    self.swap_popup_buttons[i] = None;
+                }
             }
-        }
-
-        self.skill_button_area = Some(skill_rect);
-
-        // Wave transition
-        if self.combat_state.is_wave_transitioning {
-            let wave_style = MonoTextStyle::new(&FONT_7X13, Rgb888::new(200, 150, 50));
-            Text::new(&format!("Wave {} cleared!", self.combat_state.current_wave),
-                Point::new(60, anim_y + anim_h / 2), wave_style).draw(display)?;
-        }
-
-        // Combat ended
-        if self.combat_state.combat_ended {
-            let (msg, msg_color) = if self.combat_state.player_won {
-                ("VICTORY!", Rgb888::new(50, 180, 50))
-            } else {
-                ("DEFEAT", Rgb888::new(200, 80, 80))
-            };
-            let msg_style = MonoTextStyle::new(&FONT_7X13, msg_color);
-            Text::new(msg, Point::new(90, anim_y + anim_h / 2), msg_style).draw(display)?;
+        } else {
+            // Clear popup button areas when not showing
+            self.swap_popup_buttons = [None; 3];
         }
 
         display.flush()?;
@@ -933,27 +1362,141 @@ impl Page for DungeonCombatPage {
         let delta = delta.min(0.1);
 
         // Combat ended delay
-        if self.combat_state.combat_ended {
+        if let TurnPhase::CombatEnded { .. } = self.turn_phase {
             self.end_delay += delta;
             self.dirty = true;
             return self.end_delay < 2.0;
-        }
-
-        // Update combat state
-        let events = self.combat_state.update(delta);
-        for event in events {
-            self.handle_combat_event(event);
         }
 
         // Update death animation timer
         if self.death_anim_active {
             self.death_anim_timer += delta;
             if self.death_anim_timer >= Self::DEATH_ANIM_DURATION {
-                // Death animation complete - hide enemy until next wave is set up
                 self.death_anim_active = false;
                 self.death_anim_timer = 0.0;
-                self.hide_enemy_until_next_wave = true;  // Don't show old enemy at normal position
+                self.hide_enemy_until_next_wave = true;
                 log::info!("Death animation complete for {}, hiding until next wave", self.death_anim_species);
+            }
+        }
+
+        // Update message timer
+        if self.message_timer > 0.0 {
+            self.message_timer -= delta;
+        }
+
+        // ===== TURN-BASED STATE MACHINE =====
+        match self.turn_phase {
+            TurnPhase::DeterminingTurnOrder => {
+                let player_goes = self.determine_next_turn();
+                if player_goes {
+                    self.turn_phase = TurnPhase::PlayerSelectAction;
+                    log::info!("Player's turn!");
+                } else {
+                    self.turn_phase = TurnPhase::EnemyActionExecuting { timer: 0.0 };
+                    self.action_target = ActiveAnim::Enemy;
+                    log::info!("Enemy's turn!");
+                }
+            }
+
+            TurnPhase::PlayerSelectAction => {
+                // Waiting for player touch input - nothing to update
+                // Idle animations will play
+            }
+
+            TurnPhase::PlayerActionExecuting { action_type, timer } => {
+                let new_timer = timer + delta;
+                if new_timer >= ACTION_ANIM_DURATION {
+                    // Animation complete - execute the action effect
+                    self.apply_action_effect(action_type);
+                    self.action_target = ActiveAnim::None;
+
+                    // Check if enemy died
+                    if !self.combat_state.enemy.is_alive() {
+                        self.handle_enemy_death();
+                    } else {
+                        // Move to post-action delay
+                        self.turn_phase = TurnPhase::PlayerActionComplete { timer: 0.0 };
+                    }
+                } else {
+                    self.turn_phase = TurnPhase::PlayerActionExecuting {
+                        action_type,
+                        timer: new_timer,
+                    };
+                }
+            }
+
+            TurnPhase::PlayerActionComplete { timer } => {
+                let new_timer = timer + delta;
+                if new_timer >= POST_ACTION_DELAY {
+                    // Check if swap - enemy gets free attack after swap
+                    if matches!(self.last_player_action, Some(TurnAction::Swap { .. })) {
+                        self.turn_phase = TurnPhase::EnemyActionExecuting { timer: 0.0 };
+                        self.action_target = ActiveAnim::Enemy;
+                    } else {
+                        self.turn_phase = TurnPhase::DeterminingTurnOrder;
+                    }
+                } else {
+                    self.turn_phase = TurnPhase::PlayerActionComplete { timer: new_timer };
+                }
+            }
+
+            TurnPhase::EnemyActionExecuting { timer } => {
+                let new_timer = timer + delta;
+                if new_timer >= ACTION_ANIM_DURATION {
+                    // Execute enemy attack
+                    if let Some(event) = self.execute_enemy_turn() {
+                        self.handle_combat_event(event);
+                    }
+                    self.action_target = ActiveAnim::None;
+
+                    // Check if player died
+                    if self.combat_state.all_players_dead() {
+                        self.turn_phase = TurnPhase::CombatEnded { victory: false };
+                        self.combat_state.combat_ended = true;
+                        self.combat_state.player_won = false;
+                    } else {
+                        self.turn_phase = TurnPhase::EnemyActionComplete { timer: 0.0 };
+                    }
+                } else {
+                    self.turn_phase = TurnPhase::EnemyActionExecuting { timer: new_timer };
+                }
+            }
+
+            TurnPhase::EnemyActionComplete { timer } => {
+                let new_timer = timer + delta;
+                if new_timer >= POST_ACTION_DELAY {
+                    self.turn_phase = TurnPhase::DeterminingTurnOrder;
+                } else {
+                    self.turn_phase = TurnPhase::EnemyActionComplete { timer: new_timer };
+                }
+            }
+
+            TurnPhase::WaveTransition { timer } => {
+                let new_timer = timer + delta;
+                // Wait for death animation + transition delay
+                if new_timer >= Self::DEATH_ANIM_DURATION + WAVE_TRANSITION_DELAY {
+                    // Spawn next enemy
+                    if !self.combat_state.wave_enemies.is_empty() {
+                        let next_enemy = self.combat_state.wave_enemies.remove(0);
+                        self.combat_state.enemy = next_enemy;
+                        self.combat_state.current_wave += 1;
+                        self.combat_state.enemy_aura = None;
+                        self.hide_enemy_until_next_wave = false;
+
+                        // Reset turn counters for new wave
+                        self.player_turn_counter = 0.0;
+                        self.enemy_turn_counter = 0.0;
+
+                        self.turn_phase = TurnPhase::DeterminingTurnOrder;
+                        log::info!("Wave {} starting", self.combat_state.current_wave);
+                    }
+                } else {
+                    self.turn_phase = TurnPhase::WaveTransition { timer: new_timer };
+                }
+            }
+
+            TurnPhase::CombatEnded { .. } => {
+                // Already handled above
             }
         }
 
@@ -963,83 +1506,12 @@ impl Page for DungeonCombatPage {
             .map(|m| m.species_id.clone())
             .unwrap_or_default();
 
-        // Update action animation timer
-        if self.action_target != ActiveAnim::None {
-            self.action_timer += delta;
-
-            // Get frame count for the active animation from cache
-            let enemy_frame_count = self.anim_cache.get(&enemy_species)
-                .map(|a| a.frame_count()).unwrap_or(1);
-            let player_frame_count = self.anim_cache.get(&player_species)
-                .map(|a| a.frame_count()).unwrap_or(1);
-
-            let (frame_count, current_frame, is_death) = match self.action_target {
-                ActiveAnim::Enemy => (
-                    enemy_frame_count,
-                    self.anim_cache.get(&enemy_species).map(|a| a.current_frame()).unwrap_or(0),
-                    self.enemy_anim_type == AnimType::Death
-                ),
-                ActiveAnim::Player => (
-                    player_frame_count,
-                    self.anim_cache.get(&player_species).map(|a| a.current_frame()).unwrap_or(0),
-                    self.player_anim_type == AnimType::Death
-                ),
-                _ => (1, 0, false),
-            };
-
-            // Advance action frame using RawAnimPlayer's built-in update
-            let frame_changed = match self.action_target {
-                ActiveAnim::Enemy => self.anim_cache.get_mut(&enemy_species)
-                    .map(|a| a.update(delta)).unwrap_or(false),
-                ActiveAnim::Player => self.anim_cache.get_mut(&player_species)
-                    .map(|a| a.update(delta)).unwrap_or(false),
-                _ => false,
-            };
-
-            // Check if animation looped (completed)
-            if frame_changed {
-                let new_frame = match self.action_target {
-                    ActiveAnim::Enemy => self.anim_cache.get(&enemy_species)
-                        .map(|a| a.current_frame()).unwrap_or(0),
-                    ActiveAnim::Player => self.anim_cache.get(&player_species)
-                        .map(|a| a.current_frame()).unwrap_or(0),
-                    _ => 0,
-                };
-
-                // If frame went back to 0, animation completed
-                if new_frame < current_frame || (current_frame >= frame_count.saturating_sub(1)) {
-                    if is_death {
-                        // Stay on last frame for death
-                        match self.action_target {
-                            ActiveAnim::Enemy => {
-                                if let Some(anim) = self.anim_cache.get_mut(&enemy_species) {
-                                    anim.set_frame(frame_count.saturating_sub(1));
-                                }
-                            }
-                            ActiveAnim::Player => {
-                                if let Some(anim) = self.anim_cache.get_mut(&player_species) {
-                                    anim.set_frame(frame_count.saturating_sub(1));
-                                }
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        self.end_action_to_idle();
-                    }
-                }
-            }
-        } else {
-            // Update idle animations using RawAnimPlayer's built-in timing
-            if self.enemy_anim_type == AnimType::Idle {
-                if let Some(anim) = self.anim_cache.get_mut(&enemy_species) {
-                    anim.update(delta);
-                }
-            }
-            if self.player_anim_type == AnimType::Idle {
-                if let Some(anim) = self.anim_cache.get_mut(&player_species) {
-                    anim.update(delta);
-                }
-            }
+        // Update idle animations
+        if let Some(anim) = self.anim_cache.get_mut(&enemy_species) {
+            anim.update(delta);
+        }
+        if let Some(anim) = self.anim_cache.get_mut(&player_species) {
+            anim.update(delta);
         }
 
         // Update damage popups
