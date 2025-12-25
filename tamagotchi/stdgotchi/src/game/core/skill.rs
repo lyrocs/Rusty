@@ -51,6 +51,10 @@ pub struct Skill {
     #[serde(default = "default_accuracy")]
     pub accuracy: u8,
 
+    /// Critical hit chance percentage (0-100, default 10%)
+    #[serde(default = "default_crit_chance")]
+    pub crit_chance: u8,
+
     /// Cooldown in turns after use (0 = no cooldown)
     #[serde(default)]
     pub cooldown: u8,
@@ -77,6 +81,7 @@ pub struct Skill {
 }
 
 fn default_accuracy() -> u8 { 100 }
+fn default_crit_chance() -> u8 { 10 }  // 10% base crit chance
 fn default_effect_value() -> f32 { 1.0 }
 
 impl Default for Skill {
@@ -84,11 +89,12 @@ impl Default for Skill {
         Self {
             id: "unknown".to_string(),
             name: "Unknown".to_string(),
-            element: Element::Water,
+            element: Element::Neutral,
             description: "Unknown skill".to_string(),
             effect_type: SkillEffectType::Damage,
             power: 40,
             accuracy: 100,
+            crit_chance: 10,
             cooldown: 0,
             effect_value: 1.0,
             buff_stat: None,

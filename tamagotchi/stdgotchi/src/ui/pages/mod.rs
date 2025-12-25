@@ -10,6 +10,7 @@ pub mod collection;
 pub mod death;
 pub mod dungeon_combat;
 pub mod dungeon_defeat;
+pub mod expedition_detail;
 pub mod expedition_map;
 pub mod expedition_result;
 pub mod expedition_team_select;
@@ -30,6 +31,7 @@ pub use collection::{CollectionPage, CollectionAction, ZoneCollectionData, Speci
 pub use death::DeathPage;
 pub use dungeon_combat::{DungeonCombatPage, DungeonCombatAction};
 pub use dungeon_defeat::{DungeonDefeatPage, DungeonDefeatAction};
+pub use expedition_detail::{ExpeditionDetailPage, ExpeditionDetailAction, ExpeditionMonsterData};
 pub use expedition_map::{ExpeditionMapPage, ExpeditionMapAction, ZoneDisplayData, MapDisplayData};
 pub use expedition_result::{ExpeditionResultPage, ExpeditionResultAction, ExpeditionResultData};
 pub use expedition_team_select::{ExpeditionTeamSelectPage, ExpeditionTeamAction, MonsterSelectData};

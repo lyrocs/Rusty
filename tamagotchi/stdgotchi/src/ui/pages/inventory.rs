@@ -81,6 +81,7 @@ impl InventoryPage {
             Element::Shadow => "Shadow",
             Element::Holy => "Holy",
             Element::Ghost => "Ghost",
+            Element::Neutral => "Neutral",
         }
     }
 
@@ -94,6 +95,7 @@ impl InventoryPage {
             Element::Shadow => 'S',
             Element::Holy => 'H',
             Element::Ghost => 'G',
+            Element::Neutral => 'N',
         }
     }
 
@@ -107,6 +109,7 @@ impl InventoryPage {
             Element::Shadow => Rgb888::new(150, 50, 200),
             Element::Holy => Rgb888::new(255, 255, 200),
             Element::Ghost => Rgb888::new(180, 180, 220),
+            Element::Neutral => Rgb888::new(180, 180, 180),
         }
     }
 }

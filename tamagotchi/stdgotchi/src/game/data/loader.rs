@@ -99,6 +99,9 @@ struct SkillData {
     /// Accuracy percentage (0-100, 100 = always hits)
     #[serde(default = "default_accuracy")]
     accuracy: u8,
+    /// Critical hit chance percentage (0-100, default 10%)
+    #[serde(default = "default_crit_chance")]
+    crit_chance: u8,
     /// Cooldown in turns after use (0 = no cooldown)
     #[serde(default)]
     cooldown: u8,
@@ -121,6 +124,10 @@ struct SkillData {
 
 fn default_accuracy() -> u8 {
     100
+}
+
+fn default_crit_chance() -> u8 {
+    10  // 10% base crit chance
 }
 
 fn default_effect_value() -> f32 {
@@ -155,6 +162,7 @@ impl SkillData {
             effect_type,
             power: self.power,
             accuracy: self.accuracy,
+            crit_chance: self.crit_chance,
             cooldown: self.cooldown,
             effect_value: self.effect_value,
             buff_stat,
@@ -176,7 +184,8 @@ fn parse_element(s: &str) -> Element {
         "shadow" => Element::Shadow,
         "holy" => Element::Holy,
         "ghost" => Element::Ghost,
-        _ => Element::Water, // Default
+        "neutral" => Element::Neutral,
+        _ => Element::Neutral, // Default to Neutral for unknown
     }
 }
 

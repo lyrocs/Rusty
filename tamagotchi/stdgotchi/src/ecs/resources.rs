@@ -20,7 +20,7 @@ use crate::game::systems::expedition::Expedition;
 use crate::game::systems::dungeon::DungeonRun;
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, DungeonCombatPage, BetweenFloorsPage, BonusSelectionPage, DungeonDefeatPage, MonsterUpgradePage, InventoryPage, CollectionPage};
+use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, ExpeditionDetailPage, DungeonCombatPage, BetweenFloorsPage, BonusSelectionPage, DungeonDefeatPage, MonsterUpgradePage, InventoryPage, CollectionPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource<'a> {
@@ -189,6 +189,7 @@ pub struct GameManager {
     pub expedition_map_page: Option<ExpeditionMapPage>,
     pub expedition_team_page: Option<ExpeditionTeamSelectPage>,
     pub expedition_result_page: Option<ExpeditionResultPage>,
+    pub expedition_detail_page: Option<ExpeditionDetailPage>,
     pub selected_expedition_map_id: Option<String>,
 
     // Dungeon combat (Phase 4)
@@ -246,6 +247,7 @@ impl GameManager {
             expedition_map_page: None,
             expedition_team_page: None,
             expedition_result_page: None,
+            expedition_detail_page: None,
             selected_expedition_map_id: None,
             dungeon_combat_page: None,
             between_floors_page: None,
@@ -324,6 +326,7 @@ impl GameManager {
             expedition_map_page: None,
             expedition_team_page: None,
             expedition_result_page: None,
+            expedition_detail_page: None,
             selected_expedition_map_id: None,
             dungeon_combat_page: None,
             between_floors_page: None,
@@ -418,6 +421,9 @@ impl GameManager {
             }
             AppMode::ExpeditionResult => {
                 self.expedition_result_page.as_mut().map(|p| p as &mut dyn Page)
+            }
+            AppMode::ExpeditionDetail => {
+                self.expedition_detail_page.as_mut().map(|p| p as &mut dyn Page)
             }
             AppMode::Inventory => {
                 self.inventory_page.as_mut().map(|p| p as &mut dyn Page)
@@ -537,6 +543,8 @@ pub enum AppMode {
     ExpeditionTeamSelect,
     /// Expedition result screen
     ExpeditionResult,
+    /// Expedition detail screen (active expedition view)
+    ExpeditionDetail,
     /// Inventory screen
     Inventory,
     /// Dungeon combat (real-time)

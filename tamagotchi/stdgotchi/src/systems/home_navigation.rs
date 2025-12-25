@@ -8,7 +8,7 @@ use bevy_ecs::prelude::*;
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents, SdCardWrapper};
 use crate::input_thread::{InputEvent, SwipeDirection};
 use crate::systems::expedition_navigation::create_expedition_map_page;
-use crate::ui::pages::{HomeAction, CollectionPage, ZoneCollectionData, SpeciesCollectionData};
+use crate::ui::pages::{HomeAction, CollectionPage, ZoneCollectionData, SpeciesCollectionData, ExpeditionDetailPage, ExpeditionMonsterData};
 
 /// System to handle home page navigation and updates
 pub fn home_navigation_system(
@@ -65,7 +65,7 @@ pub fn home_navigation_system(
                     }
                     HomeAction::ViewExpedition(slot_idx) => {
                         log::info!("View expedition slot {}", slot_idx);
-                        // Check if expedition is complete
+                        // Check if expedition exists
                         if let Some(ref exp) = game_manager.active_expeditions[slot_idx] {
                             let now = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
@@ -83,7 +83,26 @@ pub fn home_navigation_system(
                                     app_state.needs_redraw = true;
                                 }
                             } else {
-                                // Just show updated progress
+                                // Show expedition detail page for in-progress expedition
+                                let map_name = game_manager.tamer_data.get_tamer_map(&exp.map_id)
+                                    .map(|m| m.name.clone())
+                                    .unwrap_or_else(|| exp.map_id.clone());
+
+                                // Get monster data for the expedition
+                                let monsters: Vec<ExpeditionMonsterData> = exp.monster_ids.iter()
+                                    .filter_map(|id| game_manager.monsters.iter().find(|m| m.id == *id))
+                                    .map(|m| ExpeditionMonsterData {
+                                        name: m.name.clone(),
+                                        species_id: m.species_id.clone(),
+                                        level: m.level,
+                                        element: m.element,
+                                    })
+                                    .collect();
+
+                                game_manager.expedition_detail_page = Some(
+                                    ExpeditionDetailPage::new(slot_idx, exp, map_name, monsters)
+                                );
+                                app_state.current_mode = AppMode::ExpeditionDetail;
                                 app_state.needs_redraw = true;
                             }
                         }

@@ -223,6 +223,7 @@ impl MonsterListPage {
             Element::Shadow => Rgb888::new(150, 50, 200),
             Element::Holy => Rgb888::new(255, 255, 200),
             Element::Ghost => Rgb888::new(180, 180, 220),
+            Element::Neutral => Rgb888::new(180, 180, 180),
         }
     }
 
@@ -236,6 +237,7 @@ impl MonsterListPage {
             Element::Shadow => 'S',
             Element::Holy => 'H',
             Element::Ghost => 'G',
+            Element::Neutral => 'N',
         }
     }
 }

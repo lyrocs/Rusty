@@ -370,7 +370,9 @@ impl CombatState {
                 Some(CombatEvent::PlayerSkill {
                     skill_name,
                     damage,
-                    element
+                    element,
+                    is_critical: false,
+                    is_miss: false,
                 })
             }
         }
@@ -428,6 +430,8 @@ pub enum CombatEvent {
         skill_name: String,
         damage: u16,
         element: Element,
+        is_critical: bool,
+        is_miss: bool,
     },
     /// Player used heal skill
     PlayerSkillHeal {

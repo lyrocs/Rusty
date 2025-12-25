@@ -76,8 +76,9 @@ pub fn render_system(
         AppMode::Home | AppMode::Menu | AppMode::Map | AppMode::Battle | AppMode::BattleResult
         | AppMode::MonsterList | AppMode::MonsterDetail | AppMode::MonsterUpgrade
         | AppMode::ExpeditionMap | AppMode::ExpeditionTeamSelect | AppMode::ExpeditionResult
-        | AppMode::Inventory | AppMode::Collection | AppMode::DungeonCombat | AppMode::BetweenFloors
-        | AppMode::BonusSelection | AppMode::DungeonDefeat => {
+        | AppMode::ExpeditionDetail | AppMode::Inventory | AppMode::Collection
+        | AppMode::DungeonCombat | AppMode::BetweenFloors | AppMode::BonusSelection
+        | AppMode::DungeonDefeat => {
             if let Some(mut game_manager) = game_manager {
                 if app_state.current_mode == AppMode::Menu {
                     let has_battle = game_manager.battle_page.is_some();

@@ -1,6 +1,6 @@
 //! Damage Calculations
 //!
-//! All damage-related calculations: base damage, element modifiers, final damage.
+//! All damage-related calculations: base damage, element modifiers, critical hits.
 //! This is the SINGLE SOURCE OF TRUTH for damage formulas.
 
 use crate::game::core::Element;
@@ -16,6 +16,49 @@ pub const ELEMENT_ADVANTAGE: f32 = 1.5;
 
 /// Element disadvantage multiplier
 pub const ELEMENT_DISADVANTAGE: f32 = 0.5;
+
+/// Critical hit damage multiplier (1.5x damage)
+pub const CRITICAL_MULTIPLIER: f32 = 1.5;
+
+/// Result of a damage calculation including crit info
+#[derive(Debug, Clone, Copy)]
+pub struct DamageResult {
+    pub damage: u16,
+    pub is_critical: bool,
+    pub is_miss: bool,
+}
+
+impl DamageResult {
+    pub fn miss() -> Self {
+        Self { damage: 0, is_critical: false, is_miss: true }
+    }
+
+    pub fn hit(damage: u16, is_critical: bool) -> Self {
+        Self { damage, is_critical, is_miss: false }
+    }
+}
+
+/// Roll for accuracy (returns true if hit, false if miss)
+pub fn roll_accuracy(accuracy: u8) -> bool {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let roll = ((seed * 1103515245 + 12345) % 100) as u8;
+    roll < accuracy
+}
+
+/// Roll for critical hit (returns true if crit)
+pub fn roll_critical(crit_chance: u8) -> bool {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| (d.as_nanos() / 7) as u64)  // Different seed offset for variety
+        .unwrap_or(0);
+    let roll = ((seed * 1103515245 + 12345) % 100) as u8;
+    roll < crit_chance
+}
 
 /// Calculate base damage
 /// Formula: base = max(ATK - DEF*0.5, ATK*0.1)
@@ -108,6 +151,44 @@ pub fn calculate_damage_ignore_def(
 ) -> u16 {
     let effective_def = (def as f32 * (1.0 - def_ignore_percent)).round() as u16;
     calculate_final_damage(atk, effective_def, attacker_element, defender_element, 1.0)
+}
+
+/// Calculate full skill damage with accuracy check, crit roll, and all modifiers
+/// Returns DamageResult with damage amount and flags for miss/crit
+pub fn calculate_skill_damage_full(
+    atk: u16,
+    def: u16,
+    skill_power: u16,       // Skill power (100 = base ATK)
+    accuracy: u8,           // 0-100 hit chance
+    crit_chance: u8,        // 0-100 crit chance
+    skill_element: Element,
+    defender_element: Element,
+    reaction_multiplier: f32,
+) -> DamageResult {
+    // First check accuracy
+    if !roll_accuracy(accuracy) {
+        log::info!("Attack missed! (acc: {}%)", accuracy);
+        return DamageResult::miss();
+    }
+
+    // Calculate base damage with skill power
+    let effective_atk = (atk as f32 * skill_power as f32 / 100.0) as u16;
+    let base = calculate_base_damage(effective_atk, def);
+    let element_mult = get_element_multiplier(skill_element, defender_element);
+
+    // Roll for critical hit
+    let is_critical = roll_critical(crit_chance);
+    let crit_mult = if is_critical { CRITICAL_MULTIPLIER } else { 1.0 };
+
+    // Calculate final damage
+    let final_damage = base * element_mult * reaction_multiplier * crit_mult;
+    let damage = final_damage.round().max(1.0) as u16;
+
+    if is_critical {
+        log::info!("CRITICAL HIT! Damage: {} (crit: {}%)", damage, crit_chance);
+    }
+
+    DamageResult::hit(damage, is_critical)
 }
 
 #[cfg(test)]

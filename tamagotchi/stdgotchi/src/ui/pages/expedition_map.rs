@@ -134,6 +134,7 @@ impl ExpeditionMapPage {
             Element::Shadow => Rgb888::new(100, 50, 150),
             Element::Holy => Rgb888::new(255, 255, 200),
             Element::Ghost => Rgb888::new(150, 150, 200),
+            Element::Neutral => Rgb888::new(180, 180, 180),
         }
     }
 
@@ -147,6 +148,7 @@ impl ExpeditionMapPage {
             Element::Shadow => 'S',
             Element::Holy => 'H',
             Element::Ghost => 'G',
+            Element::Neutral => 'N',
         }
     }
 }

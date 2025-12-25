@@ -1,14 +1,16 @@
 //! Element System
 //!
-//! Defines the 8 elements from Ragnarok Online and their relationships.
+//! Defines the 9 elements based on Ragnarok Online and their relationships.
 //! Element advantages and reactions are loaded from element_config.json.
 
 use serde::{Deserialize, Serialize};
 
-/// The 8 elements based on Ragnarok Online
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// The 9 elements (8 from RO + Neutral)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Element {
+    #[default]
+    Neutral,  // No elemental affinity, no advantages/disadvantages
     Fire,
     Water,
     Earth,
@@ -23,6 +25,7 @@ impl Element {
     /// Get element display icon
     pub fn icon(&self) -> &'static str {
         match self {
+            Element::Neutral => "Neutral",
             Element::Fire => "Fire",
             Element::Water => "Water",
             Element::Earth => "Earth",
@@ -37,6 +40,7 @@ impl Element {
     /// Get all elements
     pub fn all() -> &'static [Element] {
         &[
+            Element::Neutral,
             Element::Fire,
             Element::Water,
             Element::Earth,
@@ -46,12 +50,6 @@ impl Element {
             Element::Holy,
             Element::Ghost,
         ]
-    }
-}
-
-impl Default for Element {
-    fn default() -> Self {
-        Element::Water
     }
 }
 

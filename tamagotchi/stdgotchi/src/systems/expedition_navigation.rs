@@ -15,6 +15,7 @@ use crate::ui::pages::{
     ExpeditionMapPage, ExpeditionMapAction, ZoneDisplayData, MapDisplayData,
     ExpeditionTeamSelectPage, ExpeditionTeamAction, MonsterSelectData,
     ExpeditionResultPage, ExpeditionResultAction, ExpeditionResultData,
+    ExpeditionDetailAction,
 };
 
 /// System to handle expedition navigation
@@ -26,7 +27,7 @@ pub fn expedition_navigation_system(
     // Only process in expedition modes
     if !matches!(
         app_state.current_mode,
-        AppMode::ExpeditionMap | AppMode::ExpeditionTeamSelect | AppMode::ExpeditionResult
+        AppMode::ExpeditionMap | AppMode::ExpeditionTeamSelect | AppMode::ExpeditionResult | AppMode::ExpeditionDetail
     ) {
         return;
     }
@@ -252,6 +253,51 @@ pub fn expedition_navigation_system(
                             }
                         }
                     }
+                    AppMode::ExpeditionDetail => {
+                        if let Some(ref mut detail_page) = game_manager.expedition_detail_page {
+                            let action = detail_page.handle_touch(x, y);
+                            match action {
+                                ExpeditionDetailAction::Cancel => {
+                                    let slot_idx = detail_page.slot_index();
+                                    log::info!("Cancelling expedition in slot {}", slot_idx);
+
+                                    // Cancel the expedition in this slot
+                                    if let Some(exp) = game_manager.active_expeditions[slot_idx].take() {
+                                        // Return monsters to available status
+                                        for monster_id in &exp.monster_ids {
+                                            if let Some(monster) = game_manager.monsters.iter_mut()
+                                                .find(|m| m.id == *monster_id)
+                                            {
+                                                monster.status = crate::game::core::MonsterStatus::Available;
+                                                log::info!("Monster {} returned to available", monster.name);
+                                            }
+                                        }
+                                        log::info!("Expedition cancelled successfully");
+                                    }
+
+                                    // Go back to home
+                                    game_manager.expedition_detail_page = None;
+                                    update_home_page_data(game_manager);
+                                    game_manager.home_page.mark_dirty();
+                                    app_state.current_mode = AppMode::Home;
+                                    app_state.needs_redraw = true;
+                                    pending_events.events.clear();
+                                    return;
+                                }
+                                ExpeditionDetailAction::Back => {
+                                    log::info!("Back to home from expedition detail");
+                                    game_manager.expedition_detail_page = None;
+                                    update_home_page_data(game_manager);
+                                    game_manager.home_page.mark_dirty();
+                                    app_state.current_mode = AppMode::Home;
+                                    app_state.needs_redraw = true;
+                                    pending_events.events.clear();
+                                    return;
+                                }
+                                ExpeditionDetailAction::None => {}
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -275,6 +321,14 @@ pub fn expedition_navigation_system(
                         AppMode::ExpeditionResult => {
                             log::info!("Swipe right: dismiss result");
                             game_manager.expedition_result_page = None;
+                            update_home_page_data(game_manager);
+                            game_manager.home_page.mark_dirty();
+                            app_state.current_mode = AppMode::Home;
+                            app_state.needs_redraw = true;
+                        }
+                        AppMode::ExpeditionDetail => {
+                            log::info!("Swipe right: back to home from detail");
+                            game_manager.expedition_detail_page = None;
                             update_home_page_data(game_manager);
                             game_manager.home_page.mark_dirty();
                             app_state.current_mode = AppMode::Home;

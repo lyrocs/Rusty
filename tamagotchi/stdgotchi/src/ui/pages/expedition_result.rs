@@ -96,6 +96,7 @@ impl ExpeditionResultPage {
             Element::Shadow => Rgb888::new(100, 50, 150),
             Element::Holy => Rgb888::new(255, 255, 200),
             Element::Ghost => Rgb888::new(150, 150, 200),
+            Element::Neutral => Rgb888::new(180, 180, 180),
         }
     }
 
@@ -109,6 +110,7 @@ impl ExpeditionResultPage {
             Element::Shadow => "Shadow",
             Element::Holy => "Holy",
             Element::Ghost => "Ghost",
+            Element::Neutral => "Neutral",
         }
     }
 }

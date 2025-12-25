@@ -594,9 +594,14 @@ impl DungeonCombatPage {
                 if let Some(event) = self.execute_skill_at_slot(slot) {
                     // Queue battle messages based on event
                     match &event {
-                        CombatEvent::PlayerSkill { damage, skill_name: sn, .. } => {
+                        CombatEvent::PlayerSkill { damage, skill_name: sn, is_critical, is_miss, .. } => {
                             self.queue_battle_message(format!("{} used {}!", monster_name, sn));
-                            if *damage > 0 {
+                            if *is_miss {
+                                self.queue_battle_message("But it missed!".to_string());
+                            } else if *damage > 0 {
+                                if *is_critical {
+                                    self.queue_battle_message("A critical hit!".to_string());
+                                }
                                 self.queue_battle_message(format!("Dealt {} damage!", damage));
                             }
                         }
@@ -660,7 +665,7 @@ impl DungeonCombatPage {
 
     /// Execute skill at specified slot
     fn execute_skill_at_slot(&mut self, slot: u8) -> Option<CombatEvent> {
-        use crate::game::calculations::damage::calculate_final_damage;
+        use crate::game::calculations::damage::{calculate_skill_damage_full, calculate_final_damage};
         use crate::game::core::SkillEffectType;
 
         let monster = self.combat_state.active_monster()?;
@@ -668,7 +673,6 @@ impl DungeonCombatPage {
 
         let skill = monster.equipped_skills.get(slot as usize)?.clone();
         let monster_atk = monster.atk;
-        let monster_element = monster.element;
         let skill_element = skill.element;
         let enemy_def = self.combat_state.enemy.def;
         let enemy_element = self.combat_state.enemy.element;
@@ -704,6 +708,8 @@ impl DungeonCombatPage {
                     skill_name: skill.name.clone(),
                     damage: 0,
                     element: skill_element,
+                    is_critical: false,
+                    is_miss: false,
                 })
             }
             SkillEffectType::Debuff => {
@@ -713,24 +719,13 @@ impl DungeonCombatPage {
                     skill_name: skill.name.clone(),
                     damage: 0,
                     element: skill_element,
+                    is_critical: false,
+                    is_miss: false,
                 })
             }
             _ => {
                 // Damage skills (Damage, DamageDot, DamageIgnoreDef)
-                // Check for accuracy - random roll
-                let hit_roll: u8 = (self.last_update.elapsed().as_millis() % 100) as u8;
-                if hit_roll >= skill.accuracy {
-                    // Miss!
-                    log::info!("Skill {} missed! (roll {} >= acc {})", skill.name, hit_roll, skill.accuracy);
-                    return Some(CombatEvent::PlayerSkill {
-                        skill_name: format!("{} (MISS)", skill.name),
-                        damage: 0,
-                        element: skill_element,
-                    });
-                }
-
-                // Calculate damage using skill power
-                // Base damage = (ATK * power / 100) - DEF * modifier
+                // Adjust DEF for ignore-def skills
                 let def_modifier = match skill.effect_type {
                     SkillEffectType::DamageIgnoreDef => 0.5, // Ignore 50% DEF
                     _ => 1.0,
@@ -740,20 +735,56 @@ impl DungeonCombatPage {
                 // Check for reaction
                 let (reaction_mult, reaction_name, heal_amount) = self.check_reaction(skill_element);
 
-                // Calculate damage: ATK * (power/100) vs DEF, with element multiplier
-                let base_damage = (monster_atk as f32 * skill.power as f32 / 100.0) as u16;
-                let damage = calculate_final_damage(base_damage, effective_def, skill_element, enemy_element, reaction_mult);
+                // Use the full damage calculation with accuracy, crit, and all modifiers
+                let damage_result = calculate_skill_damage_full(
+                    monster_atk,
+                    effective_def,
+                    skill.power,
+                    skill.accuracy,
+                    skill.crit_chance,
+                    skill_element,
+                    enemy_element,
+                    reaction_mult,
+                );
+
+                // Check for miss
+                if damage_result.is_miss {
+                    log::info!("Skill {} missed! (acc: {}%)", skill.name, skill.accuracy);
+                    return Some(CombatEvent::PlayerSkill {
+                        skill_name: skill.name.clone(),
+                        damage: 0,
+                        element: skill_element,
+                        is_critical: false,
+                        is_miss: true,
+                    });
+                }
 
                 // Apply damage to enemy
-                self.combat_state.enemy.take_damage(damage);
+                self.combat_state.enemy.take_damage(damage_result.damage);
 
                 // Apply aura to enemy (for reactions)
                 self.combat_state.enemy_aura = Some(skill_element);
 
+                // Log crit/damage info
+                if damage_result.is_critical {
+                    log::info!("CRITICAL! {} dealt {} damage (crit: {}%)",
+                        skill.name, damage_result.damage, skill.crit_chance);
+                } else {
+                    log::info!("Skill {} dealt {} damage", skill.name, damage_result.damage);
+                }
+
                 // Handle DoT if applicable
                 if skill.dot_damage > 0 && skill.dot_duration > 0 {
-                    log::info!("Skill {} applied DoT: {} dmg for {} turns", skill.name, skill.dot_damage, skill.dot_duration);
-                    // DoT would be tracked in combat_state - for now just log
+                    log::info!("Skill {} applied DoT: {} dmg for {} turns",
+                        skill.name, skill.dot_damage, skill.dot_duration);
+                }
+
+                // Handle reaction popup
+                if let Some(ref name) = reaction_name {
+                    self.reaction_popup = Some(ReactionPopup {
+                        name: name.clone(),
+                        timer: 1.5,
+                    });
                 }
 
                 // Handle reaction heal if BLOOM
@@ -769,8 +800,10 @@ impl DungeonCombatPage {
 
                 Some(CombatEvent::PlayerSkill {
                     skill_name: skill.name.clone(),
-                    damage,
+                    damage: damage_result.damage,
                     element: skill_element,
+                    is_critical: damage_result.is_critical,
+                    is_miss: false,
                 })
             }
         }
@@ -1057,17 +1090,20 @@ impl DungeonCombatPage {
                     alpha: 1.0,
                 });
             }
-            CombatEvent::PlayerSkill { damage, .. } => {
+            CombatEvent::PlayerSkill { damage, is_miss, .. } => {
                 if self.action_target == ActiveAnim::None {
                     self.queue_animation(ActiveAnim::Player, AnimType::Attack);
                 }
-                self.damage_popups.push(DamagePopup {
-                    damage,
-                    is_player_damage: true,
-                    is_heal: false,
-                    y_offset: 0.0,
-                    alpha: 1.0,
-                });
+                // Only show damage popup if not a miss
+                if !is_miss && damage > 0 {
+                    self.damage_popups.push(DamagePopup {
+                        damage,
+                        is_player_damage: true,
+                        is_heal: false,
+                        y_offset: 0.0,
+                        alpha: 1.0,
+                    });
+                }
             }
             CombatEvent::PlayerSkillHeal { heal_amount, .. } => {
                 self.damage_popups.push(DamagePopup {
@@ -1115,6 +1151,7 @@ impl DungeonCombatPage {
             Element::Shadow => Rgb888::new(150, 50, 200),
             Element::Holy => Rgb888::new(255, 255, 200),
             Element::Ghost => Rgb888::new(180, 180, 220),
+            Element::Neutral => Rgb888::new(180, 180, 180),
         }
     }
 
@@ -1128,6 +1165,7 @@ impl DungeonCombatPage {
             Element::Shadow => 'S',
             Element::Holy => 'H',
             Element::Ghost => 'G',
+            Element::Neutral => 'N',
         }
     }
 
@@ -1338,6 +1376,9 @@ impl Page for DungeonCombatPage {
         let player_x = base_player_x + player_offset;
 
         // Render enemy animation (or death animation if playing)
+        // Don't render enemy at all if they're dead and death animation is complete
+        let enemy_is_dead = !self.combat_state.enemy.is_alive();
+
         if self.death_anim_active {
             // Death animation: spin and fly off to the left
             let progress = (self.death_anim_timer / Self::DEATH_ANIM_DURATION).min(1.0);
@@ -1359,13 +1400,14 @@ impl Page for DungeonCombatPage {
                     anim.render(display, death_x, death_y, spin_flip);
                 }
             }
-        } else {
-            // Normal enemy rendering
+        } else if !enemy_is_dead {
+            // Normal enemy rendering (only if alive)
             let enemy_species = &self.combat_state.enemy.species_id;
             if let Some(anim) = self.anim_cache.get(enemy_species) {
                 anim.render(display, enemy_x, center_y, false);
             }
         }
+        // If enemy is dead and death animation is complete, don't render anything
 
         // Render player animation using raw format (flipped)
         // Look up from cache by active monster's species_id
@@ -1486,42 +1528,58 @@ impl Page for DungeonCombatPage {
         }
 
         // ===== BOTTOM: 3 Skill Buttons + Swap =====
+        use crate::game::calculations::damage::get_element_multiplier;
+
         let bottom_y = 200;
         let skill_button_y = bottom_y;
         let skill_button_w = 74u32;
-        let skill_button_h = 32u32;
+        let skill_button_h = 50u32;  // Taller buttons for more info
         let button_spacing = 4;
 
         // Only show action buttons during player's turn
         let show_buttons = matches!(self.turn_phase, TurnPhase::PlayerSelectAction);
 
-        // Get active monster's skills for button labels
-        let monster_skills: Vec<(String, u8, bool)> = self.combat_state.active_monster()
+        // Get enemy element for effectiveness calculation
+        let enemy_element = self.combat_state.enemy.element;
+
+        // Get active monster's skills with full details
+        // (name, cooldown, usable, power, accuracy, element, effectiveness)
+        let monster_skills: Vec<(String, u8, bool, u16, u8, Element, f32)> = self.combat_state.active_monster()
             .map(|m| {
                 (0..3).map(|slot| {
-                    let skill_name = m.equipped_skills.get(slot)
-                        .map(|s| if s.name.len() > 8 { s.name[..8].to_string() } else { s.name.clone() })
-                        .unwrap_or_else(|| "---".to_string());
-                    let cooldown = m.get_skill_cooldown(slot);
-                    let usable = slot < m.equipped_skills.len() && !m.is_skill_on_cooldown(slot) && m.is_alive();
-                    (skill_name, cooldown, usable)
+                    if let Some(skill) = m.equipped_skills.get(slot) {
+                        let skill_name = if skill.name.len() > 8 {
+                            skill.name[..8].to_string()
+                        } else {
+                            skill.name.clone()
+                        };
+                        let cooldown = m.get_skill_cooldown(slot);
+                        let usable = !m.is_skill_on_cooldown(slot) && m.is_alive();
+                        let effectiveness = get_element_multiplier(skill.element, enemy_element);
+                        (skill_name, cooldown, usable, skill.power, skill.accuracy, skill.element, effectiveness)
+                    } else {
+                        ("---".to_string(), 0, false, 0, 0, Element::Neutral, 1.0)
+                    }
                 }).collect()
             })
-            .unwrap_or_else(|| vec![("---".to_string(), 0, false); 3]);
+            .unwrap_or_else(|| vec![("---".to_string(), 0, false, 0, 0, Element::Neutral, 1.0); 3]);
 
         // Draw 3 skill buttons
-        for (slot, (skill_name, cooldown, usable)) in monster_skills.iter().enumerate() {
+        for (slot, (skill_name, cooldown, usable, power, accuracy, element, effectiveness)) in monster_skills.iter().enumerate() {
             let btn_x = 4 + (slot as i32) * (skill_button_w as i32 + button_spacing);
             let enabled = show_buttons && *usable;
+            let has_skill = skill_name != "---";
 
-            // Button colors based on state
+            // Get element color for button tint
+            let elem_color = Self::element_color(*element);
+
+            // Button colors based on state and element
             let (bg, border, text_color) = if enabled {
-                // Ready to use - colored based on slot
-                match slot {
-                    0 => (Rgb888::new(240, 180, 180), Rgb888::new(200, 100, 100), Rgb888::new(150, 50, 50)),
-                    1 => (Rgb888::new(200, 180, 240), Rgb888::new(150, 100, 200), Rgb888::new(100, 50, 150)),
-                    _ => (Rgb888::new(180, 220, 180), Rgb888::new(100, 180, 100), Rgb888::new(50, 120, 50)),
-                }
+                // Ready to use - tinted by element color
+                let r = ((elem_color.r() as u16 + 200) / 2).min(255) as u8;
+                let g = ((elem_color.g() as u16 + 200) / 2).min(255) as u8;
+                let b = ((elem_color.b() as u16 + 200) / 2).min(255) as u8;
+                (Rgb888::new(r, g, b), elem_color, Rgb888::new(40, 40, 50))
             } else if *cooldown > 0 {
                 // On cooldown - dim red
                 (Rgb888::new(200, 160, 160), Rgb888::new(180, 100, 100), Rgb888::new(120, 70, 70))
@@ -1535,17 +1593,51 @@ impl Page for DungeonCombatPage {
             btn_rounded.into_styled(PrimitiveStyleBuilder::new().fill_color(bg).build()).draw(display)?;
             btn_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(border).stroke_width(2).build()).draw(display)?;
 
-            // Skill name (centered)
-            let name_style = MonoTextStyle::new(&FONT_6X10, text_color);
-            let name_x = btn_x + (skill_button_w as i32 - skill_name.len() as i32 * 6) / 2;
-            Text::new(skill_name, Point::new(name_x, skill_button_y + 14), name_style).draw(display)?;
+            if has_skill {
+                // Row 1: Skill name (centered)
+                let name_style = MonoTextStyle::new(&FONT_6X10, text_color);
+                let name_x = btn_x + (skill_button_w as i32 - skill_name.len() as i32 * 6) / 2;
+                Text::new(skill_name, Point::new(name_x, skill_button_y + 12), name_style).draw(display)?;
 
-            // Cooldown indicator (if on cooldown)
-            if *cooldown > 0 {
-                let cd_text = format!("CD:{}", cooldown);
-                let cd_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 100, 100));
-                let cd_x = btn_x + (skill_button_w as i32 - cd_text.len() as i32 * 6) / 2;
-                Text::new(&cd_text, Point::new(cd_x, skill_button_y + 26), cd_style).draw(display)?;
+                // Row 2: Power and Accuracy (if not on cooldown)
+                if *cooldown == 0 {
+                    // Format: "P120 A95" or "P0" for non-damage skills
+                    let stats_text = if *power > 0 {
+                        format!("P{} A{}", power, accuracy)
+                    } else {
+                        format!("A{}", accuracy)
+                    };
+                    let stats_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(80, 80, 90));
+                    let stats_x = btn_x + (skill_button_w as i32 - stats_text.len() as i32 * 6) / 2;
+                    Text::new(&stats_text, Point::new(stats_x, skill_button_y + 24), stats_style).draw(display)?;
+
+                    // Row 3: Element char + Effectiveness arrow
+                    let elem_char = Self::element_char(*element);
+                    let elem_style = MonoTextStyle::new(&FONT_6X10, elem_color);
+                    Text::new(&elem_char.to_string(), Point::new(btn_x + 8, skill_button_y + 36), elem_style).draw(display)?;
+
+                    // Effectiveness indicator (arrow up/down)
+                    if *power > 0 {  // Only show for damage skills
+                        let (arrow, arrow_color) = if *effectiveness > 1.0 {
+                            // Super effective - green up arrow
+                            ("^^", Rgb888::new(50, 180, 50))
+                        } else if *effectiveness < 1.0 {
+                            // Not very effective - red down arrow
+                            ("vv", Rgb888::new(200, 80, 80))
+                        } else {
+                            // Neutral - no indicator
+                            ("--", Rgb888::new(120, 120, 120))
+                        };
+                        let arrow_style = MonoTextStyle::new(&FONT_6X10, arrow_color);
+                        Text::new(arrow, Point::new(btn_x + 50, skill_button_y + 36), arrow_style).draw(display)?;
+                    }
+                } else {
+                    // Show cooldown instead
+                    let cd_text = format!("CD:{}", cooldown);
+                    let cd_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(255, 100, 100));
+                    let cd_x = btn_x + (skill_button_w as i32 - cd_text.len() as i32 * 6) / 2;
+                    Text::new(&cd_text, Point::new(cd_x, skill_button_y + 30), cd_style).draw(display)?;
+                }
             }
 
             // Store button area for touch
@@ -1553,9 +1645,9 @@ impl Page for DungeonCombatPage {
         }
 
         // SWAP button (below skill buttons)
-        let swap_y = skill_button_y + skill_button_h as i32 + 4;
+        let swap_y = skill_button_y + skill_button_h as i32 + 2;
         let swap_w = 232u32;
-        let swap_h = 28u32;
+        let swap_h = 24u32;  // Smaller to fit
         let can_swap = self.can_swap();
         let swap_enabled = show_buttons && can_swap;
         let (swap_bg, swap_border) = if swap_enabled {
@@ -1569,7 +1661,7 @@ impl Page for DungeonCombatPage {
         swap_rounded.into_styled(PrimitiveStyleBuilder::new().stroke_color(swap_border).stroke_width(2).build()).draw(display)?;
         let swap_text_color = if swap_enabled { Rgb888::new(50, 100, 150) } else { Rgb888::new(100, 100, 100) };
         let swap_style = MonoTextStyle::new(&FONT_7X13, swap_text_color);
-        Text::new("SWAP", Point::new(100, swap_y + 19), swap_style).draw(display)?;
+        Text::new("SWAP", Point::new(100, swap_y + 16), swap_style).draw(display)?;
         self.swap_button_area = if swap_enabled { Some(swap_rect) } else { None };
 
         // ===== SWAP POPUP =====
