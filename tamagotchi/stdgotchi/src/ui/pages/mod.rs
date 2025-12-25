@@ -5,7 +5,6 @@
 pub mod battle;
 pub mod battle_result;
 pub mod between_floors;
-pub mod bonus_selection;
 pub mod collection;
 pub mod death;
 pub mod dungeon_combat;
@@ -25,7 +24,6 @@ pub mod monster_upgrade;
 pub use battle::{BattlePage, BattleAction};
 pub use battle_result::{BattleResultPage, BattleResultAction};
 pub use between_floors::{BetweenFloorsPage, BetweenFloorsAction, MonsterStatusData};
-pub use bonus_selection::{BonusSelectionPage, BonusSelectionAction};
 pub use collection::{CollectionPage, CollectionAction, ZoneCollectionData, SpeciesCollectionData};
 
 pub use death::DeathPage;
