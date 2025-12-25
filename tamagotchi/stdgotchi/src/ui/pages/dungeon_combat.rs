@@ -58,6 +58,8 @@ pub enum TurnPhase {
     EnemyActionExecuting { timer: f32 },
     /// Brief pause after enemy action to show damage (0.5s)
     EnemyActionComplete { timer: f32 },
+    /// Showing battle message (Pokemon-style text)
+    ShowingBattleMessage { timer: f32 },
     /// Combat ended (victory or defeat)
     CombatEnded { victory: bool },
 }
@@ -212,6 +214,13 @@ pub struct DungeonCombatPage {
     // Turn indicator message
     action_message: Option<String>,
     message_timer: f32,
+
+    // Battle message queue (Pokemon-style)
+    battle_messages: Vec<String>,
+    current_battle_message: Option<String>,
+    pending_victory: bool,
+    pending_defeat: bool,
+    last_was_enemy_turn: bool,  // Track if we came from enemy turn
 }
 
 struct DamagePopup {
@@ -264,6 +273,12 @@ impl DungeonCombatPage {
             last_player_action: None,
             action_message: None,
             message_timer: 0.0,
+            // Battle messages
+            battle_messages: Vec::new(),
+            current_battle_message: None,
+            pending_victory: false,
+            pending_defeat: false,
+            last_was_enemy_turn: false,
         }
     }
 
@@ -568,7 +583,29 @@ impl DungeonCombatPage {
     fn apply_action_effect(&mut self, action_type: TurnAction) {
         match action_type {
             TurnAction::UseSkill { slot } => {
+                // Get monster and skill info for battle message
+                let (monster_name, skill_name) = self.combat_state.active_monster()
+                    .and_then(|m| {
+                        m.equipped_skills.get(slot as usize)
+                            .map(|s| (m.name.clone(), s.name.clone()))
+                    })
+                    .unwrap_or(("Monster".to_string(), "Attack".to_string()));
+
                 if let Some(event) = self.execute_skill_at_slot(slot) {
+                    // Queue battle messages based on event
+                    match &event {
+                        CombatEvent::PlayerSkill { damage, skill_name: sn, .. } => {
+                            self.queue_battle_message(format!("{} used {}!", monster_name, sn));
+                            if *damage > 0 {
+                                self.queue_battle_message(format!("Dealt {} damage!", damage));
+                            }
+                        }
+                        CombatEvent::PlayerSkillHeal { heal_amount, skill_name: sn, .. } => {
+                            self.queue_battle_message(format!("{} used {}!", monster_name, sn));
+                            self.queue_battle_message(format!("Recovered {} HP!", heal_amount));
+                        }
+                        _ => {}
+                    }
                     self.handle_combat_event(event);
                 }
             }
@@ -806,6 +843,49 @@ impl DungeonCombatPage {
     }
 
     /// Handle enemy death (victory)
+    /// Queue a battle message (Pokemon-style)
+    fn queue_battle_message(&mut self, message: String) {
+        self.battle_messages.push(message);
+    }
+
+    /// Start showing battle messages
+    fn start_battle_messages(&mut self) {
+        if !self.battle_messages.is_empty() {
+            self.current_battle_message = Some(self.battle_messages.remove(0));
+            self.turn_phase = TurnPhase::ShowingBattleMessage { timer: 0.0 };
+        }
+    }
+
+    /// Advance to next battle message or end messages
+    fn next_battle_message(&mut self) {
+        if !self.battle_messages.is_empty() {
+            self.current_battle_message = Some(self.battle_messages.remove(0));
+            self.turn_phase = TurnPhase::ShowingBattleMessage { timer: 0.0 };
+        } else {
+            self.current_battle_message = None;
+            if self.pending_victory {
+                // All messages shown, now show victory
+                self.turn_phase = TurnPhase::CombatEnded { victory: true };
+                self.combat_state.combat_ended = true;
+                self.combat_state.player_won = true;
+                self.pending_victory = false;
+            } else if self.pending_defeat {
+                // All messages shown, now show defeat
+                self.turn_phase = TurnPhase::CombatEnded { victory: false };
+                self.combat_state.combat_ended = true;
+                self.combat_state.player_won = false;
+                self.pending_defeat = false;
+            } else if self.last_was_enemy_turn {
+                // Continue combat after enemy turn
+                self.last_was_enemy_turn = false;
+                self.turn_phase = TurnPhase::EnemyActionComplete { timer: 0.0 };
+            } else {
+                // Continue combat after player turn
+                self.turn_phase = TurnPhase::PlayerActionComplete { timer: 0.0 };
+            }
+        }
+    }
+
     fn handle_enemy_death(&mut self) {
         // Calculate and award rewards for this floor
         let base_crystals = 10 + (self.combat_state.current_floor as u32 / 3);
@@ -824,11 +904,49 @@ impl DungeonCombatPage {
             self.combat_state.crystals_earned,
             self.combat_state.xp_earned);
 
-        // Victory!
-        self.turn_phase = TurnPhase::CombatEnded { victory: true };
-        self.combat_state.combat_ended = true;
-        self.combat_state.player_won = true;
+        // Queue victory messages
+        let enemy_name = self.combat_state.enemy.name.clone();
+        self.queue_battle_message(format!("{} fainted!", enemy_name));
+        self.queue_battle_message("You won the battle!".to_string());
+
+        // Mark pending victory and start showing messages
+        self.pending_victory = true;
         self.start_death_animation();
+        self.start_battle_messages();
+    }
+
+    /// Handle player defeat (all monsters fainted)
+    fn handle_player_defeat(&mut self) {
+        log::info!("Player defeated on floor {}", self.combat_state.current_floor);
+
+        // Queue defeat messages
+        if let Some(monster) = self.combat_state.active_monster() {
+            self.queue_battle_message(format!("{} fainted!", monster.name));
+        }
+        self.queue_battle_message("You have no more monsters!".to_string());
+        self.queue_battle_message("You lost the battle...".to_string());
+
+        // Mark pending defeat and start showing messages
+        self.pending_defeat = true;
+        self.start_battle_messages();
+    }
+
+    /// Execute enemy attack and queue battle messages
+    fn execute_enemy_attack_with_messages(&mut self) {
+        // Get enemy info for message
+        let enemy_name = self.combat_state.enemy.name.clone();
+
+        if let Some(event) = self.execute_enemy_turn() {
+            // Queue battle messages based on event
+            match &event {
+                CombatEvent::EnemyAttack { damage, .. } => {
+                    self.queue_battle_message(format!("{} attacks!", enemy_name));
+                    self.queue_battle_message(format!("Dealt {} damage!", damage));
+                }
+                _ => {}
+            }
+            self.handle_combat_event(event);
+        }
     }
 
     /// Handle touch input (turn-based version)
@@ -1333,6 +1451,40 @@ impl Page for DungeonCombatPage {
             }
         }
 
+        // ===== BATTLE MESSAGE BOX (Pokemon-style) =====
+        if let Some(ref message) = self.current_battle_message {
+            // Draw message box background
+            let msg_box_y = 200;
+            let msg_box_h = 70u32;
+            let msg_box = Rectangle::new(Point::new(4, msg_box_y), Size::new(232, msg_box_h));
+            let msg_box_rounded = RoundedRectangle::new(msg_box, CornerRadii::new(Size::new(8, 8)));
+
+            // Dark semi-transparent background
+            msg_box_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .fill_color(Rgb888::new(30, 30, 40))
+                .build())
+                .draw(display)?;
+            msg_box_rounded.into_styled(PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb888::new(200, 200, 220))
+                .stroke_width(2)
+                .build())
+                .draw(display)?;
+
+            // Draw message text (centered)
+            let msg_style = MonoTextStyle::new(&FONT_7X13, Rgb888::WHITE);
+            let text_x = 120 - (message.len() as i32 * 7 / 2);
+            let text_x = text_x.max(12); // Don't go off screen
+            Text::new(message, Point::new(text_x, msg_box_y + 28), msg_style).draw(display)?;
+
+            // Draw "tap to continue" hint
+            let hint_style = MonoTextStyle::new(&FONT_6X10, Rgb888::new(150, 150, 160));
+            Text::new("...", Point::new(210, msg_box_y + 55), hint_style).draw(display)?;
+
+            display.flush()?;
+            self.dirty = false;
+            return Ok(());
+        }
+
         // ===== BOTTOM: 3 Skill Buttons + Swap =====
         let bottom_y = 200;
         let skill_button_y = bottom_y;
@@ -1564,6 +1716,9 @@ impl Page for DungeonCombatPage {
                     // Check if enemy died
                     if !self.combat_state.enemy.is_alive() {
                         self.handle_enemy_death();
+                    } else if !self.battle_messages.is_empty() {
+                        // Show battle messages first
+                        self.start_battle_messages();
                     } else {
                         // Move to post-action delay
                         self.turn_phase = TurnPhase::PlayerActionComplete { timer: 0.0 };
@@ -1591,20 +1746,30 @@ impl Page for DungeonCombatPage {
                 }
             }
 
+            TurnPhase::ShowingBattleMessage { timer } => {
+                let new_timer = timer + delta;
+                // Show each message for 1.2 seconds
+                if new_timer >= 1.2 {
+                    self.next_battle_message();
+                } else {
+                    self.turn_phase = TurnPhase::ShowingBattleMessage { timer: new_timer };
+                }
+            }
+
             TurnPhase::EnemyActionExecuting { timer } => {
                 let new_timer = timer + delta;
                 if new_timer >= ACTION_ANIM_DURATION {
-                    // Execute enemy attack
-                    if let Some(event) = self.execute_enemy_turn() {
-                        self.handle_combat_event(event);
-                    }
+                    // Execute enemy attack with battle messages
+                    self.execute_enemy_attack_with_messages();
                     self.action_target = ActiveAnim::None;
 
                     // Check if player died
                     if self.combat_state.all_players_dead() {
-                        self.turn_phase = TurnPhase::CombatEnded { victory: false };
-                        self.combat_state.combat_ended = true;
-                        self.combat_state.player_won = false;
+                        self.handle_player_defeat();
+                    } else if !self.battle_messages.is_empty() {
+                        // Show battle messages first
+                        self.last_was_enemy_turn = true;
+                        self.start_battle_messages();
                     } else {
                         self.turn_phase = TurnPhase::EnemyActionComplete { timer: 0.0 };
                     }
