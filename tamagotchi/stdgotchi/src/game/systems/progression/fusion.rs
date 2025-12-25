@@ -3,7 +3,7 @@
 //! Handles monster fusion when capturing duplicates.
 
 use crate::game::core::Monster;
-use crate::game::calculations::stats::{MAX_FUSION, apply_fusion_bonus};
+use crate::game::calculations::stats::MAX_FUSION;
 
 /// Check if two monsters can be fused (same species)
 pub fn can_fuse(monster1: &Monster, monster2: &Monster) -> bool {
@@ -26,8 +26,9 @@ pub fn apply_fusion(monster: &mut Monster) -> bool {
 }
 
 /// Get the fusion bonus percentage (for display)
+/// Each fusion gives 10% bonus
 pub fn fusion_bonus_percent(fusion_count: u8) -> u8 {
-    (fusion_count.min(MAX_FUSION) * 5) as u8
+    (fusion_count.min(MAX_FUSION) * 10) as u8
 }
 
 /// Format fusion display string (e.g., "+3")
@@ -46,9 +47,9 @@ mod tests {
     #[test]
     fn test_fusion_bonus_percent() {
         assert_eq!(fusion_bonus_percent(0), 0);
-        assert_eq!(fusion_bonus_percent(1), 5);
-        assert_eq!(fusion_bonus_percent(9), 45);
-        assert_eq!(fusion_bonus_percent(10), 45); // Capped
+        assert_eq!(fusion_bonus_percent(1), 10);
+        assert_eq!(fusion_bonus_percent(9), 90);
+        assert_eq!(fusion_bonus_percent(10), 90); // Capped
     }
 
     #[test]

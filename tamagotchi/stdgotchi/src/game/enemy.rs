@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::element_system::Element;
 use super::calculations::xp::calculate_exp_reward;
+use super::calculations::stats::calculate_level_multiplier;
 
 /// Enemy instance in battle
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,16 +26,26 @@ pub struct Enemy {
 
 impl Enemy {
     /// Create enemy from loaded data
+    /// Applies Level_Multi formula to base stats: Stat = Base × (1 + (Level - 1) × 0.04)
     /// Applies XP_MULTIPLIER to base_exp for actual reward
-    pub fn from_data(id: u32, name: String, level: u32, hp: u32, attack: u32, defense: u32, hit: u32, flee: u32, base_exp: u64, element: Element) -> Self {
+    pub fn from_data(id: u32, name: String, level: u32, base_hp: u32, base_attack: u32, base_defense: u32, base_hit: u32, base_flee: u32, base_exp: u64, element: Element) -> Self {
+        // Apply level multiplier: Level_Multi = 1 + (Level - 1) × 0.04
+        let level_multi = calculate_level_multiplier(level as u8);
+
+        let max_hp = (base_hp as f32 * level_multi).round() as u32;
+        let atk = (base_attack as f32 * level_multi).round() as u32;
+        let def = (base_defense as f32 * level_multi).round() as u32;
+        let hit = (base_hit as f32 * level_multi).round() as u32;
+        let flee = (base_flee as f32 * level_multi).round() as u32;
+
         Self {
             id,
             name,
             level,
-            current_hp: hp,
-            max_hp: hp,
-            atk: attack,
-            def: defense,
+            current_hp: max_hp,
+            max_hp,
+            atk,
+            def,
             hit,
             flee,
             exp_reward: calculate_exp_reward(base_exp),
@@ -43,6 +54,8 @@ impl Enemy {
     }
 
     /// Create enemy with level scaling based on hero level
+    /// First applies Level_Multi formula: Stat = Base × (1 + (Level - 1) × 0.04)
+    /// Then applies hero-level scaling modifier
     /// Applies XP_MULTIPLIER to base_exp, then scales by level modifier
     pub fn from_data_scaled(
         id: u32,
@@ -57,17 +70,23 @@ impl Enemy {
         element: Element,
         hero_level: u32,
     ) -> Self {
-        // Scale enemy stats based on hero level, but keep base level for display
-        let scaling_level = (hero_level + 2).min(50); // For stat scaling
-        let level_modifier = 1.0 + ((scaling_level as f32 - base_level as f32) * 0.1);
+        // First apply level multiplier: Level_Multi = 1 + (Level - 1) × 0.04
+        let level_multi = calculate_level_multiplier(base_level as u8);
 
-        let max_hp = (base_hp as f32 * level_modifier).max(1.0) as u32;
-        let atk = (base_attack as f32 * level_modifier).max(1.0) as u32;
-        let def = (base_defense as f32 * level_modifier).max(0.0) as u32;
-        let hit = (base_hit as f32 * level_modifier).max(1.0) as u32;
-        let flee = (base_flee as f32 * level_modifier).max(1.0) as u32;
+        // Then apply hero-level scaling on top
+        let scaling_level = (hero_level + 2).min(50);
+        let hero_modifier = 1.0 + ((scaling_level as f32 - base_level as f32) * 0.1);
+
+        // Combined multiplier
+        let total_multi = level_multi * hero_modifier;
+
+        let max_hp = (base_hp as f32 * total_multi).max(1.0) as u32;
+        let atk = (base_attack as f32 * total_multi).max(1.0) as u32;
+        let def = (base_defense as f32 * total_multi).max(0.0) as u32;
+        let hit = (base_hit as f32 * total_multi).max(1.0) as u32;
+        let flee = (base_flee as f32 * total_multi).max(1.0) as u32;
         // Apply multiplier first, then scale
-        let exp_reward = (calculate_exp_reward(base_exp) as f32 * level_modifier).max(1.0) as u64;
+        let exp_reward = (calculate_exp_reward(base_exp) as f32 * hero_modifier).max(1.0) as u64;
 
         Self {
             id,

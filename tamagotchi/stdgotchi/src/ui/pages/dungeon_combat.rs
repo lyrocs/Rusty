@@ -281,6 +281,9 @@ impl DungeonCombatPage {
             return;
         }
 
+        // Log combat stats for debugging
+        self.log_combat_stats();
+
         // Load only what's immediately visible:
         // 1. Current enemy
         // 2. Active player monster (index 0)
@@ -1024,6 +1027,33 @@ impl DungeonCombatPage {
 
     pub fn combat_state(&self) -> &CombatState {
         &self.combat_state
+    }
+
+    /// Log combat stats for debugging
+    fn log_combat_stats(&self) {
+        use crate::game::systems::dungeon::floor_gen::floor_stat_multiplier;
+
+        let floor_mult = floor_stat_multiplier(self.combat_state.current_floor);
+        log::info!("=== COMBAT STATS ===");
+        log::info!("Floor: {} (Boss: {}) - Enemy stat multiplier: {:.0}%",
+            self.combat_state.current_floor, self.combat_state.is_boss_floor, floor_mult * 100.0);
+
+        // Enemy stats (already have floor multiplier applied)
+        let enemy = &self.combat_state.enemy;
+        log::info!("ENEMY: {} (Lv{}) [{:?}]", enemy.name, enemy.level, enemy.element);
+        log::info!("  HP: {}/{}", enemy.hp_current, enemy.hp_max);
+        log::info!("  ATK: {}, DEF: {}, SPD: {}", enemy.atk, enemy.def, enemy.spd);
+
+        // Player monster stats (NO floor multiplier - full stats)
+        log::info!("PLAYER TEAM ({} monsters):", self.combat_state.player_monsters.len());
+        for (i, monster) in self.combat_state.player_monsters.iter().enumerate() {
+            let active_marker = if i == self.combat_state.active_index as usize { " [ACTIVE]" } else { "" };
+            log::info!("  #{}{}: {} (Lv{}) [{:?}]", i, active_marker, monster.name, monster.level, monster.element);
+            log::info!("    HP: {}/{}", monster.hp_current, monster.hp_max);
+            log::info!("    ATK: {}, DEF: {}, SPD: {}", monster.atk, monster.def, monster.spd);
+            log::info!("    Fusion: +{}", monster.fusion_count);
+        }
+        log::info!("====================");
     }
 }
 

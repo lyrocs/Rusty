@@ -2,46 +2,46 @@
 //!
 //! All stat-related calculations: base stats, level scaling, fusion bonuses, power rating.
 //! This is the SINGLE SOURCE OF TRUTH for stat formulas.
+//!
+//! Formula:
+//!   Level_Multi = 1 + (Level - 1) × 0.04
+//!   Tier_Multi = 1 + Tier × 0.10 (where Tier = fusion_count)
+//!   Stat = Base × Level_Multi × Tier_Multi
 
-/// Maximum fusion count
+/// Maximum fusion count (tier)
 pub const MAX_FUSION: u8 = 9;
 
-/// Fusion bonus per level (5% = 0.05)
-pub const FUSION_BONUS_PER_LEVEL: f32 = 0.05;
+/// Level bonus per level (4% = 0.04)
+pub const LEVEL_BONUS_PER_LEVEL: f32 = 0.04;
 
-/// Calculate stat with fusion bonus
-/// Formula: stat_final = stat_base * (1 + fusion_count * 0.05)
-pub fn apply_fusion_bonus(base_stat: u16, fusion_count: u8) -> u16 {
-    let clamped_fusion = fusion_count.min(MAX_FUSION);
-    let multiplier = 1.0 + (clamped_fusion as f32 * FUSION_BONUS_PER_LEVEL);
-    (base_stat as f32 * multiplier).round() as u16
+/// Tier/Fusion bonus per level (10% = 0.10)
+pub const TIER_BONUS_PER_FUSION: f32 = 0.10;
+
+/// Calculate level multiplier
+/// Formula: Level_Multi = 1 + (Level - 1) × 0.04
+pub fn calculate_level_multiplier(level: u8) -> f32 {
+    1.0 + (level.saturating_sub(1) as f32 * LEVEL_BONUS_PER_LEVEL)
 }
 
-/// Calculate stat at a given level
-/// Stats scale linearly with level (simple formula for now)
-pub fn calculate_stat_at_level(base_stat: u16, level: u8) -> u16 {
-    // Each level adds ~2% to base stat
-    let level_multiplier = 1.0 + (level.saturating_sub(1) as f32 * 0.02);
-    (base_stat as f32 * level_multiplier).round() as u16
+/// Calculate tier/fusion multiplier
+/// Formula: Tier_Multi = 1 + Tier × 0.10
+pub fn calculate_tier_multiplier(fusion_count: u8) -> f32 {
+    let clamped_fusion = fusion_count.min(MAX_FUSION);
+    1.0 + (clamped_fusion as f32 * TIER_BONUS_PER_FUSION)
 }
 
 /// Calculate final stat with level and fusion
+/// Formula: Stat = Base × Level_Multi × Tier_Multi
 pub fn calculate_final_stat(base_stat: u16, level: u8, fusion_count: u8) -> u16 {
-    let level_stat = calculate_stat_at_level(base_stat, level);
-    apply_fusion_bonus(level_stat, fusion_count)
+    let level_multi = calculate_level_multiplier(level);
+    let tier_multi = calculate_tier_multiplier(fusion_count);
+    (base_stat as f32 * level_multi * tier_multi).round() as u16
 }
 
-/// Calculate HP at a given level (HP scales more than other stats)
-pub fn calculate_hp_at_level(base_hp: u16, level: u8) -> u16 {
-    // HP gains ~3% per level
-    let level_multiplier = 1.0 + (level.saturating_sub(1) as f32 * 0.03);
-    (base_hp as f32 * level_multiplier).round() as u16
-}
-
-/// Calculate final HP with level and fusion
+/// Calculate final HP with level and fusion (same formula as other stats)
+/// Formula: HP = Base_HP × Level_Multi × Tier_Multi
 pub fn calculate_final_hp(base_hp: u16, level: u8, fusion_count: u8) -> u16 {
-    let level_hp = calculate_hp_at_level(base_hp, level);
-    apply_fusion_bonus(level_hp, fusion_count)
+    calculate_final_stat(base_hp, level, fusion_count)
 }
 
 /// Calculate power rating for display
@@ -55,11 +55,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fusion_bonus() {
-        assert_eq!(apply_fusion_bonus(100, 0), 100); // No fusion
-        assert_eq!(apply_fusion_bonus(100, 1), 105); // +5%
-        assert_eq!(apply_fusion_bonus(100, 9), 145); // +45% (max)
-        assert_eq!(apply_fusion_bonus(100, 10), 145); // Clamped to max
+    fn test_level_multiplier() {
+        // Level_Multi = 1 + (Level - 1) × 0.04
+        assert_eq!(calculate_level_multiplier(1), 1.0);   // Level 1: 1 + 0 × 0.04 = 1.0
+        assert_eq!(calculate_level_multiplier(10), 1.36); // Level 10: 1 + 9 × 0.04 = 1.36
+        assert_eq!(calculate_level_multiplier(26), 2.0);  // Level 26: 1 + 25 × 0.04 = 2.0
+    }
+
+    #[test]
+    fn test_tier_multiplier() {
+        // Tier_Multi = 1 + Tier × 0.10
+        assert_eq!(calculate_tier_multiplier(0), 1.0);  // No fusion
+        assert_eq!(calculate_tier_multiplier(1), 1.1);  // +10%
+        assert_eq!(calculate_tier_multiplier(9), 1.9);  // +90% (max)
+        assert_eq!(calculate_tier_multiplier(10), 1.9); // Clamped to max
+    }
+
+    #[test]
+    fn test_final_stat() {
+        // Stat = Base × Level_Multi × Tier_Multi
+        // Level 1, Fusion 0: 100 × 1.0 × 1.0 = 100
+        assert_eq!(calculate_final_stat(100, 1, 0), 100);
+        // Level 1, Fusion 1: 100 × 1.0 × 1.10 = 110
+        assert_eq!(calculate_final_stat(100, 1, 1), 110);
+        // Level 1, Fusion 9: 100 × 1.0 × 1.90 = 190
+        assert_eq!(calculate_final_stat(100, 1, 9), 190);
+        // Level 10, Fusion 0: 100 × 1.36 × 1.0 = 136
+        assert_eq!(calculate_final_stat(100, 10, 0), 136);
+        // Level 10, Fusion 1: 100 × 1.36 × 1.10 = 149.6 ≈ 150
+        assert_eq!(calculate_final_stat(100, 10, 1), 150);
     }
 
     #[test]

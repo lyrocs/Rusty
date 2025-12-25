@@ -261,7 +261,7 @@ impl GameManager {
         let tamer_data = TamerGameData::load().unwrap_or_default();
 
         // Load monsters from save data, or create starter if none
-        let (monsters, team, player) = if save_data.monsters.is_empty() {
+        let (mut monsters, team, player) = if save_data.monsters.is_empty() {
             log::info!("No saved monsters, creating starter Poring");
             let mut monsters = Vec::new();
             let mut team = Team::new();
@@ -277,6 +277,24 @@ impl GameManager {
             log::info!("Loaded {} monsters from save", save_data.monsters.len());
             (save_data.monsters, save_data.team, save_data.player)
         };
+
+        // Recalculate all monster stats to ensure they use current formula
+        // This handles formula changes between versions
+        use crate::game::systems::progression::leveling::recalculate_stats_with_base;
+        log::info!("Recalculating stats for {} monsters with current formula", monsters.len());
+        for monster in &mut monsters {
+            if let Some(species) = tamer_data.get_species(&monster.species_id) {
+                recalculate_stats_with_base(
+                    monster,
+                    species.base_hp,
+                    species.base_atk,
+                    species.base_def,
+                    species.base_spd,
+                );
+                log::info!("  {} Lv{}: HP={}, ATK={}, DEF={}, SPD={}",
+                    monster.name, monster.level, monster.hp_max, monster.atk, monster.def, monster.spd);
+            }
+        }
 
         Self {
             home_page: HomePage::new(),
@@ -335,6 +353,36 @@ impl GameManager {
         log::info!("Added monster: {} ({})", monster.name, monster.species_id);
         self.monsters.push(monster);
         true
+    }
+
+    /// Recalculate all monster stats using current formula
+    /// Call this after loading from save to ensure stats match current formula
+    pub fn recalculate_all_monster_stats(&mut self) {
+        use crate::game::systems::progression::leveling::recalculate_stats_with_base;
+
+        log::info!("Recalculating stats for {} monsters with updated formula", self.monsters.len());
+
+        for monster in &mut self.monsters {
+            // Look up species base stats
+            if let Some(species) = self.tamer_data.get_species(&monster.species_id) {
+                let old_atk = monster.atk;
+                let old_hp = monster.hp_max;
+
+                recalculate_stats_with_base(
+                    monster,
+                    species.base_hp,
+                    species.base_atk,
+                    species.base_def,
+                    species.base_spd,
+                );
+
+                log::info!("  {} Lv{} +{}: ATK {} -> {}, HP {} -> {}",
+                    monster.name, monster.level, monster.fusion_count,
+                    old_atk, monster.atk, old_hp, monster.hp_max);
+            } else {
+                log::warn!("  Species {} not found, cannot recalculate stats", monster.species_id);
+            }
+        }
     }
 
     /// Get current page based on mode
