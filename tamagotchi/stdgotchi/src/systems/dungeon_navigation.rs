@@ -48,6 +48,10 @@ pub fn dungeon_combat_navigation_system(
         if combat_page.needs_enemy_reload() {
             combat_page.reload_enemy_species(sd_card);
         }
+        // Reload if player species changed (swap to uncached monster)
+        if combat_page.needs_player_reload() {
+            combat_page.reload_player_species(sd_card);
+        }
         // Reload current frames for streaming playback (only when frames advance)
         if combat_page.needs_frame_reload() {
             combat_page.reload_needed_frames(sd_card);

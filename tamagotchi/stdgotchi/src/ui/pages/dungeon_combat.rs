@@ -144,8 +144,9 @@ const POST_ACTION_DELAY: f32 = 0.5;     // Time to show damage before next turn
 ///
 /// Memory layout (optimized for ESP32-C6 with no PSRAM):
 /// - Animation cache: HashMap<species_id, RawAnimPlayer> (~13KB per unique species)
-/// - All unique species (enemy + wave enemies + player team) loaded once at combat start
-/// - No duplicate loading - same species shared across team/enemy
+/// - Lazy loading: Only enemy + active player loaded at combat start
+/// - Other team members loaded on-demand when swapped in
+/// - Cache prevents duplicate loading of same species
 pub struct DungeonCombatPage {
     combat_state: CombatState,
     last_update: Instant,
@@ -169,7 +170,7 @@ pub struct DungeonCombatPage {
     end_delay: f32,
 
     // Animation cache: species_id -> RawAnimPlayer
-    // All unique species loaded once at combat start (enemy + waves + player team)
+    // Lazy loaded: enemy + active player at start, others on-demand during swaps
     anim_cache: HashMap<String, RawAnimPlayer>,
 
     // Current animation state
@@ -188,6 +189,9 @@ pub struct DungeonCombatPage {
     //            is_loading=true, loading_drawn=true → ready to load animations
     is_loading: bool,
     loading_drawn: bool,
+
+    // Player reload flag - set when active player changes and animation not cached
+    needs_player_anim_reload: bool,
 
     // Death animation state
     // When enemy dies: spin and fly off screen to the left
@@ -247,6 +251,7 @@ impl DungeonCombatPage {
             action_timer: 0.0,
             is_loading: true,  // Start in loading state
             loading_drawn: false,  // Not drawn yet - wait for first render
+            needs_player_anim_reload: false,  // No reload needed initially
             death_anim_active: false,
             death_anim_timer: 0.0,
             death_anim_species: String::new(),
@@ -268,56 +273,73 @@ impl DungeonCombatPage {
         self.is_loading && self.loading_drawn
     }
 
-    /// Load all animations from SD card (all unique species from enemy + waves + player team)
+    /// Load only immediately needed animations (enemy + active player) - lazy loading approach
+    /// Other team monsters are loaded on-demand when swapped in
     /// Call this after showing the loading screen
     pub fn load_initial_animations(&mut self, sd_card: &mut SdCardWrapper) {
         if !self.is_loading {
             return;
         }
 
-        // Collect all unique species IDs from:
+        // Load only what's immediately visible:
         // 1. Current enemy
-        // 2. All wave enemies
-        // 3. All player team monsters
-        let mut unique_species: Vec<String> = Vec::new();
+        // 2. Active player monster (index 0)
 
-        // Current enemy
+        // Load enemy animation
         let enemy_species = &self.combat_state.enemy.species_id;
-        if !unique_species.contains(enemy_species) {
-            unique_species.push(enemy_species.clone());
+        if let Some(anim) = load_raw_from_sd(sd_card, enemy_species, AnimType::Idle) {
+            log::info!("Loaded enemy animation: {}", enemy_species);
+            self.anim_cache.insert(enemy_species.clone(), anim);
+        } else {
+            log::warn!("Failed to load enemy animation: {}", enemy_species);
         }
 
-        // All player team monsters
-        for monster in &self.combat_state.player_monsters {
-            if !unique_species.contains(&monster.species_id) {
-                unique_species.push(monster.species_id.clone());
-            }
-        }
-
-        log::info!("Loading {} unique species animations for battle: {:?}",
-            unique_species.len(), unique_species);
-
-        // Load each unique species only once
-        for species in &unique_species {
-            if let Some(anim) = load_raw_from_sd(sd_card, species, AnimType::Idle) {
-                log::info!("Cached animation for species: {}", species);
-                self.anim_cache.insert(species.clone(), anim);
-            } else {
-                log::warn!("Failed to load animation for species: {}", species);
+        // Load active player monster animation
+        if let Some(active_monster) = self.combat_state.active_monster() {
+            let player_species = &active_monster.species_id;
+            if !self.anim_cache.contains_key(player_species) {
+                if let Some(anim) = load_raw_from_sd(sd_card, player_species, AnimType::Idle) {
+                    log::info!("Loaded active player animation: {}", player_species);
+                    self.anim_cache.insert(player_species.clone(), anim);
+                } else {
+                    log::warn!("Failed to load active player animation: {}", player_species);
+                }
             }
         }
 
         self.is_loading = false;
         self.dirty = true;
-        log::info!("Combat animations loaded ({} cached), ready to fight!", self.anim_cache.len());
+        log::info!("Initial combat animations loaded ({} cached), ready to fight!", self.anim_cache.len());
+    }
+
+    /// Check if player animation needs reload (after swap to uncached monster)
+    pub fn needs_player_reload(&self) -> bool {
+        self.needs_player_anim_reload
     }
 
     /// Reload player species animation (after swap)
-    /// Note: With cache, this is now a no-op since all species are preloaded
-    pub fn reload_player_species(&mut self, _sd_card: &mut SdCardWrapper) {
-        // All species animations are preloaded at combat start in the cache
-        // Swap just changes active_index, no loading needed
-        log::info!("Player swap: using cached animation");
+    /// With lazy loading, this loads the animation on-demand if not already cached
+    pub fn reload_player_species(&mut self, sd_card: &mut SdCardWrapper) {
+        // Check if the new active player's animation is already cached
+        if let Some(active_monster) = self.combat_state.active_monster() {
+            let species_id = &active_monster.species_id;
+
+            if self.anim_cache.contains_key(species_id) {
+                log::info!("Player swap: using cached animation for {}", species_id);
+            } else {
+                // Not cached - load it now (lazy loading)
+                log::info!("Player swap: loading animation on-demand for {}", species_id);
+                if let Some(anim) = load_raw_from_sd(sd_card, species_id, AnimType::Idle) {
+                    self.anim_cache.insert(species_id.clone(), anim);
+                    log::info!("Loaded on-demand animation for {}", species_id);
+                } else {
+                    log::warn!("Failed to load on-demand animation for {}", species_id);
+                }
+            }
+        }
+
+        // Clear reload flag
+        self.needs_player_anim_reload = false;
     }
 
     /// Reload enemy species animation (for new wave)
@@ -936,10 +958,17 @@ impl DungeonCombatPage {
                 });
             }
             CombatEvent::MonsterSwap { .. } => {
-                // With preloading, swap is instant - no loading needed!
-                // The render function uses active_index to pick the correct preloaded animation
-                log::info!("Monster swap: instant switch to preloaded animation slot {}",
-                    self.combat_state.active_index);
+                // With lazy loading, check if new monster's animation is cached
+                if let Some(monster) = self.combat_state.active_monster() {
+                    if self.anim_cache.contains_key(&monster.species_id) {
+                        log::info!("Monster swap: using cached animation for {} (slot {})",
+                            monster.species_id, self.combat_state.active_index);
+                    } else {
+                        log::info!("Monster swap: need to load animation for {} (slot {})",
+                            monster.species_id, self.combat_state.active_index);
+                        self.needs_player_anim_reload = true;
+                    }
+                }
             }
             CombatEvent::Victory { .. } => {
                 // Enemy died - start death animation
