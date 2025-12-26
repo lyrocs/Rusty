@@ -221,6 +221,12 @@ pub struct DungeonCombatPage {
     pending_victory: bool,
     pending_defeat: bool,
     last_was_enemy_turn: bool,  // Track if we came from enemy turn
+
+    // Pending skill action - delays animation until damage message is shown
+    // Stores the skill slot to execute after "X uses Y!" message
+    pending_skill_action: Option<u8>,
+    // Pending enemy action - delays animation until damage message
+    pending_enemy_action: bool,
 }
 
 struct DamagePopup {
@@ -279,6 +285,9 @@ impl DungeonCombatPage {
             pending_victory: false,
             pending_defeat: false,
             last_was_enemy_turn: false,
+            // Pending actions for delayed animation
+            pending_skill_action: None,
+            pending_enemy_action: false,
         }
     }
 
@@ -540,23 +549,24 @@ impl DungeonCombatPage {
     }
 
     /// Execute player skill action from a specific slot
+    /// Shows "X uses Y!" message first, then plays animation during damage message
     fn execute_player_skill_slot(&mut self, slot: u8) {
         if !self.can_use_skill_slot(slot) { return; }
 
+        // Queue the "uses skill" message first
         if let Some(monster) = self.combat_state.active_monster() {
             let skill_name = monster.equipped_skills.get(slot as usize)
-                .map(|s| s.name.as_str())
-                .unwrap_or("Skill");
-            self.action_message = Some(format!("{} uses {}!", monster.name, skill_name));
-            self.message_timer = 1.0;
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| "Skill".to_string());
+            self.queue_battle_message(format!("{} uses {}!", monster.name, skill_name));
         }
 
-        self.turn_phase = TurnPhase::PlayerActionExecuting {
-            action_type: TurnAction::UseSkill { slot },
-            timer: 0.0,
-        };
-        self.action_target = ActiveAnim::Player;
+        // Store pending action - animation will play when damage message shows
+        self.pending_skill_action = Some(slot);
         self.last_player_action = Some(TurnAction::UseSkill { slot });
+
+        // Start showing the "uses skill" message (no animation yet)
+        self.start_battle_messages();
     }
 
     /// Execute player swap action
@@ -580,39 +590,12 @@ impl DungeonCombatPage {
     }
 
     /// Execute the actual action effect (damage, heal, etc.)
+    /// Note: Skill effects are now applied in next_battle_message() for delayed animation
     fn apply_action_effect(&mut self, action_type: TurnAction) {
         match action_type {
-            TurnAction::UseSkill { slot } => {
-                // Get monster and skill info for battle message
-                let (monster_name, skill_name) = self.combat_state.active_monster()
-                    .and_then(|m| {
-                        m.equipped_skills.get(slot as usize)
-                            .map(|s| (m.name.clone(), s.name.clone()))
-                    })
-                    .unwrap_or(("Monster".to_string(), "Attack".to_string()));
-
-                if let Some(event) = self.execute_skill_at_slot(slot) {
-                    // Queue battle messages based on event
-                    match &event {
-                        CombatEvent::PlayerSkill { damage, skill_name: sn, is_critical, is_miss, .. } => {
-                            self.queue_battle_message(format!("{} used {}!", monster_name, sn));
-                            if *is_miss {
-                                self.queue_battle_message("But it missed!".to_string());
-                            } else if *damage > 0 {
-                                if *is_critical {
-                                    self.queue_battle_message("A critical hit!".to_string());
-                                }
-                                self.queue_battle_message(format!("Dealt {} damage!", damage));
-                            }
-                        }
-                        CombatEvent::PlayerSkillHeal { heal_amount, skill_name: sn, .. } => {
-                            self.queue_battle_message(format!("{} used {}!", monster_name, sn));
-                            self.queue_battle_message(format!("Recovered {} HP!", heal_amount));
-                        }
-                        _ => {}
-                    }
-                    self.handle_combat_event(event);
-                }
+            TurnAction::UseSkill { .. } => {
+                // Skill effects are now handled in next_battle_message()
+                // This is called after animation completes - nothing more to do
             }
             TurnAction::Swap { target_index } => {
                 // Perform the swap
@@ -891,6 +874,69 @@ impl DungeonCombatPage {
 
     /// Advance to next battle message or end messages
     fn next_battle_message(&mut self) {
+        // Check if there's a pending skill action to execute
+        // This happens after showing "X uses Y!" - now we execute and show damage
+        if let Some(slot) = self.pending_skill_action.take() {
+            // Start player animation
+            self.action_target = ActiveAnim::Player;
+
+            // Execute the skill and queue damage messages
+            if let Some(event) = self.execute_skill_at_slot(slot) {
+                // Queue battle messages based on event (damage, miss, crit, heal)
+                match &event {
+                    CombatEvent::PlayerSkill { damage, is_critical, is_miss, .. } => {
+                        if *is_miss {
+                            self.queue_battle_message("But it missed!".to_string());
+                        } else if *damage > 0 {
+                            if *is_critical {
+                                self.queue_battle_message("A critical hit!".to_string());
+                            }
+                            self.queue_battle_message(format!("Dealt {} damage!", damage));
+                        }
+                    }
+                    CombatEvent::PlayerSkillHeal { heal_amount, .. } => {
+                        self.queue_battle_message(format!("Recovered {} HP!", heal_amount));
+                    }
+                    _ => {}
+                }
+                self.handle_combat_event(event);
+            }
+
+            // Check if enemy died
+            if !self.combat_state.enemy.is_alive() {
+                self.handle_enemy_death();
+                return;
+            }
+
+            // Start animation phase - animation plays during damage message
+            self.turn_phase = TurnPhase::PlayerActionExecuting {
+                action_type: TurnAction::UseSkill { slot },
+                timer: 0.0,
+            };
+            return;
+        }
+
+        // Check if there's a pending enemy action to execute
+        if self.pending_enemy_action {
+            self.pending_enemy_action = false;
+
+            // Start enemy animation
+            self.action_target = ActiveAnim::Enemy;
+
+            // Execute enemy attack and queue damage message
+            self.execute_enemy_attack_effect();
+
+            // Check if player died
+            if self.combat_state.all_players_dead() {
+                self.handle_player_defeat();
+                return;
+            }
+
+            // Start animation phase
+            self.turn_phase = TurnPhase::EnemyActionExecuting { timer: 0.0 };
+            return;
+        }
+
         if !self.battle_messages.is_empty() {
             self.current_battle_message = Some(self.battle_messages.remove(0));
             self.turn_phase = TurnPhase::ShowingBattleMessage { timer: 0.0 };
@@ -964,16 +1010,20 @@ impl DungeonCombatPage {
         self.start_battle_messages();
     }
 
-    /// Execute enemy attack and queue battle messages
-    fn execute_enemy_attack_with_messages(&mut self) {
-        // Get enemy info for message
+    /// Queue enemy attack message (first part - no animation yet)
+    fn queue_enemy_attack_message(&mut self) {
         let enemy_name = self.combat_state.enemy.name.clone();
+        self.queue_battle_message(format!("{} attacks!", enemy_name));
+        self.pending_enemy_action = true;
+        self.start_battle_messages();
+    }
 
+    /// Execute enemy attack effect (called after "X attacks!" message)
+    fn execute_enemy_attack_effect(&mut self) {
         if let Some(event) = self.execute_enemy_turn() {
-            // Queue battle messages based on event
+            // Queue damage message
             match &event {
                 CombatEvent::EnemyAttack { damage, .. } => {
-                    self.queue_battle_message(format!("{} attacks!", enemy_name));
                     self.queue_battle_message(format!("Dealt {} damage!", damage));
                 }
                 _ => {}
@@ -1787,8 +1837,8 @@ impl Page for DungeonCombatPage {
                     self.turn_phase = TurnPhase::PlayerSelectAction;
                     log::info!("Player's turn!");
                 } else {
-                    self.turn_phase = TurnPhase::EnemyActionExecuting { timer: 0.0 };
-                    self.action_target = ActiveAnim::Enemy;
+                    // Enemy turn: show "X attacks!" message first, then animate
+                    self.queue_enemy_attack_message();
                     log::info!("Enemy's turn!");
                 }
             }
@@ -1828,8 +1878,8 @@ impl Page for DungeonCombatPage {
                 if new_timer >= POST_ACTION_DELAY {
                     // Check if swap - enemy gets free attack after swap
                     if matches!(self.last_player_action, Some(TurnAction::Swap { .. })) {
-                        self.turn_phase = TurnPhase::EnemyActionExecuting { timer: 0.0 };
-                        self.action_target = ActiveAnim::Enemy;
+                        // Queue enemy attack message first, then animate
+                        self.queue_enemy_attack_message();
                     } else {
                         self.turn_phase = TurnPhase::DeterminingTurnOrder;
                     }
@@ -1851,15 +1901,14 @@ impl Page for DungeonCombatPage {
             TurnPhase::EnemyActionExecuting { timer } => {
                 let new_timer = timer + delta;
                 if new_timer >= ACTION_ANIM_DURATION {
-                    // Execute enemy attack with battle messages
-                    self.execute_enemy_attack_with_messages();
+                    // Animation complete - effect was already applied in next_battle_message()
                     self.action_target = ActiveAnim::None;
 
                     // Check if player died
                     if self.combat_state.all_players_dead() {
                         self.handle_player_defeat();
                     } else if !self.battle_messages.is_empty() {
-                        // Show battle messages first
+                        // Show remaining battle messages (damage message)
                         self.last_was_enemy_turn = true;
                         self.start_battle_messages();
                     } else {
