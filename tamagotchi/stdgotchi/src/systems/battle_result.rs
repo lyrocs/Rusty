@@ -45,8 +45,8 @@ pub fn battle_result_system(
                         // Clear result page
                         game_manager.battle_result_page = None;
 
-                        // Return to map
-                        app_state.current_mode = AppMode::Map;
+                        // Return to home
+                        app_state.current_mode = AppMode::Home;
                         app_state.needs_redraw = true;
                     }
                 }

@@ -41,8 +41,11 @@ pub fn menu_system(
                     use crate::ui::pages::menu::MenuAction;
                     match action {
                         MenuAction::Map => {
-                            log::info!("Navigating to Map");
-                            app_state.current_mode = AppMode::Map;
+                            log::info!("Navigating to Dungeon List");
+                            // Create dungeon list page
+                            let dungeon_list_page = crate::systems::home_navigation::create_dungeon_list_page(game_manager);
+                            game_manager.dungeon_list_page = Some(dungeon_list_page);
+                            app_state.current_mode = AppMode::DungeonList;
                             app_state.needs_redraw = true;
                         }
                         MenuAction::Battle => {

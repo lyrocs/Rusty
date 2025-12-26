@@ -9,7 +9,7 @@ use crate::game::systems::combat::CombatState;
 use crate::game::systems::dungeon::{DungeonRun, floor_stat_multiplier};
 use crate::game::systems::progression::leveling::apply_xp_to_monster;
 use crate::input_thread::{InputEvent, SwipeDirection};
-use crate::ui::pages::{BetweenFloorsPage, BetweenFloorsAction, MonsterStatusData, DungeonCombatPage, DungeonDefeatPage, DungeonDefeatAction};
+use crate::ui::pages::{BetweenFloorsPage, BetweenFloorsAction, MonsterStatusData, DungeonCombatPage, DungeonDefeatPage, DungeonDefeatAction, DungeonListAction, DungeonInfoPage, DungeonInfoAction, MonsterDisplayInfo};
 
 /// System to handle dungeon combat navigation
 pub fn dungeon_combat_navigation_system(
@@ -733,4 +733,245 @@ fn generate_floor_enemy(
     enemy.def = (enemy.def as f32 * multiplier) as u16;
 
     Some(enemy)
+}
+
+/// System to handle dungeon list navigation
+pub fn dungeon_list_navigation_system(
+    mut app_state: ResMut<AppState>,
+    pending_events: Res<PendingInputEvents>,
+    mut game_manager: Option<NonSendMut<GameManager>>,
+) {
+    // Only process in DungeonList mode
+    if app_state.current_mode != AppMode::DungeonList {
+        return;
+    }
+
+    if !app_state.screen_on {
+        return;
+    }
+
+    let Some(ref mut game_manager) = game_manager else {
+        return;
+    };
+
+    // Process input events
+    for event in pending_events.events.iter() {
+        match event {
+            InputEvent::Touch { x, y } => {
+                let action = game_manager.dungeon_list_page
+                    .as_ref()
+                    .map(|p| p.handle_touch(*x as i32, *y as i32))
+                    .unwrap_or(DungeonListAction::None);
+
+                match action {
+                    DungeonListAction::Back => {
+                        log::info!("DungeonList -> Home");
+                        game_manager.dungeon_list_page = None;
+                        app_state.current_mode = AppMode::Home;
+                        app_state.needs_redraw = true;
+                    }
+                    DungeonListAction::SelectDungeon(dungeon_id) => {
+                        log::info!("Selected dungeon: {}", dungeon_id);
+                        // Create dungeon info page
+                        if let Some(info_page) = create_dungeon_info_page(game_manager, &dungeon_id) {
+                            game_manager.dungeon_info_page = Some(info_page);
+                            game_manager.selected_dungeon_id = Some(dungeon_id);
+                            app_state.current_mode = AppMode::DungeonInfo;
+                            app_state.needs_redraw = true;
+                        }
+                    }
+                    DungeonListAction::None => {}
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                match direction {
+                    SwipeDirection::Right => {
+                        // Swipe right -> back to home
+                        log::info!("Swipe right: DungeonList -> Home");
+                        game_manager.dungeon_list_page = None;
+                        app_state.current_mode = AppMode::Home;
+                        app_state.needs_redraw = true;
+                    }
+                    SwipeDirection::Up | SwipeDirection::Down => {
+                        // Handle scrolling
+                        if let Some(ref mut page) = game_manager.dungeon_list_page {
+                            page.handle_swipe(*direction == SwipeDirection::Up);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// System to handle dungeon info navigation
+pub fn dungeon_info_navigation_system(
+    mut app_state: ResMut<AppState>,
+    pending_events: Res<PendingInputEvents>,
+    mut game_manager: Option<NonSendMut<GameManager>>,
+) {
+    // Only process in DungeonInfo mode
+    if app_state.current_mode != AppMode::DungeonInfo {
+        return;
+    }
+
+    if !app_state.screen_on {
+        return;
+    }
+
+    let Some(ref mut game_manager) = game_manager else {
+        return;
+    };
+
+    // Process input events
+    for event in pending_events.events.iter() {
+        match event {
+            InputEvent::Touch { x, y } => {
+                let action = game_manager.dungeon_info_page
+                    .as_mut()
+                    .map(|p| p.handle_touch(*x as i32, *y as i32))
+                    .unwrap_or(DungeonInfoAction::None);
+
+                match action {
+                    DungeonInfoAction::Back => {
+                        log::info!("DungeonInfo -> DungeonList");
+                        game_manager.dungeon_info_page = None;
+                        app_state.current_mode = AppMode::DungeonList;
+                        app_state.needs_redraw = true;
+                    }
+                    DungeonInfoAction::StartDungeon { checkpoint } => {
+                        log::info!("Starting dungeon from checkpoint floor {}", checkpoint);
+                        // Start dungeon run
+                        if let Some(dungeon_id) = game_manager.selected_dungeon_id.clone() {
+                            if let Some(dungeon) = game_manager.tamer_data.get_dungeon(&dungeon_id).cloned() {
+                                // Create dungeon run
+                                game_manager.active_dungeon_run = Some(DungeonRun::new(dungeon_id.clone(), checkpoint));
+
+                                // Get player team with full HP
+                                let team_ids = game_manager.team.monster_ids().to_vec();
+                                let mut player_monsters: Vec<crate::game::core::Monster> = Vec::new();
+
+                                for monster_id in team_ids.iter() {
+                                    if let Some(monster) = game_manager.get_monster_mut(monster_id) {
+                                        let mut combat_monster = monster.clone();
+                                        // Full HP on start
+                                        combat_monster.hp_current = combat_monster.hp_max;
+                                        player_monsters.push(combat_monster);
+                                    }
+                                }
+
+                                if !player_monsters.is_empty() {
+                                    // Generate enemy for checkpoint floor
+                                    if let Some(enemy) = generate_floor_enemy(&*game_manager, &dungeon, checkpoint) {
+                                        let is_boss = dungeon.is_boss_floor(checkpoint);
+                                        let combat_state = CombatState::for_floor(player_monsters, enemy, checkpoint, is_boss);
+                                        game_manager.dungeon_combat_page = Some(DungeonCombatPage::new(combat_state, dungeon.name.clone()));
+                                        game_manager.dungeon_info_page = None;
+                                        game_manager.dungeon_list_page = None;
+                                        app_state.current_mode = AppMode::DungeonCombat;
+                                        app_state.needs_redraw = true;
+                                    } else {
+                                        log::warn!("Failed to generate enemy for floor {}", checkpoint);
+                                    }
+                                } else {
+                                    log::warn!("No available monsters for dungeon");
+                                }
+                            }
+                        }
+                    }
+                    DungeonInfoAction::None => {}
+                }
+            }
+            InputEvent::Swipe { direction } => {
+                match direction {
+                    SwipeDirection::Right => {
+                        // Swipe right -> back to dungeon list
+                        log::info!("Swipe right: DungeonInfo -> DungeonList");
+                        game_manager.dungeon_info_page = None;
+                        app_state.current_mode = AppMode::DungeonList;
+                        app_state.needs_redraw = true;
+                    }
+                    SwipeDirection::Up | SwipeDirection::Down => {
+                        // Handle scrolling monster list
+                        if let Some(ref mut page) = game_manager.dungeon_info_page {
+                            page.handle_swipe(*direction == SwipeDirection::Up);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Create dungeon info page from dungeon ID
+fn create_dungeon_info_page(game_manager: &GameManager, dungeon_id: &str) -> Option<DungeonInfoPage> {
+    let dungeon = game_manager.tamer_data.get_dungeon(dungeon_id)?;
+
+    // Get monsters from all enemy pools
+    let mut monsters: Vec<MonsterDisplayInfo> = Vec::new();
+    let mut seen_species: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for pool in &dungeon.enemy_pools {
+        for species_id in &pool.species {
+            if seen_species.contains(species_id) {
+                continue;
+            }
+            seen_species.insert(species_id.clone());
+
+            if let Some(species) = game_manager.tamer_data.species.get(species_id) {
+                monsters.push(MonsterDisplayInfo {
+                    name: species.name.clone(),
+                    element: species.element,
+                    is_boss: false,
+                });
+            }
+        }
+    }
+
+    // Get boss names
+    let mut boss_names: Vec<String> = Vec::new();
+    for (_, boss_species_id) in &dungeon.bosses {
+        if let Some(species) = game_manager.tamer_data.species.get(boss_species_id) {
+            boss_names.push(species.name.clone());
+            // Also add to monsters list as boss
+            if !seen_species.contains(boss_species_id) {
+                monsters.push(MonsterDisplayInfo {
+                    name: species.name.clone(),
+                    element: species.element,
+                    is_boss: true,
+                });
+            }
+        }
+    }
+
+    // Calculate level range from species base levels
+    let level_min = dungeon.enemy_pools.iter()
+        .flat_map(|pool| pool.species.iter())
+        .filter_map(|species_id| game_manager.tamer_data.species.get(species_id))
+        .map(|species| species.base_level)
+        .min()
+        .unwrap_or(1);
+
+    let level_max = dungeon.enemy_pools.iter()
+        .flat_map(|pool| pool.species.iter())
+        .filter_map(|species_id| game_manager.tamer_data.species.get(species_id))
+        .map(|species| species.base_level)
+        .max()
+        .unwrap_or(99);
+
+    // Get highest floor reached
+    let highest_floor = game_manager.dungeon_progress.get(dungeon_id).copied().unwrap_or(0);
+
+    Some(DungeonInfoPage::new(
+        dungeon,
+        monsters,
+        boss_names,
+        level_min,
+        level_max,
+        highest_floor,
+    ))
 }

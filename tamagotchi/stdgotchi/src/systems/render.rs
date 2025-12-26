@@ -54,8 +54,8 @@ pub fn render_system(
                 if let Some(page) = game_manager.get_current_page(AppMode::Battle) {
                     let page_active = page.update();
                     if !page_active {
-                        info!("Battle completed while screen off, returning to map");
-                        app_state.current_mode = AppMode::Map;
+                        info!("Battle completed while screen off, returning to home");
+                        app_state.current_mode = AppMode::Home;
                         app_state.needs_redraw = true;
                     }
                 }
@@ -77,6 +77,7 @@ pub fn render_system(
         | AppMode::MonsterList | AppMode::MonsterDetail | AppMode::MonsterUpgrade
         | AppMode::ExpeditionMap | AppMode::ExpeditionTeamSelect | AppMode::ExpeditionResult
         | AppMode::ExpeditionDetail | AppMode::Inventory | AppMode::Collection
+        | AppMode::DungeonList | AppMode::DungeonInfo
         | AppMode::DungeonCombat | AppMode::BetweenFloors | AppMode::DungeonDefeat => {
             if let Some(mut game_manager) = game_manager {
                 if app_state.current_mode == AppMode::Menu {
@@ -113,8 +114,8 @@ pub fn render_system(
                             game_manager.dungeon_combat_page = None;
                             app_state.current_mode = AppMode::Home;
                         } else {
-                            log::info!("Page completed, returning to map");
-                            app_state.current_mode = AppMode::Map;
+                            log::info!("Page completed, returning to home");
+                            app_state.current_mode = AppMode::Home;
                         }
                         app_state.needs_redraw = true;
                     }
@@ -136,8 +137,8 @@ pub fn render_system(
                     }
 
                     if !page_active {
-                        info!("Death page completed, returning to map");
-                        app_state.current_mode = AppMode::Map;
+                        info!("Death page completed, returning to home");
+                        app_state.current_mode = AppMode::Home;
                         app_state.needs_redraw = true;
                     }
                 }

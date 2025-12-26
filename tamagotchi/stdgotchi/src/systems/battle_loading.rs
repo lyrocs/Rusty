@@ -27,7 +27,7 @@ pub fn battle_loading_system(
     // Check if we have battle loading data
     let Some(loading_data) = game_manager.battle_loading_data.take() else {
         log::error!("No battle loading data available!");
-        app_state.current_mode = AppMode::Map;
+        app_state.current_mode = AppMode::Home;
         app_state.needs_redraw = true;
         return;
     };
@@ -39,7 +39,7 @@ pub fn battle_loading_system(
         Some(data) => data.clone(),
         None => {
             log::error!("Enemy {} not found in game data", loading_data.initial_enemy_id);
-            app_state.current_mode = AppMode::Map;
+            app_state.current_mode = AppMode::Home;
             app_state.needs_redraw = true;
             return;
         }
@@ -70,7 +70,7 @@ pub fn battle_loading_system(
         }
         Err(e) => {
             log::error!("Failed to create battle page: {:?}", e);
-            app_state.current_mode = AppMode::Map;
+            app_state.current_mode = AppMode::Home;
             app_state.needs_redraw = true;
         }
     }

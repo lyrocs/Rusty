@@ -8,7 +8,7 @@ use bevy_ecs::prelude::*;
 use crate::ecs::resources::{AppMode, AppState, GameManager, PendingInputEvents, SdCardWrapper};
 use crate::input_thread::{InputEvent, SwipeDirection};
 use crate::systems::expedition_navigation::create_expedition_map_page;
-use crate::ui::pages::{HomeAction, CollectionPage, ZoneCollectionData, SpeciesCollectionData, ExpeditionDetailPage, ExpeditionMonsterData};
+use crate::ui::pages::{HomeAction, CollectionPage, ZoneCollectionData, SpeciesCollectionData, ExpeditionDetailPage, ExpeditionMonsterData, DungeonListPage, DungeonDisplayData};
 
 /// System to handle home page navigation and updates
 pub fn home_navigation_system(
@@ -51,9 +51,11 @@ pub fn home_navigation_system(
 
                 let action = game_manager.home_page.handle_touch(x, y);
                 match action {
-                    HomeAction::GoToMap => {
-                        log::info!("Home -> Map");
-                        app_state.current_mode = AppMode::Map;
+                    HomeAction::GoToDungeonList => {
+                        log::info!("Home -> DungeonList");
+                        let dungeon_list_page = create_dungeon_list_page(game_manager);
+                        game_manager.dungeon_list_page = Some(dungeon_list_page);
+                        app_state.current_mode = AppMode::DungeonList;
                         app_state.needs_redraw = true;
                     }
                     HomeAction::GoToCollection => {
@@ -141,9 +143,11 @@ pub fn home_navigation_system(
                 // Swipe gestures on home screen
                 match direction {
                     SwipeDirection::Left => {
-                        // Swipe left -> Map
-                        log::info!("Swipe left: Home -> Map");
-                        app_state.current_mode = AppMode::Map;
+                        // Swipe left -> DungeonList
+                        log::info!("Swipe left: Home -> DungeonList");
+                        let dungeon_list_page = create_dungeon_list_page(game_manager);
+                        game_manager.dungeon_list_page = Some(dungeon_list_page);
+                        app_state.current_mode = AppMode::DungeonList;
                         app_state.needs_redraw = true;
                     }
                     _ => {}
@@ -227,4 +231,49 @@ fn create_collection_page(game_manager: &GameManager) -> CollectionPage {
     zones.sort_by_key(|z| z.level_min);
 
     CollectionPage::new(zones, &captured)
+}
+
+/// Create dungeon list page with all available dungeons
+pub fn create_dungeon_list_page(game_manager: &GameManager) -> DungeonListPage {
+    use crate::game::core::Element;
+
+    let mut dungeons: Vec<DungeonDisplayData> = Vec::new();
+
+    // Iterate over all dungeons
+    for (dungeon_id, dungeon) in &game_manager.tamer_data.dungeons {
+        // Get level range from enemy pools
+        let level_min = dungeon.enemy_pools.iter()
+            .flat_map(|pool| pool.species.iter())
+            .filter_map(|species_id| game_manager.tamer_data.species.get(species_id))
+            .map(|species| species.base_level)
+            .min()
+            .unwrap_or(1);
+
+        let level_max = dungeon.enemy_pools.iter()
+            .flat_map(|pool| pool.species.iter())
+            .filter_map(|species_id| game_manager.tamer_data.species.get(species_id))
+            .map(|species| species.base_level)
+            .max()
+            .unwrap_or(99);
+
+        // Get highest floor reached
+        let highest_floor = game_manager.dungeon_progress.get(dungeon_id).copied().unwrap_or(0);
+
+        // Check if dungeon is unlocked (zone must be unlocked)
+        let is_unlocked = game_manager.tamer_data.zones.get(&dungeon.zone_id)
+            .map(|zone| zone.is_unlocked(&game_manager.dungeon_progress))
+            .unwrap_or(false);
+
+        dungeons.push(DungeonDisplayData {
+            dungeon_id: dungeon_id.clone(),
+            name: dungeon.name.clone(),
+            elements: dungeon.dominant_elements.clone(),
+            level_min,
+            level_max,
+            highest_floor,
+            is_unlocked,
+        });
+    }
+
+    DungeonListPage::new(dungeons)
 }

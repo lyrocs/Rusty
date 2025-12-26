@@ -23,8 +23,8 @@ use std::error::Error;
 pub enum HomeAction {
     /// No action
     None,
-    /// Navigate to Map/Expedition
-    GoToMap,
+    /// Navigate to Dungeon List (Battle)
+    GoToDungeonList,
     /// Navigate to Collection (main entry to monsters/regions)
     GoToCollection,
     /// View expedition details (slot index)
@@ -213,7 +213,7 @@ impl HomePage {
         // Check navigation buttons
         if let Some(ref rect) = self.map_button {
             if Self::rect_contains(rect, x, y) {
-                return HomeAction::GoToMap;
+                return HomeAction::GoToDungeonList;
             }
         }
 
@@ -445,7 +445,7 @@ impl Page for HomePage {
         let button_spacing = 8;      // Gap between buttons
         let corner_radius = 8u32;
 
-        // MAP button - Blue themed with rounded corners
+        // BATTLE button - Red/Orange themed with rounded corners
         let map_rect = Rectangle::new(Point::new(5, nav_y), Size::new(button_width, button_height));
         let map_rounded = RoundedRectangle::new(
             map_rect,
@@ -455,19 +455,19 @@ impl Page for HomePage {
         // Draw filled rounded button
         map_rounded
             .into_styled(PrimitiveStyleBuilder::new()
-                .fill_color(Rgb888::new(100, 150, 220))
+                .fill_color(Rgb888::new(220, 100, 80))
                 .build())
             .draw(display)?;
 
         // Draw rounded border
         map_rounded
             .into_styled(PrimitiveStyleBuilder::new()
-                .stroke_color(Rgb888::new(60, 100, 180))
+                .stroke_color(Rgb888::new(180, 60, 50))
                 .stroke_width(2)
                 .build())
             .draw(display)?;
 
-        Text::new("MAP", Point::new(42, nav_y + 36), text_style).draw(display)?;
+        Text::new("BATTLE", Point::new(28, nav_y + 36), text_style).draw(display)?;
         self.map_button = Some(map_rect);
 
         // COLLECTION button - Green themed with rounded corners

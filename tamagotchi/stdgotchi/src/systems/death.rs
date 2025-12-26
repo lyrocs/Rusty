@@ -40,8 +40,8 @@ pub fn death_detection_system(
                     }
                     Err(e) => {
                         log::error!("Failed to create death page: {:?}", e);
-                        // Fallback: just return to map
-                        app_state.current_mode = AppMode::Map;
+                        // Fallback: just return to home
+                        app_state.current_mode = AppMode::Home;
                         app_state.needs_redraw = true;
                         return;
                     }
@@ -93,8 +93,8 @@ pub fn death_system(
                         game_manager.battle_page = None;
                         game_manager.death_page = None;
 
-                        // Return to map
-                        app_state.current_mode = AppMode::Map;
+                        // Return to home
+                        app_state.current_mode = AppMode::Home;
                         app_state.needs_redraw = true;
                     }
                 }

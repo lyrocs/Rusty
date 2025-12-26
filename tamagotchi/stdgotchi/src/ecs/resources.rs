@@ -20,7 +20,7 @@ use crate::game::systems::expedition::Expedition;
 use crate::game::systems::dungeon::DungeonRun;
 use crate::input_thread::InputEvent;
 use crate::ui::page::Page;
-use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, ExpeditionDetailPage, DungeonCombatPage, BetweenFloorsPage, DungeonDefeatPage, MonsterUpgradePage, InventoryPage, CollectionPage};
+use crate::ui::pages::{BattlePage, MapPage, HomePage, ExpeditionMapPage, ExpeditionTeamSelectPage, ExpeditionResultPage, ExpeditionDetailPage, DungeonCombatPage, BetweenFloorsPage, DungeonDefeatPage, DungeonListPage, DungeonInfoPage, MonsterUpgradePage, InventoryPage, CollectionPage};
 
 /// Display resource - NonSend because it contains non-thread-safe SPI operations
 pub struct DisplayResource<'a> {
@@ -198,6 +198,10 @@ pub struct GameManager {
     pub dungeon_defeat_page: Option<DungeonDefeatPage>,
     pub active_dungeon_run: Option<DungeonRun>,
     pub selected_dungeon_id: Option<String>,
+
+    // Dungeon list/info pages
+    pub dungeon_list_page: Option<DungeonListPage>,
+    pub dungeon_info_page: Option<DungeonInfoPage>,
 }
 
 impl GameManager {
@@ -253,6 +257,8 @@ impl GameManager {
             dungeon_defeat_page: None,
             active_dungeon_run: None,
             selected_dungeon_id: None,
+            dungeon_list_page: None,
+            dungeon_info_page: None,
         }
     }
 
@@ -331,6 +337,8 @@ impl GameManager {
             dungeon_defeat_page: None,
             active_dungeon_run: None,
             selected_dungeon_id: None,
+            dungeon_list_page: None,
+            dungeon_info_page: None,
         }
     }
 
@@ -428,6 +436,12 @@ impl GameManager {
             AppMode::Collection => {
                 self.collection_page.as_mut().map(|p| p as &mut dyn Page)
             }
+            AppMode::DungeonList => {
+                self.dungeon_list_page.as_mut().map(|p| p as &mut dyn Page)
+            }
+            AppMode::DungeonInfo => {
+                self.dungeon_info_page.as_mut().map(|p| p as &mut dyn Page)
+            }
             AppMode::DungeonCombat => {
                 self.dungeon_combat_page.as_mut().map(|p| p as &mut dyn Page)
             }
@@ -515,8 +529,12 @@ pub enum AppMode {
     Home,
     /// Menu screen (legacy, may be removed)
     Menu,
-    /// Map navigation
+    /// Map screen (legacy, kept for compatibility)
     Map,
+    /// Dungeon list (Battle menu)
+    DungeonList,
+    /// Dungeon info/details screen
+    DungeonInfo,
     /// Loading screen before battle
     BattleLoading,
     /// Battle mode

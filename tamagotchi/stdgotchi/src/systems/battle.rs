@@ -68,7 +68,7 @@ pub fn battle_system(
                         Err(e) => {
                             log::error!("Failed to create result page: {:?}", e);
                             game_manager.battle_page = None;
-                            app_state.current_mode = AppMode::Map;
+                            app_state.current_mode = AppMode::Home;
                         }
                     }
                     app_state.needs_redraw = true;
@@ -79,7 +79,7 @@ pub fn battle_system(
                 BattleAction::Flee => {
                     log::info!("Fleeing battle!");
                     game_manager.battle_page = None;
-                    app_state.current_mode = AppMode::Map;
+                    app_state.current_mode = AppMode::Home;
                     app_state.needs_redraw = true;
                 }
                 BattleAction::None => {

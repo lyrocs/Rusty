@@ -55,7 +55,7 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::sys::*;
 use std::thread;
 use std::time::Duration;
-use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, dungeon_combat_navigation_system, between_floors_navigation_system, dungeon_defeat_navigation_system, expedition_navigation_system, fps_system, home_navigation_system, map_navigation_system, menu_system, monster_navigation_system, render_system, utility_navigation_system};
+use systems::{animation_cleanup_system, animation_init_system, autosave_system, AutoSaveState, battle_loading_system, battle_result_system, battle_system, button_system, death_detection_system, death_system, dungeon_combat_navigation_system, between_floors_navigation_system, dungeon_defeat_navigation_system, dungeon_list_navigation_system, dungeon_info_navigation_system, expedition_navigation_system, fps_system, home_navigation_system, map_navigation_system, menu_system, monster_navigation_system, render_system, utility_navigation_system};
 
 /// Initialize the shared SPI bus for display and SD card
 /// Returns a 'static reference to the SPI driver that can be shared
@@ -406,6 +406,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         monster_navigation_system, // Handle monster list/detail navigation
         utility_navigation_system, // Handle inventory/collection navigation
         expedition_navigation_system, // Handle expedition map/team/result navigation
+        dungeon_list_navigation_system, // Handle dungeon list -> dungeon info
+        dungeon_info_navigation_system, // Handle dungeon info -> start combat
         dungeon_combat_navigation_system, // Handle dungeon combat -> between floors
         between_floors_navigation_system, // Handle between floors -> next combat or exit
         dungeon_defeat_navigation_system, // Handle defeat screen retry/quit
@@ -413,6 +415,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         battle_system,
         battle_result_system, // Handle battle result screen
         death_detection_system, // Check for death in battle
+    ));
+
+    // Second batch of systems
+    schedule.add_systems((
         death_system, // Handle death screen and respawn
         animation_init_system,
         render_system,
