@@ -9,6 +9,9 @@ use super::{Element, Skill};
 /// Maximum number of equipped skills for battle
 pub const MAX_EQUIPPED_SKILLS: usize = 3;
 
+/// Maximum stat bonus per stat (EV-like cap)
+pub const MAX_STAT_BONUS: u8 = 50;
+
 /// Monster status - where the monster currently is
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,6 +57,16 @@ pub struct Monster {
     pub def: u16,
     pub spd: u16,
 
+    // Stat bonuses (EV-like, 0-50 each, added on top of calculated stats)
+    #[serde(default)]
+    pub hp_bonus: u8,
+    #[serde(default)]
+    pub atk_bonus: u8,
+    #[serde(default)]
+    pub def_bonus: u8,
+    #[serde(default)]
+    pub spd_bonus: u8,
+
     /// Equipped skills for battle (up to 3)
     pub equipped_skills: Vec<Skill>,
 
@@ -93,9 +106,65 @@ impl Monster {
         self.hp_current = self.hp_max;
     }
 
-    /// Calculate power rating
+    /// Calculate power rating (includes bonuses)
     pub fn power(&self) -> u16 {
-        self.atk + self.def + self.spd + (self.hp_max / 5)
+        self.total_atk() + self.total_def() + self.total_spd() + (self.total_hp_max() / 5)
+    }
+
+    /// Get total ATK (base + bonus)
+    pub fn total_atk(&self) -> u16 {
+        self.atk + self.atk_bonus as u16
+    }
+
+    /// Get total DEF (base + bonus)
+    pub fn total_def(&self) -> u16 {
+        self.def + self.def_bonus as u16
+    }
+
+    /// Get total SPD (base + bonus)
+    pub fn total_spd(&self) -> u16 {
+        self.spd + self.spd_bonus as u16
+    }
+
+    /// Get total HP max (base + bonus * 10 since HP is bigger)
+    pub fn total_hp_max(&self) -> u16 {
+        self.hp_max + (self.hp_bonus as u16 * 10)
+    }
+
+    /// Add bonus to ATK (capped at MAX_STAT_BONUS)
+    pub fn add_atk_bonus(&mut self, amount: u8) -> bool {
+        if self.atk_bonus >= MAX_STAT_BONUS {
+            return false;
+        }
+        self.atk_bonus = (self.atk_bonus + amount).min(MAX_STAT_BONUS);
+        true
+    }
+
+    /// Add bonus to DEF (capped at MAX_STAT_BONUS)
+    pub fn add_def_bonus(&mut self, amount: u8) -> bool {
+        if self.def_bonus >= MAX_STAT_BONUS {
+            return false;
+        }
+        self.def_bonus = (self.def_bonus + amount).min(MAX_STAT_BONUS);
+        true
+    }
+
+    /// Add bonus to SPD (capped at MAX_STAT_BONUS)
+    pub fn add_spd_bonus(&mut self, amount: u8) -> bool {
+        if self.spd_bonus >= MAX_STAT_BONUS {
+            return false;
+        }
+        self.spd_bonus = (self.spd_bonus + amount).min(MAX_STAT_BONUS);
+        true
+    }
+
+    /// Add bonus to HP (capped at MAX_STAT_BONUS)
+    pub fn add_hp_bonus(&mut self, amount: u8) -> bool {
+        if self.hp_bonus >= MAX_STAT_BONUS {
+            return false;
+        }
+        self.hp_bonus = (self.hp_bonus + amount).min(MAX_STAT_BONUS);
+        true
     }
 
     /// Get HP percentage (0.0 to 1.0)

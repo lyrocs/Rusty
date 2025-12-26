@@ -209,19 +209,16 @@ fn handle_upgrade_action(
             go_back_to_detail(game_manager, app_state);
         }
         MonsterUpgradeAction::UpgradeAtk => {
-            apply_stat_upgrade(game_manager, app_state, "atk");
+            apply_bonus_upgrade(game_manager, app_state, "atk");
         }
         MonsterUpgradeAction::UpgradeDef => {
-            apply_stat_upgrade(game_manager, app_state, "def");
+            apply_bonus_upgrade(game_manager, app_state, "def");
         }
         MonsterUpgradeAction::UpgradeSpd => {
-            apply_stat_upgrade(game_manager, app_state, "spd");
+            apply_bonus_upgrade(game_manager, app_state, "spd");
         }
         MonsterUpgradeAction::UpgradeHp => {
-            apply_stat_upgrade(game_manager, app_state, "hp");
-        }
-        MonsterUpgradeAction::MajorUpgradeAtk => {
-            apply_major_upgrade(game_manager, app_state);
+            apply_bonus_upgrade(game_manager, app_state, "hp");
         }
         MonsterUpgradeAction::None => {}
     }
@@ -244,28 +241,28 @@ fn go_back_to_detail(game_manager: &mut GameManager, app_state: &mut AppState) {
     app_state.needs_redraw = true;
 }
 
-/// Apply a +1 stat upgrade
-fn apply_stat_upgrade(game_manager: &mut GameManager, app_state: &mut AppState, stat: &str) {
+/// Apply a +1 bonus upgrade (EV-style)
+fn apply_bonus_upgrade(game_manager: &mut GameManager, app_state: &mut AppState, stat: &str) {
     use crate::game::systems::progression::upgrade::upgrade_cost_crystals;
 
     let Some(index) = game_manager.selected_monster_index else { return };
 
-    // Get current stat value and cost
-    let (_current_stat, cost) = {
+    // Get current bonus value and cost
+    let cost = {
         let Some(monster) = game_manager.monsters.get(index) else { return };
-        let stat_val = match stat {
-            "atk" => monster.atk,
-            "def" => monster.def,
-            "spd" => monster.spd,
-            "hp" => monster.hp_max,
+        let bonus = match stat {
+            "atk" => monster.atk_bonus,
+            "def" => monster.def_bonus,
+            "spd" => monster.spd_bonus,
+            "hp" => monster.hp_bonus,
             _ => return,
         };
-        (stat_val, upgrade_cost_crystals(stat_val))
+        upgrade_cost_crystals(bonus)
     };
 
     // Check if can afford
     if game_manager.player.crystals < cost {
-        log::warn!("Not enough crystals for upgrade");
+        log::warn!("Not enough crystals for bonus upgrade");
         return;
     }
 
@@ -273,70 +270,45 @@ fn apply_stat_upgrade(game_manager: &mut GameManager, app_state: &mut AppState, 
     game_manager.player.crystals -= cost;
 
     if let Some(monster) = game_manager.monsters.get_mut(index) {
-        match stat {
+        let success = match stat {
             "atk" => {
-                monster.atk += 1;
-                log::info!("Upgraded ATK to {} for {} crystals", monster.atk, cost);
+                let result = monster.add_atk_bonus(1);
+                if result {
+                    log::info!("Upgraded ATK bonus to {} for {} crystals", monster.atk_bonus, cost);
+                }
+                result
             }
             "def" => {
-                monster.def += 1;
-                log::info!("Upgraded DEF to {} for {} crystals", monster.def, cost);
+                let result = monster.add_def_bonus(1);
+                if result {
+                    log::info!("Upgraded DEF bonus to {} for {} crystals", monster.def_bonus, cost);
+                }
+                result
             }
             "spd" => {
-                monster.spd += 1;
-                log::info!("Upgraded SPD to {} for {} crystals", monster.spd, cost);
+                let result = monster.add_spd_bonus(1);
+                if result {
+                    log::info!("Upgraded SPD bonus to {} for {} crystals", monster.spd_bonus, cost);
+                }
+                result
             }
             "hp" => {
-                monster.hp_max += 10;
-                monster.hp_current = monster.hp_current.min(monster.hp_max);
-                log::info!("Upgraded HP to {} for {} crystals", monster.hp_max, cost);
+                let result = monster.add_hp_bonus(1);
+                if result {
+                    log::info!("Upgraded HP bonus to {} (+{} HP) for {} crystals",
+                        monster.hp_bonus, monster.hp_bonus as u16 * 10, cost);
+                }
+                result
             }
-            _ => {}
+            _ => false,
+        };
+
+        if !success {
+            // Refund if upgrade failed (already at max)
+            game_manager.player.crystals += cost;
+            log::warn!("Bonus already at max!");
+            return;
         }
-
-        // Refresh upgrade page
-        let crystals = game_manager.player.crystals;
-        let essence_count = game_manager.player.get_essence(monster.element);
-        if let Some(ref mut page) = game_manager.monster_upgrade_page {
-            page.refresh(monster, crystals, essence_count);
-        }
-    }
-
-    app_state.needs_redraw = true;
-}
-
-/// Apply a major (+10) stat upgrade
-fn apply_major_upgrade(game_manager: &mut GameManager, app_state: &mut AppState) {
-    use crate::game::systems::progression::upgrade::major_upgrade_cost;
-
-    let Some(index) = game_manager.selected_monster_index else { return };
-
-    // Get cost and element
-    let (crystal_cost, essence_cost, element) = {
-        let Some(monster) = game_manager.monsters.get(index) else { return };
-        let (c, e) = major_upgrade_cost(monster.atk);
-        (c, e, monster.element)
-    };
-
-    // Check if can afford
-    if game_manager.player.crystals < crystal_cost {
-        log::warn!("Not enough crystals for major upgrade");
-        return;
-    }
-    if game_manager.player.get_essence(element) < essence_cost as u16 {
-        log::warn!("Not enough essences for major upgrade");
-        return;
-    }
-
-    // Apply costs
-    game_manager.player.crystals -= crystal_cost;
-    game_manager.player.spend_essence(element, essence_cost as u16);
-
-    // Apply upgrade
-    if let Some(monster) = game_manager.monsters.get_mut(index) {
-        monster.atk += 10;
-        log::info!("Major upgrade: ATK to {} for {} crystals + {} essences",
-            monster.atk, crystal_cost, essence_cost);
 
         // Refresh upgrade page
         let crystals = game_manager.player.crystals;

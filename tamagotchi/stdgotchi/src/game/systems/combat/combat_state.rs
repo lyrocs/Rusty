@@ -133,7 +133,8 @@ impl CombatState {
         if self.player_stunned <= 0.0 {
             if let Some(monster) = self.active_monster() {
                 if monster.is_alive() {
-                    let spd = monster.spd;
+                    // Use total SPD (base + bonus) for attack bar
+                    let spd = monster.total_spd();
                     self.player_atk_bar = update_atk_bar(self.player_atk_bar, spd, delta_time);
 
                     // Player auto-attack
@@ -146,9 +147,9 @@ impl CombatState {
             }
         }
 
-        // Enemy ATK bar update (if not stunned and alive)
+        // Enemy ATK bar update (if not stunned and alive) - use total SPD
         if self.enemy_stunned <= 0.0 && self.enemy.is_alive() {
-            self.enemy_atk_bar = update_atk_bar(self.enemy_atk_bar, self.enemy.spd, delta_time);
+            self.enemy_atk_bar = update_atk_bar(self.enemy_atk_bar, self.enemy.total_spd(), delta_time);
 
             // Enemy auto-attack
             if self.enemy_atk_bar >= 1.0 {
@@ -196,9 +197,10 @@ impl CombatState {
             return None;
         }
 
-        let atk = monster.atk;
+        // Use total stats (base + bonus) for combat
+        let atk = monster.total_atk();
         let element = monster.element;
-        let def = self.enemy.def;
+        let def = self.enemy.total_def();
         let enemy_element = self.enemy.element;
 
         // Check for reaction (returns multiplier and optional reaction name)
@@ -229,16 +231,16 @@ impl CombatState {
             return None;
         }
 
-        // Get enemy stats first (before borrowing player monster)
-        let enemy_atk = self.enemy.atk;
+        // Get enemy stats first (before borrowing player monster) - use total stats
+        let enemy_atk = self.enemy.total_atk();
         let enemy_element = self.enemy.element;
 
-        // Get player monster stats
+        // Get player monster stats - use total stats
         let monster = self.active_monster()?;
         if !monster.is_alive() {
             return None;
         }
-        let def = monster.def;
+        let def = monster.total_def();
         let monster_element = monster.element;
 
         // Calculate damage (no reactions for enemy for now)
@@ -347,12 +349,12 @@ impl CombatState {
                 })
             }
             _ => {
-                // Damage skills
-                let atk = monster.atk;
+                // Damage skills - use total stats
+                let atk = monster.total_atk();
                 let (reaction_mult, _reaction_name, _heal) = self.check_reaction(element);
                 let damage = calculate_final_damage(
                     atk,
-                    self.enemy.def,
+                    self.enemy.total_def(),
                     element,
                     self.enemy.element,
                     skill_value * reaction_mult

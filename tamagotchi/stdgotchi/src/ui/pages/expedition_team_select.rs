@@ -358,14 +358,14 @@ impl Page for ExpeditionTeamSelectPage {
             Text::new(dur_text, Point::new(x + 12, dur_y + 22), text_style).draw(display)?;
         }
 
-        // Start button - large rounded button (positioned lower to match visual)
+        // Start button - full width rounded button
         let (start_bg, start_border) = if self.can_start() {
             (Rgb888::new(100, 200, 100), Rgb888::new(60, 160, 60))
         } else {
             (Rgb888::new(200, 200, 205), Rgb888::new(160, 160, 165))
         };
-        let start_rect = Rectangle::new(Point::new(60, 252), Size::new(120, 30));
-        let start_rounded = RoundedRectangle::new(start_rect, CornerRadii::new(Size::new(8, 8)));
+        let start_rect = Rectangle::new(Point::new(8, 240), Size::new(224, 42));
+        let start_rounded = RoundedRectangle::new(start_rect, CornerRadii::new(Size::new(10, 10)));
 
         // Fill
         start_rounded.into_styled(PrimitiveStyleBuilder::new()
@@ -380,7 +380,8 @@ impl Page for ExpeditionTeamSelectPage {
             .build())
             .draw(display)?;
 
-        Text::new("START EXPEDITION", Point::new(68, 272), text_style).draw(display)?;
+        let start_text_style = MonoTextStyle::new(&FONT_7X13, Rgb888::WHITE);
+        Text::new("START EXPEDITION", Point::new(48, 266), start_text_style).draw(display)?;
         self.start_area = Some(start_rect);
         self.back_area = None;
 

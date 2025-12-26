@@ -1,21 +1,15 @@
 //! Stat Upgrade System
 //!
-//! Handles upgrading monster stats using crystals and essences.
+//! Handles upgrading monster stat bonuses using crystals.
+//! Uses Pokemon EV-style bonuses: 0-50 points per stat.
 
-use crate::game::core::Element;
+use crate::game::core::MAX_STAT_BONUS;
 
-/// Calculate crystal cost for a +1 stat upgrade
-/// Formula: cost = (current_stat / 10) * 5
-pub fn upgrade_cost_crystals(current_stat: u16) -> u32 {
-    ((current_stat / 10) * 5) as u32
-}
-
-/// Calculate cost for major upgrade (+10 stats)
-/// Requires crystals + essences of the monster's element
-pub fn major_upgrade_cost(current_stat: u16) -> (u32, u8) {
-    let crystal_cost = upgrade_cost_crystals(current_stat) * 10; // 10x normal cost
-    let essence_cost = 5u8; // 5 essences of the monster's element
-    (crystal_cost, essence_cost)
+/// Calculate crystal cost for a +1 bonus upgrade
+/// Formula: cost = (current_bonus + 1) * 3
+/// Lower bonus = cheaper to upgrade (starts at 3 crystals)
+pub fn upgrade_cost_crystals(current_bonus: u8) -> u32 {
+    ((current_bonus as u32 + 1) * 3)
 }
 
 /// Upgrade result
@@ -23,38 +17,17 @@ pub fn major_upgrade_cost(current_stat: u16) -> (u32, u8) {
 pub enum UpgradeResult {
     Success,
     InsufficientCrystals,
-    InsufficientEssences,
-    MaxStatReached,
+    MaxBonusReached,
 }
-
-/// Maximum stat value
-pub const MAX_STAT: u16 = 999;
 
 /// Check if upgrade is possible and return the cost
-pub fn can_upgrade(current_stat: u16, crystals_available: u32) -> Option<u32> {
-    if current_stat >= MAX_STAT {
+pub fn can_upgrade(current_bonus: u8, crystals_available: u32) -> Option<u32> {
+    if current_bonus >= MAX_STAT_BONUS {
         return None;
     }
-    let cost = upgrade_cost_crystals(current_stat);
+    let cost = upgrade_cost_crystals(current_bonus);
     if crystals_available >= cost {
         Some(cost)
-    } else {
-        None
-    }
-}
-
-/// Check if major upgrade is possible
-pub fn can_major_upgrade(
-    current_stat: u16,
-    crystals_available: u32,
-    essences_available: u16,
-) -> Option<(u32, u8)> {
-    if current_stat + 10 > MAX_STAT {
-        return None;
-    }
-    let (crystal_cost, essence_cost) = major_upgrade_cost(current_stat);
-    if crystals_available >= crystal_cost && essences_available >= essence_cost as u16 {
-        Some((crystal_cost, essence_cost))
     } else {
         None
     }
@@ -66,16 +39,21 @@ mod tests {
 
     #[test]
     fn test_upgrade_cost() {
-        // ATK 50 → 51: 25 crystals (50/10 * 5 = 25)
-        assert_eq!(upgrade_cost_crystals(50), 25);
-        // ATK 100 → 101: 50 crystals
-        assert_eq!(upgrade_cost_crystals(100), 50);
+        // Bonus 0 → 1: 3 crystals ((0+1) * 3 = 3)
+        assert_eq!(upgrade_cost_crystals(0), 3);
+        // Bonus 10 → 11: 33 crystals ((10+1) * 3 = 33)
+        assert_eq!(upgrade_cost_crystals(10), 33);
+        // Bonus 49 → 50: 150 crystals ((49+1) * 3 = 150)
+        assert_eq!(upgrade_cost_crystals(49), 150);
     }
 
     #[test]
-    fn test_major_upgrade_cost() {
-        let (crystals, essences) = major_upgrade_cost(50);
-        assert_eq!(crystals, 250); // 25 * 10
-        assert_eq!(essences, 5);
+    fn test_can_upgrade() {
+        // Can upgrade with enough crystals
+        assert!(can_upgrade(0, 10).is_some());
+        // Cannot upgrade at max
+        assert!(can_upgrade(50, 1000).is_none());
+        // Cannot upgrade without enough crystals
+        assert!(can_upgrade(10, 10).is_none()); // needs 33
     }
 }
