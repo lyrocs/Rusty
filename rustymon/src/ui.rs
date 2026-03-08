@@ -42,6 +42,30 @@ impl MonData {
     fn is_fainted(&self) -> bool { self.hp == 0 }
 }
 
+/// All battle data the render layer needs, cloned out of the ECS world.
+pub struct BattleRenderData {
+    pub log: Vec<String>,
+    pub player_won: bool,
+    pub player_name: &'static str,
+    pub player_level: u8,
+    pub player_max_hp: u16,
+    pub enemy_name: &'static str,
+    pub enemy_level: u8,
+    pub enemy_max_hp: u16,
+    /// `(player_hp, enemy_hp)` recorded after every log entry.
+    pub hp_at: Vec<(u16, u16)>,
+}
+
+impl BattleRenderData {
+    /// HP pair current at `lines_shown` animation frames.
+    fn hp_now(&self, lines_shown: usize) -> (u16, u16) {
+        if lines_shown == 0 || self.hp_at.is_empty() {
+            return (self.player_max_hp, self.enemy_max_hp);
+        }
+        self.hp_at[(lines_shown - 1).min(self.hp_at.len() - 1)]
+    }
+}
+
 pub struct RenderData {
     pub screen: Screen,
     pub cursor: MenuCursor,
@@ -49,15 +73,14 @@ pub struct RenderData {
     /// Roster sorted ascending by slot index.
     pub roster: Vec<MonData>,
     pub battle_lines_shown: usize,
-    /// `Some((log_lines, player_won))` when a battle result is available.
-    pub battle_log: Option<(Vec<String>, bool)>,
+    pub battle: Option<BattleRenderData>,
 }
 
 impl RenderData {
     pub fn battle_is_done(&self) -> bool {
-        self.battle_log
+        self.battle
             .as_ref()
-            .map_or(true, |(log, _)| self.battle_lines_shown >= log.len())
+            .map_or(true, |b| self.battle_lines_shown >= b.log.len())
     }
 }
 
@@ -69,11 +92,17 @@ pub fn extract_render_data(world: &World) -> RenderData {
     let cursor = world.resource::<MenuCursorRes>().0.clone();
     let active_slot = world.resource::<ActiveSlot>().0;
     let battle_lines_shown = world.resource::<BattleData>().lines_shown;
-    let battle_log = world
-        .resource::<BattleData>()
-        .result
-        .as_ref()
-        .map(|r| (r.log.clone(), r.player_won));
+    let battle = world.resource::<BattleData>().result.as_ref().map(|r| BattleRenderData {
+        log:            r.log.clone(),
+        player_won:     r.player_won,
+        player_name:    r.player_name,
+        player_level:   r.player_level,
+        player_max_hp:  r.player_max_hp,
+        enemy_name:     r.enemy_name,
+        enemy_level:    r.enemy_level,
+        enemy_max_hp:   r.enemy_max_hp,
+        hp_at:          r.hp_at.clone(),
+    });
 
     // ── Roster entities (cloned Vec so no lingering world borrow) ──────────
     let entity_ids: Vec<_> = world.resource::<RosterEntities>().0.clone();
@@ -105,7 +134,7 @@ pub fn extract_render_data(world: &World) -> RenderData {
         active_slot,
         roster: pairs.into_iter().map(|(_, d)| d).collect(),
         battle_lines_shown,
-        battle_log,
+        battle,
     }
 }
 
@@ -214,37 +243,101 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
 }
 
 // ─── Battle ──────────────────────────────────────────────────────────────────
+//
+// Layout (240 × 284 px):
+//   y=  0..28   Title bar
+//   y= 28..82   Enemy stat card  (h=54)
+//   y= 82..94   "─── VS ───" separator
+//   y= 94..148  Player stat card (h=54)
+//   y=150..264  Turn log text box (h=114, up to 8 lines)
+//   y=264..284  Result / hint bar (h=20)
+
+const CARD_ENEMY:  Rgb888 = Rgb888::new(50, 12, 12);
+const CARD_PLAYER: Rgb888 = Rgb888::new(10, 40, 14);
+const LOG_BG:      Rgb888 = Rgb888::new(14, 14, 28);
 
 fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
     fill_rect(display, 0, 0, 240, 284, BG);
 
+    // ── Title bar ────────────────────────────────────────────────────────
     fill_rect(display, 0, 0, 240, 28, BATTLE_BG);
     draw_text(display, "BATTLE", 76, 20, &FONT_10X20, RED);
 
-    let Some((log, player_won)) = &data.battle_log else {
+    let Some(battle) = &data.battle else {
         draw_text(display, "No battle data", 30, 150, &FONT_10X20, GRAY);
         return;
     };
 
-    let visible = data.battle_lines_shown.min(log.len());
-    const MAX_VISIBLE: usize = 18;
-    let start = visible.saturating_sub(MAX_VISIBLE);
+    let (player_hp, enemy_hp) = battle.hp_now(data.battle_lines_shown);
+
+    // ── Enemy card – top-RIGHT (y=28..80, x=76..236) ─────────────────────
+    // Mirrored like Pokémon: name/level on the right, HP bar flush-right,
+    // no HP numbers (the bar hides the exact value until it drains).
+    const EX: i32 = 76; const EW: u32 = 160; // card left-edge and width
+    fill_rect(display, EX, 28, EW, 52, CARD_ENEMY);
+    stroke_rect(display, EX, 28, EW, 52, RED);
+
+    // Level right-aligned inside card ("Lv.X" = 4 chars × 10 px = 40 px)
+    let lv_e = format!("Lv.{}", battle.enemy_level);
+    let lv_e_x = EX + EW as i32 - 4 - lv_e.len() as i32 * 10;
+    draw_text(display, battle.enemy_name, EX + 4, 44, &FONT_10X20, WHITE);
+    draw_text(display, &lv_e, lv_e_x, 44, &FONT_10X20, YELLOW);
+
+    // HP bar flush with the card's right edge
+    let e_pct = pct(enemy_hp, battle.enemy_max_hp);
+    draw_bar(display, EX + 4, 52, EW - 8, 9, e_pct, hp_bar_color(e_pct));
+
+    // ── VS separator (y=82..94) ──────────────────────────────────────────
+    draw_hline(display, 4, 236, 84, GRAY);
+    draw_text(display, "--- VS ---", 78, 93, &FONT_6X10, GRAY);
+
+    // ── Player card – bottom-LEFT (y=94..152, x=4..164) ──────────────────
+    const PX: i32 = 4; const PW: u32 = 160;
+    fill_rect(display, PX, 94, PW, 58, CARD_PLAYER);
+    stroke_rect(display, PX, 94, PW, 58, GREEN);
+
+    // Level right-aligned inside card
+    let lv_p = format!("Lv.{}", battle.player_level);
+    let lv_p_x = PX + PW as i32 - 4 - lv_p.len() as i32 * 10;
+    draw_text(display, battle.player_name, PX + 4, 110, &FONT_10X20, WHITE);
+    draw_text(display, &lv_p, lv_p_x, 110, &FONT_10X20, YELLOW);
+
+    let p_pct = pct(player_hp, battle.player_max_hp);
+    draw_bar(display, PX + 4, 118, PW - 8, 9, p_pct, hp_bar_color(p_pct));
+    // Player shows exact HP numbers (classic Pokémon bottom box)
+    let hp_p = format!("HP {}/{}", player_hp, battle.player_max_hp);
+    draw_text(display, &hp_p, PX + 4, 141, &FONT_6X10, WHITE);
+
+    // ── Turn log text box (y=156..264) ───────────────────────────────────
+    fill_rect(display, 4, 156, 232, 108, LOG_BG);
+    stroke_rect(display, 4, 156, 232, 108, GRAY);
+
+    let visible = data.battle_lines_shown.min(battle.log.len());
+    const MAX_LOG_LINES: usize = 7;
+    let start = visible.saturating_sub(MAX_LOG_LINES);
 
     for (slot, idx) in (start..visible).enumerate() {
-        let y = 42 + slot as i32 * 13;
-        let line = &log[idx];
-        draw_text(display, line, 4, y, &FONT_6X10, log_line_color(line));
+        let y = 169 + slot as i32 * 14;
+        let line = &battle.log[idx];
+        draw_text(display, line, 8, y, &FONT_6X10, log_line_color(line));
     }
 
+    // ── Result / hint bar (y=264..284) ───────────────────────────────────
     if data.battle_is_done() {
-        fill_rect(display, 0, 268, 240, 16, Rgb888::new(30, 30, 30));
-        let (msg, col) = if *player_won {
-            ("VICTORY!  Tap to return", GREEN)
+        let (msg, col) = if battle.player_won {
+            ("  VICTORY!  Tap to return  ", GREEN)
         } else {
-            ("DEFEAT...  Tap to return", RED)
+            ("  DEFEAT...  Tap to return  ", RED)
         };
-        draw_text(display, msg, 6, 280, &FONT_6X10, col);
+        fill_rect(display, 0, 264, 240, 20, Rgb888::new(20, 20, 20));
+        draw_hline(display, 0, 240, 264, if battle.player_won { GREEN } else { RED });
+        draw_text(display, msg, 4, 278, &FONT_6X10, col);
     }
+}
+
+fn pct(current: u16, max: u16) -> u8 {
+    if max == 0 { return 0; }
+    ((current as u32 * 100) / max as u32) as u8
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

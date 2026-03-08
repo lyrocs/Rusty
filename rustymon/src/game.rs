@@ -133,6 +133,15 @@ pub struct BattleResult {
     pub player_won: bool,
     pub player_final_hp: u16,
     pub exp_gained: u32,
+    // Combatant metadata (needed by the render layer)
+    pub player_name: &'static str,
+    pub player_level: u8,
+    pub player_max_hp: u16,
+    pub enemy_name: &'static str,
+    pub enemy_level: u8,
+    pub enemy_max_hp: u16,
+    /// `(player_hp, enemy_hp)` after every log entry – drives live HP bars.
+    pub hp_at: Vec<(u16, u16)>,
 }
 
 /// A transient snapshot used only inside `simulate_battle`.
@@ -152,53 +161,65 @@ fn simulate_battle(
     let mut p = RustymonSnapshot { name: p_name, level: p_level, atk: p_atk, def: p_def, hp: p_hp, max_hp: p_max_hp };
     let mut e = enemy;
     let mut log: Vec<String> = Vec::new();
+    let mut hp_at: Vec<(u16, u16)> = Vec::new();
 
-    log.push(format!("VS {} begins!", e.name));
-    log.push(format!("You: {} HP:{} ATK:{} DEF:{}", p.name, p.hp, p.atk, p.def));
-    log.push(format!("Foe: {} HP:{} ATK:{} DEF:{}", e.name, e.hp, e.atk, e.def));
+    // Helper: push a log line and record the current HP snapshot.
+    macro_rules! push {
+        ($msg:expr) => {{
+            log.push($msg);
+            hp_at.push((p.hp, e.hp));
+        }};
+    }
+
+    push!(format!("VS {} begins!", e.name));
+    push!(format!("ATK:{} DEF:{} vs ATK:{} DEF:{}", p.atk, p.def, e.atk, e.def));
 
     for turn in 1u32.. {
-        log.push(format!("--- Turn {} ---", turn));
+        push!(format!("--- Turn {} ---", turn));
 
         let p_dmg = calc_damage(p.atk, e.def);
         e.hp = e.hp.saturating_sub(p_dmg);
-        log.push(format!("{} -> {} dmg", p.name, p_dmg));
-        log.push(format!("Foe HP: {}/{}", e.hp, e.max_hp));
+        push!(format!("{} hits for {} dmg!", p.name, p_dmg));
 
         if e.hp == 0 {
-            log.push(format!("{} fainted!", e.name));
-            log.push("*** YOU WIN! ***".to_string());
+            push!(format!("{} fainted!", e.name));
+            push!("*** YOU WIN! ***".to_string());
             return BattleResult {
-                log,
+                log, hp_at,
                 player_won: true,
                 player_final_hp: p.hp,
                 exp_gained: 40 + (e.level as u32) * 10,
+                player_name: p_name, player_level: p_level, player_max_hp: p_max_hp,
+                enemy_name: e.name, enemy_level: e.level, enemy_max_hp: e.max_hp,
             };
         }
 
         let e_dmg = calc_damage(e.atk, p.def);
         p.hp = p.hp.saturating_sub(e_dmg);
-        log.push(format!("{} -> {} dmg", e.name, e_dmg));
-        log.push(format!("Your HP: {}/{}", p.hp, p.max_hp));
+        push!(format!("{} hits for {} dmg!", e.name, e_dmg));
 
         if p.hp == 0 {
-            log.push(format!("{} fainted!", p.name));
-            log.push("*** YOU LOSE... ***".to_string());
+            push!(format!("{} fainted!", p.name));
+            push!("*** YOU LOSE... ***".to_string());
             return BattleResult {
-                log,
+                log, hp_at,
                 player_won: false,
                 player_final_hp: 0,
                 exp_gained: 10,
+                player_name: p_name, player_level: p_level, player_max_hp: p_max_hp,
+                enemy_name: e.name, enemy_level: e.level, enemy_max_hp: e.max_hp,
             };
         }
 
         if turn >= 50 {
-            log.push("Time ran out! Draw.".to_string());
+            push!("Time ran out! Draw.".to_string());
             return BattleResult {
-                log,
+                log, hp_at,
                 player_won: false,
                 player_final_hp: p.hp,
                 exp_gained: 5,
+                player_name: p_name, player_level: p_level, player_max_hp: p_max_hp,
+                enemy_name: e.name, enemy_level: e.level, enemy_max_hp: e.max_hp,
             };
         }
     }
