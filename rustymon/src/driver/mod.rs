@@ -1,5 +1,8 @@
 pub mod st7789p;
+pub mod cst816d;
 
+
+pub use cst816d::{Cst816dDriver, Gesture, TouchPoint, CST816D_DEVICE_ADDRESS};
 pub use st7789p::ColorMode;
 
 // Display configuration for Waveshare ESP32-C6-Touch-LCD-1.83

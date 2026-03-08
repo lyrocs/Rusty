@@ -84,7 +84,7 @@ fn render_overview<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameS
     draw_button(display, 130, 244, 96, 30, "ROSTER", r_sel);
 
     // Hint
-    draw_text(display, "BTN: switch   HOLD: pick", 6, 282, &FONT_6X10, DARK_GRAY);
+    draw_text(display, "Tap btn | Swipe< > | SwipeUp", 6, 282, &FONT_6X10, DARK_GRAY);
 }
 
 // ─── Roster ──────────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameSta
         }
     }
 
-    draw_text(display, "BTN: back to overview", 6, 282, &FONT_6X10, DARK_GRAY);
+    draw_text(display, "Tap or swipe to go back", 6, 282, &FONT_6X10, DARK_GRAY);
 }
 
 // ─── Battle ──────────────────────────────────────────────────────────────────
@@ -157,9 +157,9 @@ fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameSta
     if state.battle_is_done() {
         fill_rect(display, 0, 268, 240, 16, Rgb888::new(30, 30, 30));
         let (msg, col) = if battle.player_won {
-            ("VICTORY!  BTN: return", GREEN)
+            ("VICTORY!  Tap to return", GREEN)
         } else {
-            ("DEFEAT...  BTN: return", RED)
+            ("DEFEAT...  Tap to return", RED)
         };
         draw_text(display, msg, 6, 280, &FONT_6X10, col);
     }
