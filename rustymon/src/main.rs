@@ -3,21 +3,20 @@ mod game;
 mod ui;
 
 use driver::{
-    ColorMode, Cst816dDriver, Gesture, St7789pDriver, TouchPoint, CST816D_DEVICE_ADDRESS,
-    LCD_H_RES, LCD_V_RES,
+    ButtonDriver, ButtonEvent, ColorMode, Cst816dDriver, Gesture, St7789pDriver, TouchPoint,
+    CST816D_DEVICE_ADDRESS, LCD_H_RES, LCD_V_RES,
 };
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
 use esp_idf_svc::hal::{
     delay::FreeRtos,
-    gpio::{PinDriver, Pull},
     i2c::{I2cConfig, I2cDriver},
     peripherals::Peripherals,
     spi::{config::Config as SpiConfig, SpiDeviceDriver, SpiDriver, SpiDriverConfig},
     units::Hertz,
+    gpio::PinDriver,
 };
-use game::{GameState, MenuCursor, Screen};
-use std::time::Instant;
-use ui::render_screen;
+use game::{CurrentScreen, InputEvent, InputQueue, Screen};
+use ui::{extract_render_data, render_screen};
 
 fn main() {
     esp_idf_svc::sys::link_patches();
@@ -46,9 +45,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &SpiConfig::new().baudrate(Hertz(40_000_000)),
     )?;
 
-    let dc = PinDriver::output(pins.gpio3)?;
+    let dc  = PinDriver::output(pins.gpio3)?;
     let rst = PinDriver::output(pins.gpio4)?;
-    let bl = PinDriver::output(pins.gpio6)?;
+    let bl  = PinDriver::output(pins.gpio6)?;
 
     let mut display =
         St7789pDriver::new(spi_device, dc, rst, LCD_H_RES, LCD_V_RES, ColorMode::Rgb888)?;
@@ -58,68 +57,64 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     display.clear(Rgb888::BLACK)?;
     display.flush()?;
 
-    // ── Touch (I2C: SDA=GPIO7, SCL=GPIO8) ────────────────────────────────
+    // ── Touch controller (I2C: SDA=GPIO7, SCL=GPIO8) ─────────────────────
     let i2c_config = I2cConfig::new().baudrate(Hertz(400_000));
     let mut i2c = I2cDriver::new(peripherals.i2c0, pins.gpio7, pins.gpio8, &i2c_config)?;
 
     let mut touch = Cst816dDriver::new(CST816D_DEVICE_ADDRESS);
-    let touch_ok = touch.initialize(&mut i2c).map_err(|e| log::error!("Touch init failed: {:?}", e)).is_ok();
+    let touch_ok = touch
+        .initialize(&mut i2c)
+        .map_err(|e| log::error!("Touch init failed: {:?}", e))
+        .is_ok();
+
     if !touch_ok {
-        log::warn!("Touch screen unavailable – falling back to BOOT button (GPIO9)");
+        log::warn!("Touch unavailable – falling back to BOOT button (GPIO9)");
     }
 
     // ── BOOT button fallback (GPIO9, active-low) ──────────────────────────
-    let mut btn = PinDriver::input(pins.gpio9)?;
-    btn.set_pull(Pull::Up)?;
+    let mut btn = ButtonDriver::new(pins.gpio9)?;
 
-    // ── Game state ────────────────────────────────────────────────────────
-    let mut state = GameState::new();
-
-    // ── Touch tracker ─────────────────────────────────────────────────────
+    // ── Touch state tracker ───────────────────────────────────────────────
     let mut touch_was_down = false;
-    let mut touch_last_pos: Option<TouchPoint> = None;
+    let mut touch_last: Option<TouchPoint> = None;
 
-    // ── BOOT button tracker ───────────────────────────────────────────────
-    let mut btn_prev = false;
-    let mut btn_press_start: Option<Instant> = None;
+    // ── ECS world + schedule ──────────────────────────────────────────────
+    let mut world    = game::setup_world();
+    let mut schedule = game::build_schedule();
 
-    // ── Battle animation timing ───────────────────────────────────────────
-    let mut last_line_tick = Instant::now();
-    const LINE_DELAY_MS: u128 = 550;
-
-    log::info!("Rustymon started! Touch: {}", if touch_ok { "OK" } else { "fallback" });
+    log::info!("Rustymon started! touch={}", touch_ok);
 
     loop {
-        // ── Touch input ───────────────────────────────────────────────────
+        // ── 1. Gather input → InputEvent list ────────────────────────────
+        let mut events: Vec<InputEvent> = Vec::new();
+
         if touch_ok {
             match touch.get_touch_and_gesture(&mut i2c) {
                 Ok((opt_point, gesture)) => {
                     let is_touching = opt_point.is_some();
 
                     if let Some(ref p) = opt_point {
-                        touch_last_pos = Some(TouchPoint { x: p.x, y: p.y });
+                        touch_last = Some(TouchPoint { x: p.x, y: p.y });
                     }
 
-                    // Swipe / long-press gestures fire immediately
-                    match gesture {
-                        Gesture::SwipeLeft | Gesture::SwipeRight
-                        | Gesture::SwipeUp | Gesture::SwipeDown
-                        | Gesture::LongPress => {
-                            handle_gesture(&mut state, gesture);
-                        }
-                        _ => {}
+                    // Gestures fire immediately on detection
+                    if let Some(ev) = gesture_to_input(gesture) {
+                        events.push(ev);
                     }
 
-                    // Tap fires on finger-lift (falling edge)
+                    // Tap fires on finger-lift
                     if !is_touching && touch_was_down {
-                        let fired_gesture = if gesture == Gesture::None {
+                        let fired = if matches!(gesture, Gesture::None) {
                             Gesture::SingleClick
                         } else {
                             gesture
                         };
-                        if matches!(fired_gesture, Gesture::SingleClick | Gesture::DoubleClick) {
-                            if let Some(pos) = touch_last_pos {
-                                handle_tap(&mut state, pos.x, pos.y);
+                        if matches!(fired, Gesture::SingleClick | Gesture::DoubleClick) {
+                            if let Some(pos) = touch_last {
+                                let screen = world.resource::<CurrentScreen>().0.clone();
+                                if let Some(ev) = tap_to_input(pos.x, pos.y, &screen) {
+                                    events.push(ev);
+                                }
                             }
                         }
                     }
@@ -130,116 +125,63 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // ── BOOT button fallback ──────────────────────────────────────────
+        // BOOT button fallback (only active when touch is unavailable)
         if !touch_ok {
-            let btn_cur = btn.is_low();
-            if btn_cur && !btn_prev {
-                btn_press_start = Some(Instant::now());
-            }
-            if !btn_cur && btn_prev {
-                if let Some(start) = btn_press_start.take() {
-                    let held_ms = start.elapsed().as_millis();
-                    handle_btn_release(&mut state, held_ms);
-                }
-            }
-            btn_prev = btn_cur;
-        }
-
-        // ── Battle animation ──────────────────────────────────────────────
-        if state.screen == Screen::Battle && !state.battle_is_done() {
-            if last_line_tick.elapsed().as_millis() >= LINE_DELAY_MS {
-                state.advance_battle_line();
-                last_line_tick = Instant::now();
+            if let Some(btn_ev) = btn.poll() {
+                events.push(match btn_ev {
+                    ButtonEvent::ShortPress => InputEvent::ToggleCursor,
+                    ButtonEvent::LongPress  => InputEvent::Confirm,
+                });
             }
         }
 
-        // ── Render ────────────────────────────────────────────────────────
-        render_screen(&mut display, &state);
+        // ── 2. Push events into the ECS InputQueue resource ───────────────
+        world.resource_mut::<InputQueue>().0.extend(events);
+
+        // ── 3. Tick ECS schedule (navigation + battle animation) ──────────
+        schedule.run(&mut world);
+
+        // ── 4. Extract snapshot → render → flush ─────────────────────────
+        let render_data = extract_render_data(&world);
+        render_screen(&mut display, &render_data);
         display.flush()?;
 
         FreeRtos::delay_ms(50_u32);
     }
 }
 
-// ─── Touch gesture handler ────────────────────────────────────────────────────
-// Swipes and long-press: navigate between screens or cycle the cursor.
+// ─── Input translation helpers ────────────────────────────────────────────────
 
-fn handle_gesture(state: &mut GameState, gesture: Gesture) {
-    match state.screen {
-        Screen::Overview => match gesture {
-            // Swipe horizontally → move cursor
-            Gesture::SwipeLeft => state.cursor = MenuCursor::Roster,
-            Gesture::SwipeRight => state.cursor = MenuCursor::Battle,
-            // Swipe up / long-press → confirm selected option
-            Gesture::SwipeUp | Gesture::LongPress => state.confirm_selection(),
-            // Swipe down → go to roster
-            Gesture::SwipeDown => state.go_roster(),
-            _ => {}
-        },
-        Screen::Roster => {
-            // Any swipe / long-press → back to overview
-            state.go_overview();
-        }
-        Screen::Battle => {
-            if state.battle_is_done() {
-                state.go_overview();
-            }
-        }
+/// Map a CST816D gesture to a semantic `InputEvent`.
+/// Returns `None` for gestures that are handled as taps (SingleClick / None)
+/// or that have no gameplay meaning.
+fn gesture_to_input(gesture: Gesture) -> Option<InputEvent> {
+    match gesture {
+        Gesture::SwipeLeft  => Some(InputEvent::CursorToRoster),
+        Gesture::SwipeRight => Some(InputEvent::CursorToBattle),
+        Gesture::SwipeUp | Gesture::LongPress => Some(InputEvent::Confirm),
+        Gesture::SwipeDown  => Some(InputEvent::SelectRoster),
+        _ => None,
     }
 }
 
-// ─── Touch tap handler ────────────────────────────────────────────────────────
-// Maps screen-space coordinates to game actions.
-//
-// Overview button layout (240×284 display):
-//   BATTLE  x: 14–110  y: 244–274
-//   ROSTER  x: 130–226 y: 244–274
-
-fn handle_tap(state: &mut GameState, x: u16, y: u16) {
-    match state.screen {
+/// Map a tap position to a semantic `InputEvent` based on the current screen.
+///
+/// Overview button layout (240 × 284 px):
+///   BATTLE  x: 14–110  y: 244–274   → left half of bottom zone
+///   ROSTER  x: 130–226 y: 244–274   → right half of bottom zone
+fn tap_to_input(x: u16, y: u16, screen: &Screen) -> Option<InputEvent> {
+    match screen {
         Screen::Overview => {
             if y >= 230 {
-                // Bottom zone: direct button tap
-                if x < 120 {
-                    state.cursor = MenuCursor::Battle;
-                    state.start_battle();
-                } else {
-                    state.cursor = MenuCursor::Roster;
-                    state.go_roster();
-                }
+                // Direct button tap
+                if x < 120 { Some(InputEvent::SelectBattle) }
+                else        { Some(InputEvent::SelectRoster) }
             } else {
-                // Tap anywhere else → toggle highlighted button
-                state.toggle_cursor();
+                // Tap elsewhere on the overview → cycle cursor
+                Some(InputEvent::ToggleCursor)
             }
         }
-        Screen::Roster => {
-            state.go_overview();
-        }
-        Screen::Battle => {
-            if state.battle_is_done() {
-                state.go_overview();
-            }
-        }
-    }
-}
-
-// ─── BOOT button fallback handler ─────────────────────────────────────────────
-// Short press (<500 ms) = toggle cursor, long press = confirm.
-
-fn handle_btn_release(state: &mut GameState, held_ms: u128) {
-    match state.screen {
-        Screen::Overview => {
-            if held_ms < 500 {
-                state.toggle_cursor();
-            } else {
-                state.confirm_selection();
-            }
-        }
-        Screen::Roster => state.go_overview(),
-        Screen::Battle => {
-            if state.battle_is_done() {
-                state.go_overview();
-            }
-        }
+        Screen::Roster | Screen::Battle => Some(InputEvent::Back),
     }
 }

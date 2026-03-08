@@ -1,7 +1,8 @@
-pub mod st7789p;
+pub mod button;
 pub mod cst816d;
+pub mod st7789p;
 
-
+pub use button::{ButtonDriver, ButtonEvent};
 pub use cst816d::{Cst816dDriver, Gesture, TouchPoint, CST816D_DEVICE_ADDRESS};
 pub use st7789p::ColorMode;
 

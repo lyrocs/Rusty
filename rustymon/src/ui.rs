@@ -1,3 +1,4 @@
+use bevy_ecs::world::World;
 use embedded_graphics::{
     mono_font::{
         ascii::{FONT_6X10, FONT_10X20},
@@ -9,7 +10,104 @@ use embedded_graphics::{
     text::Text,
 };
 
-use crate::game::{GameState, MenuCursor, Screen};
+use crate::game::{
+    ActiveSlot, BattleData, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
+    MonName, RosterEntities, RosterSlot, Screen, Stats,
+};
+
+// ─── Render snapshot ─────────────────────────────────────────────────────────
+// Plain data extracted from the World each frame so render functions are
+// completely pure (no ECS borrows inside drawing code).
+
+pub struct MonData {
+    pub name: &'static str,
+    pub level: u8,
+    pub atk: u16,
+    pub def: u16,
+    pub hp: u16,
+    pub max_hp: u16,
+    pub exp: u32,
+    pub exp_next: u32,
+}
+
+impl MonData {
+    fn hp_pct(&self) -> u8 {
+        if self.max_hp == 0 { return 0; }
+        ((self.hp as u32 * 100) / self.max_hp as u32) as u8
+    }
+    fn exp_pct(&self) -> u8 {
+        if self.exp_next == 0 { return 100; }
+        ((self.exp as u64 * 100) / self.exp_next as u64) as u8
+    }
+    fn is_fainted(&self) -> bool { self.hp == 0 }
+}
+
+pub struct RenderData {
+    pub screen: Screen,
+    pub cursor: MenuCursor,
+    pub active_slot: usize,
+    /// Roster sorted ascending by slot index.
+    pub roster: Vec<MonData>,
+    pub battle_lines_shown: usize,
+    /// `Some((log_lines, player_won))` when a battle result is available.
+    pub battle_log: Option<(Vec<String>, bool)>,
+}
+
+impl RenderData {
+    pub fn battle_is_done(&self) -> bool {
+        self.battle_log
+            .as_ref()
+            .map_or(true, |(log, _)| self.battle_lines_shown >= log.len())
+    }
+}
+
+/// Extract a cheap snapshot from the ECS world. Called once per frame from main
+/// **after** the schedule has run so all state is up-to-date.
+pub fn extract_render_data(world: &World) -> RenderData {
+    // ── Resources ──────────────────────────────────────────────────────────
+    let screen = world.resource::<CurrentScreen>().0.clone();
+    let cursor = world.resource::<MenuCursorRes>().0.clone();
+    let active_slot = world.resource::<ActiveSlot>().0;
+    let battle_lines_shown = world.resource::<BattleData>().lines_shown;
+    let battle_log = world
+        .resource::<BattleData>()
+        .result
+        .as_ref()
+        .map(|r| (r.log.clone(), r.player_won));
+
+    // ── Roster entities (cloned Vec so no lingering world borrow) ──────────
+    let entity_ids: Vec<_> = world.resource::<RosterEntities>().0.clone();
+
+    let mut pairs: Vec<(usize, MonData)> = entity_ids
+        .iter()
+        .map(|&entity| {
+            let e = world.entity(entity);
+            let slot = e.get::<RosterSlot>().unwrap().0;
+            let data = MonData {
+                name:     e.get::<MonName>().unwrap().0,
+                level:    e.get::<Level>().unwrap().0,
+                atk:      e.get::<Stats>().unwrap().atk,
+                def:      e.get::<Stats>().unwrap().def,
+                hp:       e.get::<Health>().unwrap().hp,
+                max_hp:   e.get::<Health>().unwrap().max_hp,
+                exp:      e.get::<Exp>().unwrap().current,
+                exp_next: e.get::<Exp>().unwrap().next,
+            };
+            (slot, data)
+        })
+        .collect();
+
+    pairs.sort_by_key(|(slot, _)| *slot);
+
+    RenderData {
+        screen,
+        cursor,
+        active_slot,
+        roster: pairs.into_iter().map(|(_, d)| d).collect(),
+        battle_lines_shown,
+        battle_log,
+    }
+}
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const BG: Rgb888 = Rgb888::new(8, 8, 18);
@@ -28,84 +126,73 @@ const DARK_GRAY: Rgb888 = Rgb888::new(40, 40, 50);
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
-pub fn render_screen<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameState) {
-    match &state.screen {
-        Screen::Overview => render_overview(display, state),
-        Screen::Roster => render_roster(display, state),
-        Screen::Battle => render_battle(display, state),
+pub fn render_screen<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
+    match data.screen {
+        Screen::Overview => render_overview(display, data),
+        Screen::Roster   => render_roster(display, data),
+        Screen::Battle   => render_battle(display, data),
     }
 }
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
-fn render_overview<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameState) {
+fn render_overview<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
     fill_rect(display, 0, 0, 240, 284, BG);
 
-    // Title bar
     fill_rect(display, 0, 0, 240, 28, TITLE_BG);
     draw_text(display, "OVERVIEW", 62, 20, &FONT_10X20, YELLOW);
 
-    let mon = state.active_rustymon();
+    let mon = &data.roster[data.active_slot];
 
-    // Name + level
     draw_text(display, mon.name, 10, 52, &FONT_10X20, WHITE);
     let lv = format!("Lv.{}", mon.level);
     draw_text(display, &lv, 178, 52, &FONT_10X20, YELLOW);
 
-    // Horizontal divider
     draw_hline(display, 10, 230, 59, GRAY);
 
-    // HP
     let hp_label = format!("HP  {}/{}", mon.hp, mon.max_hp);
     draw_text(display, &hp_label, 10, 76, &FONT_6X10, WHITE);
     draw_bar(display, 10, 80, 220, 10, mon.hp_pct(), hp_bar_color(mon.hp_pct()));
 
-    // ATK / DEF
     let atk_s = format!("ATK: {}", mon.atk);
     let def_s = format!("DEF: {}", mon.def);
     draw_text(display, &atk_s, 10, 106, &FONT_6X10, WHITE);
     draw_text(display, &def_s, 128, 106, &FONT_6X10, WHITE);
 
-    // EXP
     let exp_s = format!("EXP {}/{}", mon.exp, mon.exp_next);
     draw_text(display, &exp_s, 10, 124, &FONT_6X10, GRAY);
     draw_bar(display, 10, 128, 220, 6, mon.exp_pct(), ORANGE);
 
-    // Divider
     draw_hline(display, 10, 230, 146, GRAY);
 
-    // Simple monster icon centred between dividers
     draw_monster_icon(display, 96, 158, GRAY);
 
-    // Buttons
-    let b_sel = state.cursor == MenuCursor::Battle;
-    let r_sel = state.cursor == MenuCursor::Roster;
+    let b_sel = data.cursor == MenuCursor::Battle;
+    let r_sel = data.cursor == MenuCursor::Roster;
     draw_button(display, 14, 244, 96, 30, "BATTLE", b_sel);
     draw_button(display, 130, 244, 96, 30, "ROSTER", r_sel);
 
-    // Hint
     draw_text(display, "Tap btn | Swipe< > | SwipeUp", 6, 282, &FONT_6X10, DARK_GRAY);
 }
 
 // ─── Roster ──────────────────────────────────────────────────────────────────
 
-fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameState) {
+fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
     fill_rect(display, 0, 0, 240, 284, BG);
 
     fill_rect(display, 0, 0, 240, 28, TITLE_BG);
     draw_text(display, "ROSTER", 76, 20, &FONT_10X20, YELLOW);
 
-    for (i, mon) in state.roster.iter().enumerate() {
+    for (i, mon) in data.roster.iter().enumerate() {
         let y = 32 + i as i32 * 80;
-        let is_active = i == state.active;
+        let is_active = i == data.active_slot;
 
-        let card_col = if is_active { CARD_ACTIVE } else { CARD_IDLE };
+        let card_col   = if is_active { CARD_ACTIVE } else { CARD_IDLE };
         let border_col = if is_active { GREEN } else { Rgb888::new(50, 50, 90) };
 
         fill_rect(display, 8, y, 224, 72, card_col);
         stroke_rect(display, 8, y, 224, 72, border_col);
 
-        // Active marker
         if is_active {
             draw_text(display, ">", 12, y + 18, &FONT_10X20, GREEN);
         }
@@ -118,7 +205,6 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameSta
         draw_text(display, &hp_s, 26, y + 38, &FONT_6X10, WHITE);
         draw_bar(display, 26, y + 42, 192, 8, mon.hp_pct(), hp_bar_color(mon.hp_pct()));
 
-        // Fainted indicator
         if mon.is_fainted() {
             draw_text(display, "FAINTED", 150, y + 38, &FONT_6X10, RED);
         }
@@ -129,34 +215,30 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameSta
 
 // ─── Battle ──────────────────────────────────────────────────────────────────
 
-fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameState) {
+fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
     fill_rect(display, 0, 0, 240, 284, BG);
 
     fill_rect(display, 0, 0, 240, 28, BATTLE_BG);
     draw_text(display, "BATTLE", 76, 20, &FONT_10X20, RED);
 
-    let Some(battle) = &state.battle else {
+    let Some((log, player_won)) = &data.battle_log else {
         draw_text(display, "No battle data", 30, 150, &FONT_10X20, GRAY);
         return;
     };
 
-    let visible = state.battle_lines_shown.min(battle.log.len());
-
-    // How many lines fit from y=32 down to y=266 with 13px line height
+    let visible = data.battle_lines_shown.min(log.len());
     const MAX_VISIBLE: usize = 18;
-    let start = if visible > MAX_VISIBLE { visible - MAX_VISIBLE } else { 0 };
+    let start = visible.saturating_sub(MAX_VISIBLE);
 
     for (slot, idx) in (start..visible).enumerate() {
         let y = 42 + slot as i32 * 13;
-        let line = &battle.log[idx];
-        let color = log_line_color(line);
-        draw_text(display, line, 4, y, &FONT_6X10, color);
+        let line = &log[idx];
+        draw_text(display, line, 4, y, &FONT_6X10, log_line_color(line));
     }
 
-    // Bottom status bar when finished
-    if state.battle_is_done() {
+    if data.battle_is_done() {
         fill_rect(display, 0, 268, 240, 16, Rgb888::new(30, 30, 30));
-        let (msg, col) = if battle.player_won {
+        let (msg, col) = if *player_won {
             ("VICTORY!  Tap to return", GREEN)
         } else {
             ("DEFEAT...  Tap to return", RED)
@@ -168,50 +250,31 @@ fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, state: &GameSta
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn hp_bar_color(pct: u8) -> Rgb888 {
-    if pct > 50 {
-        GREEN
-    } else if pct > 25 {
-        YELLOW
-    } else {
-        RED
-    }
+    if pct > 50 { GREEN } else if pct > 25 { YELLOW } else { RED }
 }
 
 fn log_line_color(line: &str) -> Rgb888 {
-    if line.contains("WIN") || line.contains("EXP") {
-        GREEN
-    } else if line.contains("LOSE") || line.contains("fainted") {
-        RED
-    } else if line.starts_with("---") {
-        YELLOW
-    } else if line.starts_with("VS") || line.starts_with("You:") || line.starts_with("Foe:") {
-        ORANGE
-    } else {
-        WHITE
-    }
+    if line.contains("WIN") { GREEN }
+    else if line.contains("LOSE") || line.contains("fainted") { RED }
+    else if line.starts_with("---") { YELLOW }
+    else if line.starts_with("VS") || line.starts_with("You:") || line.starts_with("Foe:") { ORANGE }
+    else { WHITE }
 }
 
 fn draw_button<D: DrawTarget<Color = Rgb888>>(
-    display: &mut D,
-    x: i32, y: i32, w: u32, h: u32,
-    label: &str,
-    selected: bool,
+    display: &mut D, x: i32, y: i32, w: u32, h: u32, label: &str, selected: bool,
 ) {
-    let bg = if selected { BLUE_BTN } else { Rgb888::new(28, 28, 46) };
-    let border = if selected { WHITE } else { GRAY };
+    let bg     = if selected { BLUE_BTN } else { Rgb888::new(28, 28, 46) };
+    let border = if selected { WHITE }    else { GRAY };
     fill_rect(display, x, y, w, h, bg);
     stroke_rect(display, x, y, w, h, border);
-    // Centre label: FONT_6X10 char width=6
-    let text_x = x + (w as i32 - label.len() as i32 * 6) / 2;
-    let text_y = y + h as i32 / 2 + 4; // approx baseline centre
-    draw_text(display, label, text_x, text_y, &FONT_6X10, WHITE);
+    let tx = x + (w as i32 - label.len() as i32 * 6) / 2;
+    let ty = y + h as i32 / 2 + 4;
+    draw_text(display, label, tx, ty, &FONT_6X10, WHITE);
 }
 
 fn draw_bar<D: DrawTarget<Color = Rgb888>>(
-    display: &mut D,
-    x: i32, y: i32, w: u32, h: u32,
-    pct: u8,
-    color: Rgb888,
+    display: &mut D, x: i32, y: i32, w: u32, h: u32, pct: u8, color: Rgb888,
 ) {
     fill_rect(display, x, y, w, h, DARK_GRAY);
     let filled = (w * pct as u32 / 100).max(if pct > 0 { 1 } else { 0 });
@@ -222,20 +285,14 @@ fn draw_bar<D: DrawTarget<Color = Rgb888>>(
 }
 
 fn draw_monster_icon<D: DrawTarget<Color = Rgb888>>(display: &mut D, x: i32, y: i32, color: Rgb888) {
-    let eye = YELLOW;
-    // Head
-    fill_rect(display, x + 12, y, 26, 20, color);
-    // Eyes
-    fill_rect(display, x + 16, y + 5, 6, 6, eye);
-    fill_rect(display, x + 28, y + 5, 6, 6, eye);
-    // Body
-    fill_rect(display, x + 8, y + 22, 34, 22, color);
-    // Arms
-    fill_rect(display, x,      y + 24, 8, 14, color);
-    fill_rect(display, x + 42, y + 24, 8, 14, color);
-    // Legs
-    fill_rect(display, x + 12, y + 46, 10, 14, color);
-    fill_rect(display, x + 28, y + 46, 10, 14, color);
+    fill_rect(display, x + 12, y,      26, 20, color);          // head
+    fill_rect(display, x + 16, y + 5,   6,  6, YELLOW);          // left eye
+    fill_rect(display, x + 28, y + 5,   6,  6, YELLOW);          // right eye
+    fill_rect(display, x +  8, y + 22, 34, 22, color);           // body
+    fill_rect(display, x,      y + 24,  8, 14, color);           // left arm
+    fill_rect(display, x + 42, y + 24,  8, 14, color);           // right arm
+    fill_rect(display, x + 12, y + 46, 10, 14, color);           // left leg
+    fill_rect(display, x + 28, y + 46, 10, 14, color);           // right leg
 }
 
 // ─── Primitive wrappers ──────────────────────────────────────────────────────
@@ -259,12 +316,7 @@ fn draw_hline<D: DrawTarget<Color = Rgb888>>(display: &mut D, x1: i32, x2: i32, 
 }
 
 fn draw_text<D: DrawTarget<Color = Rgb888>>(
-    display: &mut D,
-    text: &str,
-    x: i32, y: i32,
-    font: &MonoFont<'_>,
-    color: Rgb888,
+    display: &mut D, text: &str, x: i32, y: i32, font: &MonoFont<'_>, color: Rgb888,
 ) {
-    let style = MonoTextStyle::new(font, color);
-    let _ = Text::new(text, Point::new(x, y), style).draw(display);
+    let _ = Text::new(text, Point::new(x, y), MonoTextStyle::new(font, color)).draw(display);
 }

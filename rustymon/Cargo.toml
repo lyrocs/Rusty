@@ -25,7 +25,7 @@ experimental = ["esp-idf-svc/experimental"]
 [dependencies]
 log = "0.4"
 esp-idf-svc = "0.51"
-bevy_ecs = { version = "0.18", default-features = false }
+bevy_ecs = { version = "0.18", default-features = false, features = ["std"] }
 embedded-graphics = "0.8"
 
 # --- Optional Embassy Integration ---
