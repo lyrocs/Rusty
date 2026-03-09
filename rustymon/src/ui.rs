@@ -6,18 +6,16 @@ use embedded_graphics::{
     },
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Line, PrimitiveStyle, Rectangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
     text::Text,
 };
 
 use crate::game::{
-    ActiveSlot, BattleData, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
-    MonName, RosterEntities, RosterSlot, Screen, Stats,
+    ActiveSlot, CircleKind, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
+    MonName, RosterEntities, RosterSlot, Screen, Stats, TapBattleState,
 };
 
 // ─── Render snapshot ─────────────────────────────────────────────────────────
-// Plain data extracted from the World each frame so render functions are
-// completely pure (no ECS borrows inside drawing code).
 
 pub struct MonData {
     pub name: &'static str,
@@ -42,71 +40,74 @@ impl MonData {
     fn is_fainted(&self) -> bool { self.hp == 0 }
 }
 
-/// All battle data the render layer needs, cloned out of the ECS world.
-pub struct BattleRenderData {
-    pub log: Vec<String>,
-    pub player_won: bool,
-    pub player_name: &'static str,
-    pub player_level: u8,
-    pub player_max_hp: u16,
-    pub enemy_name: &'static str,
-    pub enemy_level: u8,
-    pub enemy_max_hp: u16,
-    /// `(player_hp, enemy_hp)` recorded after every log entry.
-    pub hp_at: Vec<(u16, u16)>,
+/// Snapshot of a single shrinking circle, radius pre-computed at extract time.
+pub struct CircleSnapshot {
+    pub cx: u16,
+    pub cy: u16,
+    pub radius: u16,
+    pub kind: CircleKind,
 }
 
-impl BattleRenderData {
-    /// HP pair current at `lines_shown` animation frames.
-    fn hp_now(&self, lines_shown: usize) -> (u16, u16) {
-        if lines_shown == 0 || self.hp_at.is_empty() {
-            return (self.player_max_hp, self.enemy_max_hp);
-        }
-        self.hp_at[(lines_shown - 1).min(self.hp_at.len() - 1)]
-    }
+/// All tap-battle data the render layer needs.
+pub struct TapBattleRenderData {
+    pub player_name: &'static str,
+    pub player_hp: u16,
+    pub player_max_hp: u16,
+    pub enemy_name: &'static str,
+    pub enemy_hp: u16,
+    pub enemy_max_hp: u16,
+    pub circles: Vec<CircleSnapshot>,
+    pub outcome: Option<bool>,          // Some(true)=won, Some(false)=lost
+    pub result_cooldown_ms_left: u32,   // ms remaining before tap is accepted (0 = ready)
 }
 
 pub struct RenderData {
     pub screen: Screen,
     pub cursor: MenuCursor,
     pub active_slot: usize,
-    /// Roster sorted ascending by slot index.
     pub roster: Vec<MonData>,
-    pub battle_lines_shown: usize,
-    pub battle: Option<BattleRenderData>,
+    pub battle: Option<TapBattleRenderData>,
 }
 
-impl RenderData {
-    pub fn battle_is_done(&self) -> bool {
-        self.battle
-            .as_ref()
-            .map_or(true, |b| self.battle_lines_shown >= b.log.len())
-    }
-}
-
-/// Extract a cheap snapshot from the ECS world. Called once per frame from main
-/// **after** the schedule has run so all state is up-to-date.
+/// Extract a cheap snapshot from the ECS world each frame.
 pub fn extract_render_data(world: &World) -> RenderData {
-    // ── Resources ──────────────────────────────────────────────────────────
-    let screen = world.resource::<CurrentScreen>().0.clone();
-    let cursor = world.resource::<MenuCursorRes>().0.clone();
+    let screen      = world.resource::<CurrentScreen>().0.clone();
+    let cursor      = world.resource::<MenuCursorRes>().0.clone();
     let active_slot = world.resource::<ActiveSlot>().0;
-    let battle_lines_shown = world.resource::<BattleData>().lines_shown;
-    let battle = world.resource::<BattleData>().result.as_ref().map(|r| BattleRenderData {
-        log:            r.log.clone(),
-        player_won:     r.player_won,
-        player_name:    r.player_name,
-        player_level:   r.player_level,
-        player_max_hp:  r.player_max_hp,
-        enemy_name:     r.enemy_name,
-        enemy_level:    r.enemy_level,
-        enemy_max_hp:   r.enemy_max_hp,
-        hp_at:          r.hp_at.clone(),
-    });
 
-    // ── Roster entities (cloned Vec so no lingering world borrow) ──────────
+    // ── Battle data ────────────────────────────────────────────────────────
+    let bs = world.resource::<TapBattleState>();
+    let battle = if bs.active || bs.outcome.is_some() {
+        let circles = bs.circles.iter().map(|c| CircleSnapshot {
+            cx: c.cx,
+            cy: c.cy,
+            radius: c.current_radius(),
+            kind: c.kind,
+        }).collect();
+        const RESULT_COOLDOWN_MS: u128 = 2_000;
+        let result_cooldown_ms_left = bs.outcome_time
+            .map(|t| {
+                let elapsed = t.elapsed().as_millis();
+                RESULT_COOLDOWN_MS.saturating_sub(elapsed) as u32
+            })
+            .unwrap_or(0);
+        Some(TapBattleRenderData {
+            player_name:  bs.player_name,
+            player_hp:    bs.player_hp,
+            player_max_hp: bs.player_max_hp,
+            enemy_name:   bs.enemy_name,
+            enemy_hp:     bs.enemy_hp,
+            enemy_max_hp: bs.enemy_max_hp,
+            circles,
+            outcome: bs.outcome,
+            result_cooldown_ms_left,
+        })
+    } else {
+        None
+    };
+
+    // ── Roster entities ────────────────────────────────────────────────────
     let entity_ids: Vec<_> = world.resource::<RosterEntities>().0.clone();
-
     let mut pairs: Vec<(usize, MonData)> = entity_ids
         .iter()
         .map(|&entity| {
@@ -125,7 +126,6 @@ pub fn extract_render_data(world: &World) -> RenderData {
             (slot, data)
         })
         .collect();
-
     pairs.sort_by_key(|(slot, _)| *slot);
 
     RenderData {
@@ -133,25 +133,29 @@ pub fn extract_render_data(world: &World) -> RenderData {
         cursor,
         active_slot,
         roster: pairs.into_iter().map(|(_, d)| d).collect(),
-        battle_lines_shown,
         battle,
     }
 }
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
-const BG: Rgb888 = Rgb888::new(8, 8, 18);
-const TITLE_BG: Rgb888 = Rgb888::new(15, 35, 110);
-const BATTLE_BG: Rgb888 = Rgb888::new(80, 12, 12);
+const BG: Rgb888          = Rgb888::new(8, 8, 18);
+const TITLE_BG: Rgb888    = Rgb888::new(15, 35, 110);
 const CARD_ACTIVE: Rgb888 = Rgb888::new(15, 45, 18);
-const CARD_IDLE: Rgb888 = Rgb888::new(18, 18, 40);
-const WHITE: Rgb888 = Rgb888::WHITE;
-const YELLOW: Rgb888 = Rgb888::new(255, 220, 0);
-const ORANGE: Rgb888 = Rgb888::new(255, 140, 0);
-const GREEN: Rgb888 = Rgb888::new(50, 200, 80);
-const RED: Rgb888 = Rgb888::new(220, 60, 60);
-const BLUE_BTN: Rgb888 = Rgb888::new(40, 80, 200);
-const GRAY: Rgb888 = Rgb888::new(90, 90, 100);
-const DARK_GRAY: Rgb888 = Rgb888::new(40, 40, 50);
+const CARD_IDLE: Rgb888   = Rgb888::new(18, 18, 40);
+const WHITE: Rgb888        = Rgb888::WHITE;
+const YELLOW: Rgb888       = Rgb888::new(255, 220, 0);
+const ORANGE: Rgb888       = Rgb888::new(255, 140, 0);
+const GREEN: Rgb888        = Rgb888::new(50, 200, 80);
+const RED: Rgb888          = Rgb888::new(220, 60, 60);
+const BLUE_BTN: Rgb888     = Rgb888::new(40, 80, 200);
+const GRAY: Rgb888         = Rgb888::new(90, 90, 100);
+const DARK_GRAY: Rgb888    = Rgb888::new(40, 40, 50);
+
+// Circle colours
+const HERO_FILL:   Rgb888 = Rgb888::new(20, 110, 50);
+const HERO_RING:   Rgb888 = Rgb888::new(80, 255, 120);
+const ENEMY_FILL:  Rgb888 = Rgb888::new(120, 20, 20);
+const ENEMY_RING:  Rgb888 = Rgb888::new(255, 80, 80);
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
@@ -242,116 +246,115 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
     draw_text(display, "Tap or swipe to go back", 6, 282, &FONT_6X10, DARK_GRAY);
 }
 
-// ─── Battle ──────────────────────────────────────────────────────────────────
+// ─── Battle (tap game) ───────────────────────────────────────────────────────
 //
 // Layout (240 × 284 px):
-//   y=  0..28   Title bar
-//   y= 28..82   Enemy stat card  (h=54)
-//   y= 82..94   "─── VS ───" separator
-//   y= 94..148  Player stat card (h=54)
-//   y=150..264  Turn log text box (h=114, up to 8 lines)
-//   y=264..284  Result / hint bar (h=20)
-
-const CARD_ENEMY:  Rgb888 = Rgb888::new(50, 12, 12);
-const CARD_PLAYER: Rgb888 = Rgb888::new(10, 40, 14);
-const LOG_BG:      Rgb888 = Rgb888::new(14, 14, 28);
+//   y=  0..10   Player name (left) │ Enemy name (right)
+//   y= 11..19   HP bars side by side
+//   y= 20..21   Separator line
+//   y= 21..263  Circle tap-game area
+//   y=264..284  Status bar (hint / outcome)
 
 fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
     fill_rect(display, 0, 0, 240, 284, BG);
 
-    // ── Title bar ────────────────────────────────────────────────────────
-    fill_rect(display, 0, 0, 240, 28, BATTLE_BG);
-    draw_text(display, "BATTLE", 76, 20, &FONT_10X20, RED);
-
     let Some(battle) = &data.battle else {
-        draw_text(display, "No battle data", 30, 150, &FONT_10X20, GRAY);
+        draw_text(display, "Starting...", 70, 140, &FONT_10X20, GRAY);
         return;
     };
 
-    let (player_hp, enemy_hp) = battle.hp_now(data.battle_lines_shown);
+    // ── HP bar row ────────────────────────────────────────────────────────
+    // Player (left half, x=0..117)
+    let p_pct = pct(battle.player_hp, battle.player_max_hp);
+    draw_text(display, battle.player_name, 2, 9, &FONT_6X10, HERO_RING);
+    draw_bar(display, 2, 11, 111, 8, p_pct, hp_bar_color(p_pct));
 
-    // ── Enemy card – top-RIGHT (y=28..80, x=76..236) ─────────────────────
-    // Mirrored like Pokémon: name/level on the right, HP bar flush-right,
-    // no HP numbers (the bar hides the exact value until it drains).
-    const EX: i32 = 76; const EW: u32 = 160; // card left-edge and width
-    fill_rect(display, EX, 28, EW, 52, CARD_ENEMY);
-    stroke_rect(display, EX, 28, EW, 52, RED);
+    // Enemy (right half, x=127..238)
+    let e_pct = pct(battle.enemy_hp, battle.enemy_max_hp);
+    // Right-align enemy name
+    let e_x = (238i32 - battle.enemy_name.len() as i32 * 6).max(127);
+    draw_text(display, battle.enemy_name, e_x, 9, &FONT_6X10, ENEMY_RING);
+    draw_bar(display, 127, 11, 111, 8, e_pct, hp_bar_color(e_pct));
 
-    // Level right-aligned inside card ("Lv.X" = 4 chars × 10 px = 40 px)
-    let lv_e = format!("Lv.{}", battle.enemy_level);
-    let lv_e_x = EX + EW as i32 - 4 - lv_e.len() as i32 * 10;
-    draw_text(display, battle.enemy_name, EX + 4, 44, &FONT_10X20, WHITE);
-    draw_text(display, &lv_e, lv_e_x, 44, &FONT_10X20, YELLOW);
+    // VS divider in the centre gap
+    draw_text(display, "VS", 113, 9, &FONT_6X10, GRAY);
+    draw_hline(display, 0, 240, 21, GRAY);
 
-    // HP bar flush with the card's right edge
-    let e_pct = pct(enemy_hp, battle.enemy_max_hp);
-    draw_bar(display, EX + 4, 52, EW - 8, 9, e_pct, hp_bar_color(e_pct));
-
-    // ── VS separator (y=82..94) ──────────────────────────────────────────
-    draw_hline(display, 4, 236, 84, GRAY);
-    draw_text(display, "--- VS ---", 78, 93, &FONT_6X10, GRAY);
-
-    // ── Player card – bottom-LEFT (y=94..152, x=4..164) ──────────────────
-    const PX: i32 = 4; const PW: u32 = 160;
-    fill_rect(display, PX, 94, PW, 58, CARD_PLAYER);
-    stroke_rect(display, PX, 94, PW, 58, GREEN);
-
-    // Level right-aligned inside card
-    let lv_p = format!("Lv.{}", battle.player_level);
-    let lv_p_x = PX + PW as i32 - 4 - lv_p.len() as i32 * 10;
-    draw_text(display, battle.player_name, PX + 4, 110, &FONT_10X20, WHITE);
-    draw_text(display, &lv_p, lv_p_x, 110, &FONT_10X20, YELLOW);
-
-    let p_pct = pct(player_hp, battle.player_max_hp);
-    draw_bar(display, PX + 4, 118, PW - 8, 9, p_pct, hp_bar_color(p_pct));
-    // Player shows exact HP numbers (classic Pokémon bottom box)
-    let hp_p = format!("HP {}/{}", player_hp, battle.player_max_hp);
-    draw_text(display, &hp_p, PX + 4, 141, &FONT_6X10, WHITE);
-
-    // ── Turn log text box (y=156..264) ───────────────────────────────────
-    fill_rect(display, 4, 156, 232, 108, LOG_BG);
-    stroke_rect(display, 4, 156, 232, 108, GRAY);
-
-    let visible = data.battle_lines_shown.min(battle.log.len());
-    const MAX_LOG_LINES: usize = 7;
-    let start = visible.saturating_sub(MAX_LOG_LINES);
-
-    for (slot, idx) in (start..visible).enumerate() {
-        let y = 169 + slot as i32 * 14;
-        let line = &battle.log[idx];
-        draw_text(display, line, 8, y, &FONT_6X10, log_line_color(line));
+    // ── Circle game area ──────────────────────────────────────────────────
+    for circle in &battle.circles {
+        let r  = circle.radius as i32;
+        let cx = circle.cx as i32;
+        let cy = circle.cy as i32;
+        let (fill, ring) = match circle.kind {
+            CircleKind::HeroAttack  => (HERO_FILL,  HERO_RING),
+            CircleKind::EnemyAttack => (ENEMY_FILL, ENEMY_RING),
+        };
+        draw_circle(display, cx, cy, r, fill, ring);
     }
 
-    // ── Result / hint bar (y=264..284) ───────────────────────────────────
-    if data.battle_is_done() {
-        let (msg, col) = if battle.player_won {
-            ("  VICTORY!  Tap to return  ", GREEN)
-        } else {
-            ("  DEFEAT...  Tap to return  ", RED)
-        };
-        fill_rect(display, 0, 264, 240, 20, Rgb888::new(20, 20, 20));
-        draw_hline(display, 0, 240, 264, if battle.player_won { GREEN } else { RED });
-        draw_text(display, msg, 4, 278, &FONT_6X10, col);
+    // ── Status bar ────────────────────────────────────────────────────────
+    fill_rect(display, 0, 264, 240, 20, Rgb888::new(15, 15, 25));
+    draw_hline(display, 0, 240, 264, GRAY);
+
+    match battle.outcome {
+        Some(won) => {
+            let (label, color) = if won {
+                ("VICTORY!", GREEN)
+            } else {
+                ("DEFEAT...", RED)
+            };
+            // Large result text centred in the game area
+            let lx = (240 - label.len() as i32 * 10) / 2;
+            fill_rect(display, 0, 100, 240, 64, Rgb888::new(10, 10, 20));
+            stroke_rect(display, 4, 104, 232, 56, color);
+            draw_text(display, label, lx, 138, &FONT_10X20, color);
+
+            if battle.result_cooldown_ms_left > 0 {
+                // Show seconds remaining before the screen becomes dismissable
+                let secs = (battle.result_cooldown_ms_left + 999) / 1000; // ceil
+                let countdown = format!("Please wait {}s...", secs);
+                let cx = (240 - countdown.len() as i32 * 6) / 2;
+                draw_text(display, &countdown, cx, 278, &FONT_6X10, GRAY);
+            } else {
+                draw_text(display, "   Tap to continue   ", 20, 278, &FONT_6X10, color);
+            }
+        }
+        None => {
+            // Hint: green = tap to attack, red = tap to block
+            draw_text(display, "GREEN=atk  RED=block", 18, 278, &FONT_6X10, GRAY);
+        }
     }
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn pct(current: u16, max: u16) -> u8 {
     if max == 0 { return 0; }
     ((current as u32 * 100) / max as u32) as u8
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 fn hp_bar_color(pct: u8) -> Rgb888 {
     if pct > 50 { GREEN } else if pct > 25 { YELLOW } else { RED }
 }
 
-fn log_line_color(line: &str) -> Rgb888 {
-    if line.contains("WIN") { GREEN }
-    else if line.contains("LOSE") || line.contains("fainted") { RED }
-    else if line.starts_with("---") { YELLOW }
-    else if line.starts_with("VS") || line.starts_with("You:") || line.starts_with("Foe:") { ORANGE }
-    else { WHITE }
+/// Draw a filled circle with a contrasting stroke ring.
+fn draw_circle<D: DrawTarget<Color = Rgb888>>(
+    display: &mut D,
+    cx: i32,
+    cy: i32,
+    r: i32,
+    fill: Rgb888,
+    ring: Rgb888,
+) {
+    if r <= 0 { return; }
+    let diam     = (r * 2) as u32;
+    let top_left = Point::new(cx - r, cy - r);
+    let _ = Circle::new(top_left, diam)
+        .into_styled(PrimitiveStyle::with_fill(fill))
+        .draw(display);
+    let _ = Circle::new(top_left, diam)
+        .into_styled(PrimitiveStyle::with_stroke(ring, 2))
+        .draw(display);
 }
 
 fn draw_button<D: DrawTarget<Color = Rgb888>>(
@@ -378,14 +381,14 @@ fn draw_bar<D: DrawTarget<Color = Rgb888>>(
 }
 
 fn draw_monster_icon<D: DrawTarget<Color = Rgb888>>(display: &mut D, x: i32, y: i32, color: Rgb888) {
-    fill_rect(display, x + 12, y,      26, 20, color);          // head
-    fill_rect(display, x + 16, y + 5,   6,  6, YELLOW);          // left eye
-    fill_rect(display, x + 28, y + 5,   6,  6, YELLOW);          // right eye
-    fill_rect(display, x +  8, y + 22, 34, 22, color);           // body
-    fill_rect(display, x,      y + 24,  8, 14, color);           // left arm
-    fill_rect(display, x + 42, y + 24,  8, 14, color);           // right arm
-    fill_rect(display, x + 12, y + 46, 10, 14, color);           // left leg
-    fill_rect(display, x + 28, y + 46, 10, 14, color);           // right leg
+    fill_rect(display, x + 12, y,      26, 20, color);
+    fill_rect(display, x + 16, y + 5,   6,  6, YELLOW);
+    fill_rect(display, x + 28, y + 5,   6,  6, YELLOW);
+    fill_rect(display, x +  8, y + 22, 34, 22, color);
+    fill_rect(display, x,      y + 24,  8, 14, color);
+    fill_rect(display, x + 42, y + 24,  8, 14, color);
+    fill_rect(display, x + 12, y + 46, 10, 14, color);
+    fill_rect(display, x + 28, y + 46, 10, 14, color);
 }
 
 // ─── Primitive wrappers ──────────────────────────────────────────────────────

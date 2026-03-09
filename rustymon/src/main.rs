@@ -18,6 +18,9 @@ use esp_idf_svc::hal::{
 use game::{CurrentScreen, InputEvent, InputQueue, Screen};
 use ui::{extract_render_data, render_screen};
 
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+
 fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
@@ -74,7 +77,41 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // ── BOOT button fallback (GPIO9, active-low) ──────────────────────────
     let mut btn = ButtonDriver::new(pins.gpio9)?;
 
-    // ── Touch state tracker ───────────────────────────────────────────────
+    // ── Shared raw touch queue (written by touch thread, read by main loop) ──
+    let raw_touch_queue: Arc<Mutex<VecDeque<(Option<TouchPoint>, Gesture)>>> =
+        Arc::new(Mutex::new(VecDeque::new()));
+
+    // ── Dedicated touch thread ────────────────────────────────────────────
+    // Polls the touch controller at 10 ms intervals so no tap is missed,
+    // even when the main loop is busy with rendering.
+    if touch_ok {
+        let i2c_shared = Arc::new(Mutex::new(i2c));
+        let queue_t = Arc::clone(&raw_touch_queue);
+        let i2c_t   = Arc::clone(&i2c_shared);
+
+        std::thread::Builder::new()
+            .stack_size(4096)
+            .spawn(move || {
+                let touch_drv = Cst816dDriver::new(CST816D_DEVICE_ADDRESS);
+                loop {
+                    if let Ok(mut guard) = i2c_t.lock() {
+                        if let Ok(frame) = touch_drv.get_touch_and_gesture(&mut *guard) {
+                            if let Ok(mut q) = queue_t.lock() {
+                                q.push_back(frame);
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            })?;
+
+        // i2c_shared's only remaining owner is the thread's Arc clone.
+        drop(i2c_shared);
+    }
+    // When touch_ok is false, `i2c` was never moved and is simply dropped at
+    // the end of `run()`.  No warning: Rust sees it referenced in the true branch.
+
+    // ── Touch state tracker (main-loop side) ──────────────────────────────
     let mut touch_was_down = false;
     let mut touch_last: Option<TouchPoint> = None;
 
@@ -87,46 +124,61 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // ── 1. Gather input → InputEvent list ────────────────────────────
         let mut events: Vec<InputEvent> = Vec::new();
+        let screen = world.resource::<CurrentScreen>().0.clone();
 
         if touch_ok {
-            match touch.get_touch_and_gesture(&mut i2c) {
-                Ok((opt_point, gesture)) => {
-                    let is_touching = opt_point.is_some();
+            // Drain all raw frames produced by the touch thread.
+            let frames: Vec<_> = {
+                if let Ok(mut q) = raw_touch_queue.lock() {
+                    q.drain(..).collect()
+                } else {
+                    Vec::new()
+                }
+            };
 
-                    if let Some(ref p) = opt_point {
-                        touch_last = Some(TouchPoint { x: p.x, y: p.y });
+            for (opt_point, gesture) in frames {
+                let is_down = opt_point.is_some();
+
+                if let Some(ref p) = opt_point {
+                    touch_last = Some(TouchPoint { x: p.x, y: p.y });
+                }
+
+                if matches!(screen, Screen::Battle) {
+                    // Battle: fire TapAt on EVERY frame that has an active
+                    // touch.  Circles are removed on first hit so there is no
+                    // double-counting.  Firing continuously (10 ms poll)
+                    // means a natural press-and-lift always registers at least
+                    // one hit regardless of which exact sample aligned with
+                    // the circle's centre.
+                    if is_down {
+                        if let Some(ref p) = opt_point {
+                            events.push(InputEvent::TapAt { x: p.x, y: p.y });
+                        }
                     }
-
-                    // Gestures fire immediately on detection
+                } else {
+                    // Non-battle: gesture events fire immediately.
                     if let Some(ev) = gesture_to_input(gesture) {
                         events.push(ev);
                     }
-
-                    // Tap fires on finger-lift
-                    if !is_touching && touch_was_down {
-                        let fired = if matches!(gesture, Gesture::None) {
-                            Gesture::SingleClick
-                        } else {
-                            gesture
-                        };
-                        if matches!(fired, Gesture::SingleClick | Gesture::DoubleClick) {
-                            if let Some(pos) = touch_last {
-                                let screen = world.resource::<CurrentScreen>().0.clone();
-                                if let Some(ev) = tap_to_input(pos.x, pos.y, &screen) {
-                                    events.push(ev);
-                                }
+                    // Tap fires on finger-lift (no active gesture).
+                    if !is_down && touch_was_down
+                        && matches!(
+                            gesture,
+                            Gesture::None | Gesture::SingleClick | Gesture::DoubleClick
+                        )
+                    {
+                        if let Some(pos) = touch_last {
+                            if let Some(ev) = tap_to_input(pos.x, pos.y, &screen) {
+                                events.push(ev);
                             }
                         }
                     }
-
-                    touch_was_down = is_touching;
                 }
-                Err(e) => log::warn!("Touch read error: {:?}", e),
-            }
-        }
 
-        // BOOT button fallback (only active when touch is unavailable)
-        if !touch_ok {
+                touch_was_down = is_down;
+            }
+        } else {
+            // BOOT button fallback (only when touch is unavailable).
             if let Some(btn_ev) = btn.poll() {
                 events.push(match btn_ev {
                     ButtonEvent::ShortPress => InputEvent::ToggleCursor,
@@ -138,7 +190,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // ── 2. Push events into the ECS InputQueue resource ───────────────
         world.resource_mut::<InputQueue>().0.extend(events);
 
-        // ── 3. Tick ECS schedule (navigation + battle animation) ──────────
+        // ── 3. Tick ECS schedule (navigation + tap battle update) ─────────
         schedule.run(&mut world);
 
         // ── 4. Extract snapshot → render → flush ─────────────────────────
@@ -152,9 +204,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 // ─── Input translation helpers ────────────────────────────────────────────────
 
-/// Map a CST816D gesture to a semantic `InputEvent`.
-/// Returns `None` for gestures that are handled as taps (SingleClick / None)
-/// or that have no gameplay meaning.
 fn gesture_to_input(gesture: Gesture) -> Option<InputEvent> {
     match gesture {
         Gesture::SwipeLeft  => Some(InputEvent::CursorToRoster),
@@ -165,7 +214,7 @@ fn gesture_to_input(gesture: Gesture) -> Option<InputEvent> {
     }
 }
 
-/// Map a tap position to a semantic `InputEvent` based on the current screen.
+/// Map a tap position to a semantic InputEvent for non-battle screens.
 ///
 /// Overview button layout (240 × 284 px):
 ///   BATTLE  x: 14–110  y: 244–274   → left half of bottom zone
@@ -174,14 +223,13 @@ fn tap_to_input(x: u16, y: u16, screen: &Screen) -> Option<InputEvent> {
     match screen {
         Screen::Overview => {
             if y >= 230 {
-                // Direct button tap
                 if x < 120 { Some(InputEvent::SelectBattle) }
                 else        { Some(InputEvent::SelectRoster) }
             } else {
-                // Tap elsewhere on the overview → cycle cursor
                 Some(InputEvent::ToggleCursor)
             }
         }
-        Screen::Roster | Screen::Battle => Some(InputEvent::Back),
+        Screen::Roster => Some(InputEvent::Back),
+        Screen::Battle => None, // handled separately in the main loop
     }
 }

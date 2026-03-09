@@ -12,13 +12,11 @@ fn random_u32() -> u32 {
 
 fn calc_damage(atk: u16, def: u16) -> u16 {
     let base = (atk as i32 - def as i32 / 2).max(1) as u32;
-    let variance = 80 + (random_u32() % 41); // 80 – 120 %
+    let variance = 80 + (random_u32() % 41); // 80–120 %
     ((base * variance) / 100).max(1) as u16
 }
 
 // ─── ECS Components ───────────────────────────────────────────────────────────
-// Each component is a thin newtype or plain struct so it stays Copy / Clone and
-// can be queried individually with minimal overhead.
 
 #[derive(Component, Clone, Copy)]
 pub struct MonName(pub &'static str);
@@ -50,7 +48,6 @@ pub struct Exp {
     pub next: u32,
 }
 
-/// The position of this entity inside the player's roster (0-based).
 #[derive(Component, Clone, Copy)]
 pub struct RosterSlot(pub usize);
 
@@ -77,176 +74,159 @@ pub struct CurrentScreen(pub Screen);
 #[derive(Resource, Default)]
 pub struct MenuCursorRes(pub MenuCursor);
 
-/// Index into the sorted roster that is currently the "active" (lead) monster.
 #[derive(Resource, Default)]
 pub struct ActiveSlot(pub usize);
 
-/// Pre-computed battle result and animation state.
-#[derive(Resource, Default)]
-pub struct BattleData {
-    pub result: Option<BattleResult>,
-    pub lines_shown: usize,
-    pub last_tick: Option<Instant>,
-}
-
-impl BattleData {
-    pub fn is_done(&self) -> bool {
-        self.result.as_ref().map_or(true, |r| self.lines_shown >= r.log.len())
-    }
-}
-
-/// Stable entity handles for the roster, sorted by slot index.
-/// Main inserts this after spawning so that render can query by entity ID.
 #[derive(Resource)]
 pub struct RosterEntities(pub Vec<Entity>);
 
+// ─── Tap Battle ───────────────────────────────────────────────────────────────
+
+/// Circle kind: green means "tap to attack", red means "block or take damage".
+#[derive(Clone, Copy, PartialEq)]
+pub enum CircleKind {
+    HeroAttack,  // player taps it → damage to enemy
+    EnemyAttack, // expires without tap → damage to player
+}
+
+/// A shrinking circle on-screen. Radius goes from max_radius → 0 over lifetime_ms.
+#[derive(Clone, Copy)]
+pub struct TapCircle {
+    pub cx: u16,
+    pub cy: u16,
+    pub max_radius: u16,
+    pub kind: CircleKind,
+    pub spawned_at: Instant,
+    pub lifetime_ms: u32,
+}
+
+impl TapCircle {
+    pub fn current_radius(&self) -> u16 {
+        let elapsed = self.spawned_at.elapsed().as_millis() as u32;
+        if elapsed >= self.lifetime_ms {
+            return 0;
+        }
+        let remaining = self.lifetime_ms - elapsed;
+        ((self.max_radius as u32 * remaining) / self.lifetime_ms) as u16
+    }
+
+    pub fn is_expired(&self) -> bool {
+        self.spawned_at.elapsed().as_millis() as u32 >= self.lifetime_ms
+    }
+
+    pub fn contains(&self, x: u16, y: u16) -> bool {
+        // Add a generous touch tolerance so finger imprecision doesn't cause
+        // misses, and enforce a minimum tappable radius so late-stage circles
+        // (which have nearly vanished) can still be hit.
+        const HIT_TOLERANCE: i32 = 12;
+        const MIN_HIT_RADIUS: i32 = 16;
+        let r = (self.current_radius() as i32 + HIT_TOLERANCE).max(MIN_HIT_RADIUS);
+        let dx = x as i32 - self.cx as i32;
+        let dy = y as i32 - self.cy as i32;
+        dx * dx + dy * dy <= r * r
+    }
+}
+
+/// Live tap-battle state. Replaces the old pre-computed BattleResult.
+#[derive(Resource)]
+pub struct TapBattleState {
+    pub active: bool,
+    pub entity_slot: usize,
+    // Player snapshot
+    pub player_name: &'static str,
+    pub player_level: u8,
+    pub player_atk: u16,
+    pub player_def: u16,
+    pub player_hp: u16,
+    pub player_max_hp: u16,
+    // Enemy
+    pub enemy_name: &'static str,
+    pub enemy_level: u8,
+    pub enemy_atk: u16,
+    pub enemy_def: u16,
+    pub enemy_hp: u16,
+    pub enemy_max_hp: u16,
+    // Game state
+    pub circles: Vec<TapCircle>,
+    pub last_spawn: Option<Instant>,
+    pub outcome: Option<bool>,      // Some(true)=won, Some(false)=lost
+    pub outcome_time: Option<Instant>, // when outcome was set (for cooldown)
+    pub exp_gained: u32,
+}
+
+impl Default for TapBattleState {
+    fn default() -> Self {
+        Self {
+            active: false,
+            entity_slot: 0,
+            player_name: "",
+            player_level: 1,
+            player_atk: 10,
+            player_def: 10,
+            player_hp: 50,
+            player_max_hp: 50,
+            enemy_name: "",
+            enemy_level: 1,
+            enemy_atk: 10,
+            enemy_def: 10,
+            enemy_hp: 50,
+            enemy_max_hp: 50,
+            circles: Vec::new(),
+            last_spawn: None,
+            outcome: None,
+            outcome_time: None,
+            exp_gained: 0,
+        }
+    }
+}
+
 // ─── Input abstraction ────────────────────────────────────────────────────────
-// Raw hardware events (touch / button) are translated to these semantic events
-// in main.rs before being pushed into the queue.
 
 #[derive(Clone)]
 pub enum InputEvent {
-    /// Cycle the highlighted button left/right.
     ToggleCursor,
-    /// Explicitly move the cursor to the Battle button.
     CursorToBattle,
-    /// Explicitly move the cursor to the Roster button.
     CursorToRoster,
-    /// Confirm the currently highlighted button (swipe-up / long-press).
     Confirm,
-    /// Tap directly on the Battle button area.
     SelectBattle,
-    /// Tap directly on the Roster button area.
     SelectRoster,
-    /// Go back to Overview (any input on Roster / finished Battle).
     Back,
+    /// Touch tap at (x, y) – used during battle to hit circles.
+    TapAt { x: u16, y: u16 },
 }
 
-/// Per-frame input queue filled by main before each schedule tick.
 #[derive(Resource, Default)]
 pub struct InputQueue(pub Vec<InputEvent>);
 
-// ─── Pure battle data ─────────────────────────────────────────────────────────
+// ─── Enemy table ──────────────────────────────────────────────────────────────
 
-pub struct BattleResult {
-    pub log: Vec<String>,
-    pub player_won: bool,
-    pub player_final_hp: u16,
-    pub exp_gained: u32,
-    // Combatant metadata (needed by the render layer)
-    pub player_name: &'static str,
-    pub player_level: u8,
-    pub player_max_hp: u16,
-    pub enemy_name: &'static str,
-    pub enemy_level: u8,
-    pub enemy_max_hp: u16,
-    /// `(player_hp, enemy_hp)` after every log entry – drives live HP bars.
-    pub hp_at: Vec<(u16, u16)>,
-}
-
-/// A transient snapshot used only inside `simulate_battle`.
-struct RustymonSnapshot {
+struct EnemyTemplate {
     name: &'static str,
     level: u8,
     atk: u16,
     def: u16,
     hp: u16,
-    max_hp: u16,
 }
 
-fn simulate_battle(
-    p_name: &'static str, p_level: u8, p_atk: u16, p_def: u16, p_hp: u16, p_max_hp: u16,
-    enemy: RustymonSnapshot,
-) -> BattleResult {
-    let mut p = RustymonSnapshot { name: p_name, level: p_level, atk: p_atk, def: p_def, hp: p_hp, max_hp: p_max_hp };
-    let mut e = enemy;
-    let mut log: Vec<String> = Vec::new();
-    let mut hp_at: Vec<(u16, u16)> = Vec::new();
-
-    // Helper: push a log line and record the current HP snapshot.
-    macro_rules! push {
-        ($msg:expr) => {{
-            log.push($msg);
-            hp_at.push((p.hp, e.hp));
-        }};
-    }
-
-    push!(format!("VS {} begins!", e.name));
-    push!(format!("ATK:{} DEF:{} vs ATK:{} DEF:{}", p.atk, p.def, e.atk, e.def));
-
-    for turn in 1u32.. {
-        push!(format!("--- Turn {} ---", turn));
-
-        let p_dmg = calc_damage(p.atk, e.def);
-        e.hp = e.hp.saturating_sub(p_dmg);
-        push!(format!("{} hits for {} dmg!", p.name, p_dmg));
-
-        if e.hp == 0 {
-            push!(format!("{} fainted!", e.name));
-            push!("*** YOU WIN! ***".to_string());
-            return BattleResult {
-                log, hp_at,
-                player_won: true,
-                player_final_hp: p.hp,
-                exp_gained: 40 + (e.level as u32) * 10,
-                player_name: p_name, player_level: p_level, player_max_hp: p_max_hp,
-                enemy_name: e.name, enemy_level: e.level, enemy_max_hp: e.max_hp,
-            };
-        }
-
-        let e_dmg = calc_damage(e.atk, p.def);
-        p.hp = p.hp.saturating_sub(e_dmg);
-        push!(format!("{} hits for {} dmg!", e.name, e_dmg));
-
-        if p.hp == 0 {
-            push!(format!("{} fainted!", p.name));
-            push!("*** YOU LOSE... ***".to_string());
-            return BattleResult {
-                log, hp_at,
-                player_won: false,
-                player_final_hp: 0,
-                exp_gained: 10,
-                player_name: p_name, player_level: p_level, player_max_hp: p_max_hp,
-                enemy_name: e.name, enemy_level: e.level, enemy_max_hp: e.max_hp,
-            };
-        }
-
-        if turn >= 50 {
-            push!("Time ran out! Draw.".to_string());
-            return BattleResult {
-                log, hp_at,
-                player_won: false,
-                player_final_hp: p.hp,
-                exp_gained: 5,
-                player_name: p_name, player_level: p_level, player_max_hp: p_max_hp,
-                enemy_name: e.name, enemy_level: e.level, enemy_max_hp: e.max_hp,
-            };
-        }
-    }
-    unreachable!()
-}
-
-fn random_enemy() -> RustymonSnapshot {
-    let table: [RustymonSnapshot; 4] = [
-        RustymonSnapshot { name: "Toxibolt",  level: 4, atk: 22, def: 14, hp: 40, max_hp: 40 },
-        RustymonSnapshot { name: "Glitchrat", level: 3, atk: 18, def: 12, hp: 32, max_hp: 32 },
-        RustymonSnapshot { name: "Ironclad",  level: 5, atk: 20, def: 22, hp: 48, max_hp: 48 },
-        RustymonSnapshot { name: "Virebug",   level: 4, atk: 24, def: 16, hp: 38, max_hp: 38 },
+fn random_enemy() -> EnemyTemplate {
+    let table: [EnemyTemplate; 4] = [
+        EnemyTemplate { name: "Toxibolt",  level: 4, atk: 22, def: 14, hp: 400 },
+        EnemyTemplate { name: "Glitchrat", level: 3, atk: 18, def: 12, hp: 320 },
+        EnemyTemplate { name: "Ironclad",  level: 5, atk: 20, def: 22, hp: 480 },
+        EnemyTemplate { name: "Virebug",   level: 4, atk: 24, def: 16, hp: 380 },
     ];
     let idx = (random_u32() % 4) as usize;
-    // Safe: copy each field individually (no Clone on the array)
     let e = &table[idx];
-    RustymonSnapshot { name: e.name, level: e.level, atk: e.atk, def: e.def, hp: e.hp, max_hp: e.max_hp }
+    EnemyTemplate { name: e.name, level: e.level, atk: e.atk, def: e.def, hp: e.hp }
 }
 
 // ─── Systems ──────────────────────────────────────────────────────────────────
 
-/// Drains the `InputQueue` and updates navigation / battle-start state.
 pub fn navigation_system(
     mut input_queue: ResMut<InputQueue>,
     mut screen: ResMut<CurrentScreen>,
     mut cursor: ResMut<MenuCursorRes>,
-    mut battle_data: ResMut<BattleData>,
+    mut battle: ResMut<TapBattleState>,
     active_slot: Res<ActiveSlot>,
     mut monsters: Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
@@ -256,7 +236,7 @@ pub fn navigation_system(
                 event,
                 &mut screen,
                 &mut cursor,
-                &mut battle_data,
+                &mut battle,
                 active_slot.0,
                 &mut monsters,
             ),
@@ -264,7 +244,33 @@ pub fn navigation_system(
                 screen.0 = Screen::Overview;
             }
             Screen::Battle => {
-                if battle_data.is_done() {
+                if battle.active {
+                    // During active battle: process circle taps.
+                    if let InputEvent::TapAt { x, y } = event {
+                        process_battle_tap(x, y, &mut battle);
+                    }
+                } else if battle.outcome.is_some() {
+                    // Battle done: wait for the 2-second result screen cooldown
+                    // before accepting any input (prevents the finishing tap
+                    // from immediately closing the screen).
+                    const RESULT_COOLDOWN_MS: u128 = 2_000;
+                    let cooldown_elapsed = battle.outcome_time
+                        .map_or(true, |t| t.elapsed().as_millis() >= RESULT_COOLDOWN_MS);
+
+                    if cooldown_elapsed {
+                        match event {
+                            InputEvent::TapAt { .. } | InputEvent::Back => {
+                                apply_battle_to_monsters(&battle, &mut monsters);
+                                screen.0 = Screen::Overview;
+                                battle.outcome = None;
+                                battle.outcome_time = None;
+                                battle.circles.clear();
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    // Shouldn't happen – safety valve.
                     screen.0 = Screen::Overview;
                 }
             }
@@ -272,11 +278,53 @@ pub fn navigation_system(
     }
 }
 
+fn process_battle_tap(x: u16, y: u16, battle: &mut TapBattleState) {
+    // Hit the first circle whose area contains the tap point.
+    if let Some(idx) = battle.circles.iter().position(|c| c.contains(x, y)) {
+        let circle = battle.circles.remove(idx);
+        match circle.kind {
+            CircleKind::HeroAttack => {
+                let dmg = calc_damage(battle.player_atk, battle.enemy_def);
+                battle.enemy_hp = battle.enemy_hp.saturating_sub(dmg);
+            }
+            CircleKind::EnemyAttack => {
+                // Blocked – no damage to player.
+            }
+        }
+    }
+}
+
+fn apply_battle_to_monsters(
+    battle: &TapBattleState,
+    monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
+) {
+    for (_, slot, mut level, mut stats, mut health, mut exp) in monsters.iter_mut() {
+        if slot.0 != battle.entity_slot {
+            continue;
+        }
+        health.hp = battle.player_hp;
+        exp.current += battle.exp_gained;
+
+        while exp.current >= exp.next {
+            exp.current -= exp.next;
+            level.0 += 1;
+            exp.next = (level.0 as u32 + 1) * 100;
+            stats.atk += 2;
+            stats.def += 1;
+            health.max_hp += 5;
+            if battle.outcome == Some(true) {
+                health.hp = health.max_hp; // full heal on level-up after win
+            }
+        }
+        return;
+    }
+}
+
 fn handle_overview_event(
     event: InputEvent,
     screen: &mut ResMut<CurrentScreen>,
     cursor: &mut ResMut<MenuCursorRes>,
-    battle_data: &mut ResMut<BattleData>,
+    battle: &mut ResMut<TapBattleState>,
     active_slot: usize,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
@@ -290,99 +338,146 @@ fn handle_overview_event(
         InputEvent::CursorToBattle => cursor.0 = MenuCursor::Battle,
         InputEvent::CursorToRoster => cursor.0 = MenuCursor::Roster,
         InputEvent::Confirm => match cursor.0 {
-            MenuCursor::Battle => try_start_battle(screen, battle_data, active_slot, monsters),
+            MenuCursor::Battle => try_start_battle(screen, battle, active_slot, monsters),
             MenuCursor::Roster => screen.0 = Screen::Roster,
         },
         InputEvent::SelectBattle => {
             cursor.0 = MenuCursor::Battle;
-            try_start_battle(screen, battle_data, active_slot, monsters);
+            try_start_battle(screen, battle, active_slot, monsters);
         }
         InputEvent::SelectRoster => {
             cursor.0 = MenuCursor::Roster;
             screen.0 = Screen::Roster;
         }
-        InputEvent::Back => {} // no-op on Overview
+        InputEvent::Back | InputEvent::TapAt { .. } => {}
     }
 }
 
 fn try_start_battle(
     screen: &mut ResMut<CurrentScreen>,
-    battle_data: &mut ResMut<BattleData>,
+    battle: &mut ResMut<TapBattleState>,
     active_slot: usize,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
-    for (name, slot, mut level, mut stats, mut health, mut exp) in monsters.iter_mut() {
+    for (name, slot, level, stats, health, _exp) in monsters.iter() {
         if slot.0 != active_slot {
             continue;
         }
         if health.is_fainted() {
-            return; // cannot battle with a fainted rustymon
+            return;
         }
-
         let enemy = random_enemy();
-        let result = simulate_battle(
-            name.0, level.0, stats.atk, stats.def, health.hp, health.max_hp,
-            enemy,
-        );
-
-        // Apply result to the monster's components
-        health.hp = result.player_final_hp;
-        exp.current += result.exp_gained;
-
-        // Level-up loop
-        while exp.current >= exp.next {
-            exp.current -= exp.next;
-            level.0 += 1;
-            exp.next = (level.0 as u32 + 1) * 100;
-            stats.atk += 2;
-            stats.def += 1;
-            health.max_hp += 5;
-            if result.player_won {
-                health.hp = health.max_hp; // full heal on level-up
-            }
-        }
-
-        battle_data.result = Some(result);
-        battle_data.lines_shown = 0;
-        battle_data.last_tick = None;
+        **battle = TapBattleState {
+            active: true,
+            entity_slot: active_slot,
+            player_name: name.0,
+            player_level: level.0,
+            player_atk: stats.atk,
+            player_def: stats.def,
+            player_hp: health.hp,
+            player_max_hp: health.max_hp,
+            enemy_name: enemy.name,
+            enemy_level: enemy.level,
+            enemy_atk: enemy.atk,
+            enemy_def: enemy.def,
+            enemy_hp: enemy.hp,
+            enemy_max_hp: enemy.hp,
+            circles: Vec::new(),
+            last_spawn: None,
+            outcome: None,
+            outcome_time: None,
+            exp_gained: 0,
+        };
         screen.0 = Screen::Battle;
         return;
     }
 }
 
-/// Advances the battle log animation one line at a time.
-pub fn battle_advance_system(
-    mut battle_data: ResMut<BattleData>,
+/// Time-based battle update: spawns circles, expires them, checks win/lose.
+/// Runs after navigation_system so tap damage is already applied before the check.
+pub fn tap_battle_update_system(
     screen: Res<CurrentScreen>,
+    mut battle: ResMut<TapBattleState>,
 ) {
-    if screen.0 != Screen::Battle {
-        return;
-    }
-    let total = match &battle_data.result {
-        Some(r) => r.log.len(),
-        None => return,
-    };
-    if battle_data.lines_shown >= total {
+    if screen.0 != Screen::Battle || !battle.active {
         return;
     }
 
-    const LINE_DELAY_MS: u128 = 550;
+    // Win/lose check first (navigation may have dealt the killing blow).
+    if battle.enemy_hp == 0 {
+        battle.outcome = Some(true);
+        battle.outcome_time = Some(Instant::now());
+        battle.exp_gained = 40 + battle.enemy_level as u32 * 10;
+        battle.active = false;
+        battle.circles.clear();
+        return;
+    }
+    if battle.player_hp == 0 {
+        battle.outcome = Some(false);
+        battle.outcome_time = Some(Instant::now());
+        battle.exp_gained = 10;
+        battle.active = false;
+        battle.circles.clear();
+        return;
+    }
 
-    match battle_data.last_tick {
-        None => battle_data.last_tick = Some(Instant::now()),
-        Some(t) => {
-            if t.elapsed().as_millis() >= LINE_DELAY_MS {
-                battle_data.lines_shown += 1;
-                battle_data.last_tick = Some(Instant::now());
+    // Expire circles; enemy circles that vanish deal damage to the player.
+    let mut i = 0;
+    while i < battle.circles.len() {
+        if battle.circles[i].is_expired() {
+            let circle = battle.circles.remove(i);
+            if circle.kind == CircleKind::EnemyAttack {
+                let dmg = calc_damage(battle.enemy_atk, battle.player_def);
+                battle.player_hp = battle.player_hp.saturating_sub(dmg);
             }
+        } else {
+            i += 1;
         }
+    }
+
+    // Check again after expiry damage.
+    if battle.player_hp == 0 {
+        battle.outcome = Some(false);
+        battle.outcome_time = Some(Instant::now());
+        battle.exp_gained = 10;
+        battle.active = false;
+        battle.circles.clear();
+        return;
+    }
+
+    // Spawn a new circle periodically.
+    const SPAWN_INTERVAL_MS: u128 = 300;
+    const MAX_CIRCLES: usize = 15;
+
+    let should_spawn = match battle.last_spawn {
+        None => true,
+        Some(t) => t.elapsed().as_millis() >= SPAWN_INTERVAL_MS,
+    };
+
+    if should_spawn && battle.circles.len() < MAX_CIRCLES {
+        // Circle center safe zone: x=[35,204], y=[55,224], max_radius up to 32.
+        let cx = 35 + (random_u32() % 170) as u16;
+        let cy = 55 + (random_u32() % 170) as u16;
+        let max_radius = 20 + (random_u32() % 13) as u16;
+        let kind = if random_u32() % 3 == 0 {
+            CircleKind::EnemyAttack
+        } else {
+            CircleKind::HeroAttack
+        };
+        battle.circles.push(TapCircle {
+            cx,
+            cy,
+            max_radius,
+            kind,
+            spawned_at: Instant::now(),
+            lifetime_ms: 2_500,
+        });
+        battle.last_spawn = Some(Instant::now());
     }
 }
 
 // ─── World bootstrap ──────────────────────────────────────────────────────────
 
-/// Spawn all starter rustymon entities and insert every resource.
-/// Returns the world and the sorted list of spawned entity IDs.
 pub fn setup_world() -> World {
     let mut world = World::new();
 
@@ -416,20 +511,18 @@ pub fn setup_world() -> World {
     world.insert_resource(CurrentScreen::default());
     world.insert_resource(MenuCursorRes::default());
     world.insert_resource(ActiveSlot::default());
-    world.insert_resource(BattleData::default());
+    world.insert_resource(TapBattleState::default());
     world.insert_resource(InputQueue::default());
-    // Sorted by slot so render can iterate in order
     world.insert_resource(RosterEntities(vec![e0, e1, e2]));
 
     world
 }
 
-/// Build the per-frame schedule: navigation first, then battle animation.
 pub fn build_schedule() -> Schedule {
     let mut schedule = Schedule::default();
     schedule.add_systems((
         navigation_system,
-        battle_advance_system.after(navigation_system),
+        tap_battle_update_system.after(navigation_system),
     ));
     schedule
 }
