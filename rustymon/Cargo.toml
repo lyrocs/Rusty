@@ -27,6 +27,8 @@ log = "0.4"
 esp-idf-svc = "0.51"
 bevy_ecs = { version = "0.18", default-features = false, features = ["std"] }
 embedded-graphics = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # --- Optional Embassy Integration ---
 # esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }

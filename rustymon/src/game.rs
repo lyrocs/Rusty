@@ -1,4 +1,5 @@
 use bevy_ecs::prelude::*;
+use serde::Deserialize;
 use std::time::Instant;
 
 // ─── Hardware RNG ─────────────────────────────────────────────────────────────
@@ -198,26 +199,41 @@ pub enum InputEvent {
 #[derive(Resource, Default)]
 pub struct InputQueue(pub Vec<InputEvent>);
 
-// ─── Enemy table ──────────────────────────────────────────────────────────────
+// ─── JSON deserialization ─────────────────────────────────────────────────────
 
-struct EnemyTemplate {
-    name: &'static str,
+#[derive(Deserialize)]
+struct JsonEnemy {
+    name: String,
     level: u8,
     atk: u16,
     def: u16,
     hp: u16,
 }
 
-fn random_enemy() -> EnemyTemplate {
-    let table: [EnemyTemplate; 4] = [
-        EnemyTemplate { name: "Toxibolt",  level: 4, atk: 22, def: 14, hp: 400 },
-        EnemyTemplate { name: "Glitchrat", level: 3, atk: 18, def: 12, hp: 320 },
-        EnemyTemplate { name: "Ironclad",  level: 5, atk: 20, def: 22, hp: 480 },
-        EnemyTemplate { name: "Virebug",   level: 4, atk: 24, def: 16, hp: 380 },
-    ];
-    let idx = (random_u32() % 4) as usize;
-    let e = &table[idx];
-    EnemyTemplate { name: e.name, level: e.level, atk: e.atk, def: e.def, hp: e.hp }
+
+/// Leak a heap-allocated String into a `'static` str.
+/// Acceptable here because monster names live for the entire program lifetime.
+fn leak_name(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+// ─── Enemy pool ───────────────────────────────────────────────────────────────
+
+pub struct EnemyDef {
+    pub name: &'static str,
+    pub level: u8,
+    pub atk: u16,
+    pub def: u16,
+    pub hp: u16,
+}
+
+/// All possible enemies, loaded from `monsters.json` at startup.
+#[derive(Resource)]
+pub struct EnemyPool(pub Vec<EnemyDef>);
+
+fn pick_random_enemy(pool: &EnemyPool) -> &EnemyDef {
+    let idx = (random_u32() % pool.0.len() as u32) as usize;
+    &pool.0[idx]
 }
 
 // ─── Systems ──────────────────────────────────────────────────────────────────
@@ -228,6 +244,7 @@ pub fn navigation_system(
     mut cursor: ResMut<MenuCursorRes>,
     mut battle: ResMut<TapBattleState>,
     active_slot: Res<ActiveSlot>,
+    enemy_pool: Res<EnemyPool>,
     mut monsters: Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
     for event in input_queue.0.drain(..) {
@@ -238,6 +255,7 @@ pub fn navigation_system(
                 &mut cursor,
                 &mut battle,
                 active_slot.0,
+                &enemy_pool,
                 &mut monsters,
             ),
             Screen::Roster => {
@@ -326,6 +344,7 @@ fn handle_overview_event(
     cursor: &mut ResMut<MenuCursorRes>,
     battle: &mut ResMut<TapBattleState>,
     active_slot: usize,
+    enemy_pool: &EnemyPool,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
     match event {
@@ -338,12 +357,12 @@ fn handle_overview_event(
         InputEvent::CursorToBattle => cursor.0 = MenuCursor::Battle,
         InputEvent::CursorToRoster => cursor.0 = MenuCursor::Roster,
         InputEvent::Confirm => match cursor.0 {
-            MenuCursor::Battle => try_start_battle(screen, battle, active_slot, monsters),
+            MenuCursor::Battle => try_start_battle(screen, battle, active_slot, enemy_pool, monsters),
             MenuCursor::Roster => screen.0 = Screen::Roster,
         },
         InputEvent::SelectBattle => {
             cursor.0 = MenuCursor::Battle;
-            try_start_battle(screen, battle, active_slot, monsters);
+            try_start_battle(screen, battle, active_slot, enemy_pool, monsters);
         }
         InputEvent::SelectRoster => {
             cursor.0 = MenuCursor::Roster;
@@ -357,8 +376,12 @@ fn try_start_battle(
     screen: &mut ResMut<CurrentScreen>,
     battle: &mut ResMut<TapBattleState>,
     active_slot: usize,
+    enemy_pool: &EnemyPool,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
+    if enemy_pool.0.is_empty() {
+        return;
+    }
     for (name, slot, level, stats, health, _exp) in monsters.iter() {
         if slot.0 != active_slot {
             continue;
@@ -366,7 +389,7 @@ fn try_start_battle(
         if health.is_fainted() {
             return;
         }
-        let enemy = random_enemy();
+        let enemy = pick_random_enemy(enemy_pool);
         **battle = TapBattleState {
             active: true,
             entity_slot: active_slot,
@@ -481,39 +504,36 @@ pub fn tap_battle_update_system(
 pub fn setup_world() -> World {
     let mut world = World::new();
 
-    let e0 = world.spawn((
-        MonName("Ferrobit"),
-        Level(5),
-        Stats { atk: 25, def: 20 },
-        Health { hp: 50, max_hp: 50 },
-        Exp { current: 0, next: 600 },
-        RosterSlot(0),
-    )).id();
+    // ── Parse monsters.json (embedded at compile time) ────────────────────
+    let json = include_str!("../monsters.json");
+    let enemies: Vec<JsonEnemy> = serde_json::from_str(json)
+        .expect("monsters.json is invalid – fix the JSON before flashing");
 
-    let e1 = world.spawn((
-        MonName("Blazerust"),
-        Level(3),
-        Stats { atk: 32, def: 10 },
-        Health { hp: 35, max_hp: 35 },
-        Exp { current: 0, next: 400 },
-        RosterSlot(1),
-    )).id();
+    // ── Spawn default roster (will come from SD save data later) ─────────
+    let entities = vec![
+        world.spawn((MonName("Ferrobit"),  Level(5), Stats { atk: 25, def: 20 }, Health { hp: 50, max_hp: 50 }, Exp { current: 0, next: 600 }, RosterSlot(0))).id(),
+        world.spawn((MonName("Blazerust"), Level(3), Stats { atk: 32, def: 10 }, Health { hp: 35, max_hp: 35 }, Exp { current: 0, next: 400 }, RosterSlot(1))).id(),
+        world.spawn((MonName("Aquabyte"),  Level(4), Stats { atk: 20, def: 18 }, Health { hp: 45, max_hp: 45 }, Exp { current: 0, next: 500 }, RosterSlot(2))).id(),
+    ];
 
-    let e2 = world.spawn((
-        MonName("Aquabyte"),
-        Level(4),
-        Stats { atk: 20, def: 18 },
-        Health { hp: 45, max_hp: 45 },
-        Exp { current: 0, next: 500 },
-        RosterSlot(2),
-    )).id();
+    // ── Build enemy pool ──────────────────────────────────────────────────
+    let enemy_pool = EnemyPool(
+        enemies.into_iter().map(|e| EnemyDef {
+            name: leak_name(e.name),
+            level: e.level,
+            atk: e.atk,
+            def: e.def,
+            hp: e.hp,
+        }).collect(),
+    );
 
     world.insert_resource(CurrentScreen::default());
     world.insert_resource(MenuCursorRes::default());
     world.insert_resource(ActiveSlot::default());
     world.insert_resource(TapBattleState::default());
     world.insert_resource(InputQueue::default());
-    world.insert_resource(RosterEntities(vec![e0, e1, e2]));
+    world.insert_resource(RosterEntities(entities));
+    world.insert_resource(enemy_pool);
 
     world
 }
