@@ -70,6 +70,28 @@ where
         Ok(Self { volume_mgr })
     }
 
+    /// Read an entire file from the SD root directory into a Vec<u8>.
+    pub fn read_file(&mut self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        use embedded_sdmmc::Mode;
+        let mut volume = self.volume_mgr.open_volume(VolumeIdx(0))
+            .map_err(|e| format!("open_volume: {:?}", e))?;
+        let mut root = volume.open_root_dir()
+            .map_err(|e| format!("open_root_dir: {:?}", e))?;
+        let mut file = root.open_file_in_dir(filename, Mode::ReadOnly)
+            .map_err(|e| format!("open {filename}: {:?}", e))?;
+
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 512];
+        loop {
+            match file.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(e) => return Err(format!("read: {:?}", e).into()),
+            }
+        }
+        Ok(buf)
+    }
+
     /// List the root directory contents to the log (equivalent of `ls /`).
     pub fn ls_root(&mut self) {
         let mut volume = match self.volume_mgr.open_volume(VolumeIdx(0)) {

@@ -1,6 +1,7 @@
 mod driver;
 mod game;
 mod sdcard;
+mod sprite;
 mod ui;
 
 use driver::{
@@ -76,10 +77,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     display.flush()?;
 
     // ── SD card (CS=GPIO17, shared SPI bus) ───────────────────────────────
+    let mut poring: Option<sprite::Sprite> = None;
     match sdcard::SdCardResource::new(spi_sd) {
-        Ok(mut sd) => sd.ls_root(),
+        Ok(mut sd) => {
+            sd.ls_root();
+            match sprite::load_sprite(&mut sd, "PORING.SPR") {
+                Ok(s)  => { log::info!("PORING.SPR loaded"); poring = Some(s); }
+                Err(e) => log::warn!("PORING.SPR not found: {:?}", e),
+            }
+        }
         Err(e) => log::warn!("SD card unavailable: {:?}", e),
     }
+    let mut poring_last_advance = std::time::Instant::now();
 
     // ── Touch controller (I2C: SDA=GPIO7, SCL=GPIO8) ─────────────────────
     let i2c_config = I2cConfig::new().baudrate(Hertz(400_000));
@@ -238,9 +247,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // ── 4. Extract snapshot → render → flush ─────────────────────────
+        // ── 4. Advance sprite animation (Encounter screen only) ───────────
+        if matches!(screen, Screen::Encounter) {
+            if let Some(ref mut spr) = poring {
+                let delay_ms = spr.current_delay_ms() as u128;
+                if poring_last_advance.elapsed().as_millis() >= delay_ms {
+                    let _ = spr.next_frame();
+                    poring_last_advance = std::time::Instant::now();
+                }
+            }
+        }
+
+        // ── 5. Extract snapshot → render → flush ─────────────────────────
         let render_data = extract_render_data(&world);
-        render_screen(&mut display, &render_data);
+        render_screen(&mut display, &render_data, poring.as_ref());
         display.flush()?;
 
         FreeRtos::delay_ms(50_u32);

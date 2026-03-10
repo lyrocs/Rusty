@@ -15,6 +15,7 @@ use crate::game::{
     MenuCursorRes, MonName, RosterEntities, RosterHover, RosterScroll, RosterSlot, Screen, Stats,
     TapBattleState,
 };
+use crate::sprite::Sprite;
 
 // ─── Render snapshot ─────────────────────────────────────────────────────────
 
@@ -204,10 +205,14 @@ const ENEMY_RING:  Rgb888 = Rgb888::new(255, 80, 80);
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
-pub fn render_screen<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
+pub fn render_screen<D: DrawTarget<Color = Rgb888>>(
+    display: &mut D,
+    data: &RenderData,
+    encounter_sprite: Option<&Sprite>,
+) {
     match data.screen {
         Screen::Overview  => render_overview(display, data),
-        Screen::Encounter => render_encounter(display, data),
+        Screen::Encounter => render_encounter(display, data, encounter_sprite),
         Screen::Roster    => render_roster(display, data),
         Screen::Battle    => render_battle(display, data),
     }
@@ -261,7 +266,11 @@ fn render_overview<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &Render
 
 // ─── Encounter ───────────────────────────────────────────────────────────────
 
-fn render_encounter<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
+fn render_encounter<D: DrawTarget<Color = Rgb888>>(
+    display: &mut D,
+    data: &RenderData,
+    sprite: Option<&Sprite>,
+) {
     fill_rect(display, 0, 0, 240, 284, BG);
 
     // Title bar
@@ -286,8 +295,15 @@ fn render_encounter<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &Rende
     draw_text(display, &def_s, 120, 94, &FONT_6X10, WHITE);
     draw_text(display, &hp_s,  20, 108, &FONT_6X10, WHITE);
 
-    // Monster silhouette
-    draw_monster_icon(display, 90, 130, ENEMY_RING);
+    // Monster sprite or fallback silhouette
+    match sprite {
+        Some(spr) => {
+            let sx = (240 - spr.width as i32) / 2;
+            let sy = 118;
+            spr.draw_with_bg(display, sx, sy, BG);
+        }
+        None => draw_monster_icon(display, 90, 130, ENEMY_RING),
+    }
 
     // "Tap to battle!" prompt
     draw_text(display, "TAP TO BATTLE!", 30, 210, &FONT_10X20, GREEN);
