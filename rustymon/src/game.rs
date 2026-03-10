@@ -63,6 +63,7 @@ pub struct Count(pub u8);
 pub enum Screen {
     #[default]
     Overview,
+    Encounter,
     Roster,
     Battle,
 }
@@ -108,6 +109,21 @@ pub struct CapturedMonster {
 
 #[derive(Resource, Default)]
 pub struct PendingCapture(pub Option<CapturedMonster>);
+
+// ─── Encounter screen ─────────────────────────────────────────────────────────
+
+pub struct EncounterData {
+    pub enemy_name: &'static str,
+    pub enemy_level: u8,
+    pub enemy_atk: u16,
+    pub enemy_def: u16,
+    pub enemy_hp: u16,
+    pub shown_at: Instant,
+}
+
+/// Current wild-encounter candidate. None until the encounter screen is active.
+#[derive(Resource, Default)]
+pub struct EncounterState(pub Option<EncounterData>);
 
 // ─── Tap Battle ───────────────────────────────────────────────────────────────
 
@@ -276,6 +292,7 @@ pub fn navigation_system(
     mut active_slot: ResMut<ActiveSlot>,
     mut roster_scroll: ResMut<RosterScroll>,
     mut roster_hover: ResMut<RosterHover>,
+    mut encounter: ResMut<EncounterState>,
     enemy_pool: Res<EnemyPool>,
     mut monsters: Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
@@ -289,9 +306,31 @@ pub fn navigation_system(
                 &mut active_slot,
                 &mut roster_scroll,
                 &mut roster_hover,
+                &mut encounter,
                 &enemy_pool,
                 &mut monsters,
             ),
+            Screen::Encounter => {
+                match event {
+                    // Tap anywhere or SwipeUp/LongPress → start battle with the
+                    // monster currently shown in the encounter.
+                    InputEvent::TapAt { .. } | InputEvent::Confirm => {
+                        start_battle_from_encounter(
+                            &mut screen,
+                            &mut battle,
+                            &encounter,
+                            active_slot.0,
+                            &mut monsters,
+                        );
+                        encounter.0 = None;
+                    }
+                    // SwipeDown / Back / SwipeLeft → flee back to Overview.
+                    _ => {
+                        encounter.0 = None;
+                        screen.0 = Screen::Overview;
+                    }
+                }
+            }
             Screen::Roster => {
                 let monster_count = monsters.iter().count();
                 match event {
@@ -419,10 +458,11 @@ fn handle_overview_event(
     event: InputEvent,
     screen: &mut ResMut<CurrentScreen>,
     cursor: &mut ResMut<MenuCursorRes>,
-    battle: &mut ResMut<TapBattleState>,
+    _battle: &mut ResMut<TapBattleState>,
     active_slot: &mut ResMut<ActiveSlot>,
     roster_scroll: &mut ResMut<RosterScroll>,
     roster_hover: &mut ResMut<RosterHover>,
+    encounter: &mut ResMut<EncounterState>,
     enemy_pool: &EnemyPool,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
@@ -436,7 +476,7 @@ fn handle_overview_event(
         InputEvent::CursorToBattle => cursor.0 = MenuCursor::Battle,
         InputEvent::CursorToRoster => cursor.0 = MenuCursor::Roster,
         InputEvent::Confirm => match cursor.0 {
-            MenuCursor::Battle => try_start_battle(screen, battle, active_slot.0, enemy_pool, monsters),
+            MenuCursor::Battle => try_start_encounter(screen, encounter, active_slot.0, enemy_pool, monsters),
             MenuCursor::Roster => {
                 roster_scroll.0 = 0;
                 roster_hover.0 = None;
@@ -445,7 +485,7 @@ fn handle_overview_event(
         },
         InputEvent::SelectBattle => {
             cursor.0 = MenuCursor::Battle;
-            try_start_battle(screen, battle, active_slot.0, enemy_pool, monsters);
+            try_start_encounter(screen, encounter, active_slot.0, enemy_pool, monsters);
         }
         InputEvent::SelectRoster => {
             cursor.0 = MenuCursor::Roster;
@@ -457,9 +497,10 @@ fn handle_overview_event(
     }
 }
 
-fn try_start_battle(
+/// Go to the Encounter screen with a freshly picked enemy (timer starts on first update tick).
+fn try_start_encounter(
     screen: &mut ResMut<CurrentScreen>,
-    battle: &mut ResMut<TapBattleState>,
+    encounter: &mut ResMut<EncounterState>,
     active_slot: usize,
     enemy_pool: &EnemyPool,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
@@ -467,14 +508,41 @@ fn try_start_battle(
     if enemy_pool.0.is_empty() {
         return;
     }
-    for (name, slot, level, stats, health, _exp) in monsters.iter() {
+    // Only allow if the active monster is not fainted.
+    for (_name, slot, _level, _stats, health, _exp) in monsters.iter() {
         if slot.0 != active_slot {
             continue;
         }
         if health.is_fainted() {
             return;
         }
-        let enemy = pick_random_enemy(enemy_pool);
+        // Reset encounter so encounter_update_system picks a fresh enemy on first tick.
+        encounter.0 = None;
+        screen.0 = Screen::Encounter;
+        return;
+    }
+}
+
+/// Start a battle using the enemy currently shown on the Encounter screen.
+fn start_battle_from_encounter(
+    screen: &mut ResMut<CurrentScreen>,
+    battle: &mut ResMut<TapBattleState>,
+    encounter: &EncounterState,
+    active_slot: usize,
+    monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
+) {
+    let Some(ref enc) = encounter.0 else {
+        screen.0 = Screen::Overview;
+        return;
+    };
+    for (name, slot, level, stats, health, _exp) in monsters.iter() {
+        if slot.0 != active_slot {
+            continue;
+        }
+        if health.is_fainted() {
+            screen.0 = Screen::Overview;
+            return;
+        }
         **battle = TapBattleState {
             active: true,
             entity_slot: active_slot,
@@ -484,12 +552,12 @@ fn try_start_battle(
             player_def: stats.def,
             player_hp: health.hp,
             player_max_hp: health.max_hp,
-            enemy_name: enemy.name,
-            enemy_level: enemy.level,
-            enemy_atk: enemy.atk,
-            enemy_def: enemy.def,
-            enemy_hp: enemy.hp,
-            enemy_max_hp: enemy.hp,
+            enemy_name: enc.enemy_name,
+            enemy_level: enc.enemy_level,
+            enemy_atk: enc.enemy_atk,
+            enemy_def: enc.enemy_def,
+            enemy_hp: enc.enemy_hp,
+            enemy_max_hp: enc.enemy_hp,
             circles: Vec::new(),
             last_spawn: None,
             outcome: None,
@@ -500,6 +568,7 @@ fn try_start_battle(
         screen.0 = Screen::Battle;
         return;
     }
+    screen.0 = Screen::Overview;
 }
 
 /// Time-based battle update: spawns circles, expires them, checks win/lose.
@@ -598,6 +667,33 @@ pub fn tap_battle_update_system(
     }
 }
 
+/// Refreshes the encounter enemy every 10 seconds while on the Encounter screen.
+pub fn encounter_update_system(
+    screen: Res<CurrentScreen>,
+    mut encounter: ResMut<EncounterState>,
+    enemy_pool: Res<EnemyPool>,
+) {
+    if screen.0 != Screen::Encounter || enemy_pool.0.is_empty() {
+        return;
+    }
+    const ENCOUNTER_TIMEOUT_MS: u128 = 10_000;
+    let timed_out = match &encounter.0 {
+        None => true,
+        Some(e) => e.shown_at.elapsed().as_millis() >= ENCOUNTER_TIMEOUT_MS,
+    };
+    if timed_out {
+        let e = pick_random_enemy(&enemy_pool);
+        encounter.0 = Some(EncounterData {
+            enemy_name:  e.name,
+            enemy_level: e.level,
+            enemy_atk:   e.atk,
+            enemy_def:   e.def,
+            enemy_hp:    e.hp,
+            shown_at:    Instant::now(),
+        });
+    }
+}
+
 // ─── World bootstrap ──────────────────────────────────────────────────────────
 
 pub fn setup_world() -> World {
@@ -631,6 +727,7 @@ pub fn setup_world() -> World {
     world.insert_resource(RosterHover::default());
     world.insert_resource(TapBattleState::default());
     world.insert_resource(PendingCapture::default());
+    world.insert_resource(EncounterState::default());
     world.insert_resource(InputQueue::default());
     world.insert_resource(RosterEntities(entities));
     world.insert_resource(enemy_pool);
@@ -642,6 +739,7 @@ pub fn build_schedule() -> Schedule {
     let mut schedule = Schedule::default();
     schedule.add_systems((
         navigation_system,
+        encounter_update_system.after(navigation_system),
         tap_battle_update_system.after(navigation_system),
     ));
     schedule

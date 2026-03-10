@@ -11,8 +11,9 @@ use embedded_graphics::{
 };
 
 use crate::game::{
-    ActiveSlot, CircleKind, Count, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
-    MonName, RosterEntities, RosterHover, RosterScroll, RosterSlot, Screen, Stats, TapBattleState,
+    ActiveSlot, CircleKind, Count, CurrentScreen, EncounterState, Exp, Health, Level, MenuCursor,
+    MenuCursorRes, MonName, RosterEntities, RosterHover, RosterScroll, RosterSlot, Screen, Stats,
+    TapBattleState,
 };
 
 // ─── Render snapshot ─────────────────────────────────────────────────────────
@@ -64,6 +65,15 @@ pub struct TapBattleRenderData {
     pub captured_name: &'static str,
 }
 
+pub struct EncounterRenderData {
+    pub enemy_name:  &'static str,
+    pub enemy_level: u8,
+    pub enemy_atk:   u16,
+    pub enemy_def:   u16,
+    pub enemy_hp:    u16,
+    pub seconds_left: u8,
+}
+
 pub struct RenderData {
     pub screen: Screen,
     pub cursor: MenuCursor,
@@ -72,6 +82,7 @@ pub struct RenderData {
     pub roster_scroll: usize,
     pub roster_hover: Option<usize>,
     pub battle: Option<TapBattleRenderData>,
+    pub encounter: Option<EncounterRenderData>,
 }
 
 /// Extract a cheap snapshot from the ECS world each frame.
@@ -115,6 +126,23 @@ pub fn extract_render_data(world: &World) -> RenderData {
         None
     };
 
+    // ── Encounter data ─────────────────────────────────────────────────────
+    let enc_state = world.resource::<EncounterState>();
+    let encounter = enc_state.0.as_ref().map(|e| {
+        const TIMEOUT_MS: u128 = 10_000;
+        let elapsed = e.shown_at.elapsed().as_millis();
+        let ms_left = TIMEOUT_MS.saturating_sub(elapsed);
+        let seconds_left = ((ms_left + 999) / 1000).min(10) as u8;
+        EncounterRenderData {
+            enemy_name:  e.enemy_name,
+            enemy_level: e.enemy_level,
+            enemy_atk:   e.enemy_atk,
+            enemy_def:   e.enemy_def,
+            enemy_hp:    e.enemy_hp,
+            seconds_left,
+        }
+    });
+
     // ── Roster entities ────────────────────────────────────────────────────
     let entity_ids: Vec<_> = world.resource::<RosterEntities>().0.clone();
     let mut pairs: Vec<(usize, MonData)> = entity_ids
@@ -146,6 +174,7 @@ pub fn extract_render_data(world: &World) -> RenderData {
         roster_scroll,
         roster_hover,
         battle,
+        encounter,
     }
 }
 
@@ -173,9 +202,10 @@ const ENEMY_RING:  Rgb888 = Rgb888::new(255, 80, 80);
 
 pub fn render_screen<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
     match data.screen {
-        Screen::Overview => render_overview(display, data),
-        Screen::Roster   => render_roster(display, data),
-        Screen::Battle   => render_battle(display, data),
+        Screen::Overview  => render_overview(display, data),
+        Screen::Encounter => render_encounter(display, data),
+        Screen::Roster    => render_roster(display, data),
+        Screen::Battle    => render_battle(display, data),
     }
 }
 
@@ -223,6 +253,51 @@ fn render_overview<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &Render
     draw_button(display, 130, 244, 96, 30, "ROSTER", r_sel);
 
     draw_text(display, "Tap btn | Swipe< > | SwipeUp", 6, 282, &FONT_6X10, DARK_GRAY);
+}
+
+// ─── Encounter ───────────────────────────────────────────────────────────────
+
+fn render_encounter<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderData) {
+    fill_rect(display, 0, 0, 240, 284, BG);
+
+    // Title bar
+    fill_rect(display, 0, 0, 240, 28, Rgb888::new(80, 20, 20));
+    draw_text(display, "WILD ENCOUNTER!", 20, 20, &FONT_10X20, YELLOW);
+
+    let Some(enc) = &data.encounter else {
+        draw_text(display, "Looking...", 70, 140, &FONT_10X20, GRAY);
+        return;
+    };
+
+    // Monster name + level
+    draw_text(display, enc.enemy_name, 20, 70, &FONT_10X20, WHITE);
+    let lv = format!("Lv.{}", enc.enemy_level);
+    draw_text(display, &lv, 178, 70, &FONT_10X20, YELLOW);
+
+    // Stats row
+    let atk_s = format!("ATK: {}", enc.enemy_atk);
+    let def_s = format!("DEF: {}", enc.enemy_def);
+    let hp_s  = format!("HP:  {}", enc.enemy_hp);
+    draw_text(display, &atk_s, 20,  94, &FONT_6X10, WHITE);
+    draw_text(display, &def_s, 120, 94, &FONT_6X10, WHITE);
+    draw_text(display, &hp_s,  20, 108, &FONT_6X10, WHITE);
+
+    // Monster silhouette
+    draw_monster_icon(display, 90, 130, ENEMY_RING);
+
+    // "Tap to battle!" prompt
+    draw_text(display, "TAP TO BATTLE!", 30, 210, &FONT_10X20, GREEN);
+
+    // Countdown bar + text
+    let secs = enc.seconds_left.max(1);
+    let bar_pct = (secs as u32 * 10) as u8; // 10s = 100%, 1s ≈ 10%
+    let bar_color = if secs > 5 { GREEN } else if secs > 2 { YELLOW } else { RED };
+    draw_bar(display, 20, 228, 200, 10, bar_pct, bar_color);
+    let countdown = format!("{}s", secs);
+    let cx = (240 - countdown.len() as i32 * 10) / 2;
+    draw_text(display, &countdown, cx, 252, &FONT_10X20, bar_color);
+
+    draw_text(display, "Tap=fight  Swipe down=flee", 8, 282, &FONT_6X10, DARK_GRAY);
 }
 
 // ─── Roster ──────────────────────────────────────────────────────────────────

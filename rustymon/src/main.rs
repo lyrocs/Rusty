@@ -308,6 +308,8 @@ fn tap_to_input(x: u16, y: u16, screen: &Screen) -> Option<InputEvent> {
                 Some(InputEvent::ToggleCursor)
             }
         }
+        // Tap anywhere on the encounter screen → TapAt (navigation_system starts the battle)
+        Screen::Encounter => Some(InputEvent::TapAt { x, y }),
         Screen::Roster => Some(InputEvent::Back),
         Screen::Battle => None, // handled separately in the main loop
     }
