@@ -77,18 +77,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     display.flush()?;
 
     // ── SD card (CS=GPIO17, shared SPI bus) ───────────────────────────────
-    let mut poring: Option<sprite::Sprite> = None;
-    match sdcard::SdCardResource::new(spi_sd) {
-        Ok(mut sd) => {
-            sd.ls_root();
-            match sprite::load_sprite(&mut sd, "PORING.SPR") {
-                Ok(s)  => { log::info!("PORING.SPR loaded"); poring = Some(s); }
-                Err(e) => log::warn!("PORING.SPR not found: {:?}", e),
-            }
-        }
-        Err(e) => log::warn!("SD card unavailable: {:?}", e),
-    }
-    let mut poring_last_advance = std::time::Instant::now();
+    let mut sd_card = match sdcard::SdCardResource::new(spi_sd) {
+        Ok(mut sd) => { sd.ls_root(); Some(sd) }
+        Err(e)     => { log::warn!("SD card unavailable: {:?}", e); None }
+    };
+
+    // Encounter sprite — loaded on demand when the Encounter screen opens.
+    let mut encounter_sprite: Option<sprite::Sprite> = None;
+    // Enemy name for which `encounter_sprite` is currently loaded (avoids
+    // reloading when the same monster stays on screen during the 10-s window).
+    let mut loaded_sprite_for: Option<&'static str> = None;
+    let mut sprite_last_advance = std::time::Instant::now();
 
     // ── Touch controller (I2C: SDA=GPIO7, SCL=GPIO8) ─────────────────────
     let i2c_config = I2cConfig::new().baudrate(Hertz(400_000));
@@ -247,20 +246,56 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // ── 4. Advance sprite animation (Encounter screen only) ───────────
-        if matches!(screen, Screen::Encounter) {
-            if let Some(ref mut spr) = poring {
-                let delay_ms = spr.current_delay_ms() as u128;
-                if poring_last_advance.elapsed().as_millis() >= delay_ms {
-                    let _ = spr.next_frame();
-                    poring_last_advance = std::time::Instant::now();
+        // ── 4. Load / unload encounter sprite on demand ───────────────────
+        // Read the screen state AFTER the ECS tick so transitions are visible.
+        let current_screen = world.resource::<CurrentScreen>().0.clone();
+        let encounter_enemy = if matches!(current_screen, Screen::Encounter) {
+            world.resource::<game::EncounterState>().0.as_ref().map(|e| e.enemy_name)
+        } else {
+            None
+        };
+
+        match encounter_enemy {
+            Some(name) if loaded_sprite_for != Some(name) => {
+                // New enemy appeared — load its sprite.
+                encounter_sprite = None;
+                loaded_sprite_for = Some(name);
+                if let Some(ref mut sd) = sd_card {
+                    // let filename = format!("{}.SPR", name.to_uppercase());
+                    // TODO add all monster SPR
+                    let filename = format!("{}.SPR", "PORING");
+                    match sprite::load_sprite(sd, &filename) {
+                        Ok(s)  => {
+                            log::info!("Loaded {}", filename);
+                            encounter_sprite = Some(s);
+                        }
+                        Err(e) => log::warn!("{} not found: {:?}", filename, e),
+                    }
                 }
+                sprite_last_advance = std::time::Instant::now();
+            }
+            None => {
+                // Left the Encounter screen — free the sprite.
+                if encounter_sprite.is_some() {
+                    encounter_sprite = None;
+                    loaded_sprite_for = None;
+                }
+            }
+            _ => {} // same enemy still on screen, nothing to do
+        }
+
+        // ── 5. Advance sprite animation ───────────────────────────────────
+        if let Some(ref mut spr) = encounter_sprite {
+            let delay_ms = spr.current_delay_ms() as u128;
+            if sprite_last_advance.elapsed().as_millis() >= delay_ms {
+                let _ = spr.next_frame();
+                sprite_last_advance = std::time::Instant::now();
             }
         }
 
-        // ── 5. Extract snapshot → render → flush ─────────────────────────
+        // ── 6. Extract snapshot → render → flush ─────────────────────────
         let render_data = extract_render_data(&world);
-        render_screen(&mut display, &render_data, poring.as_ref());
+        render_screen(&mut display, &render_data, encounter_sprite.as_ref());
         display.flush()?;
 
         FreeRtos::delay_ms(50_u32);
