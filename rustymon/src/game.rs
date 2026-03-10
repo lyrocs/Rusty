@@ -52,6 +52,11 @@ pub struct Exp {
 #[derive(Component, Clone, Copy)]
 pub struct RosterSlot(pub usize);
 
+/// How many times this monster has been caught as a duplicate (0 = first catch).
+/// Capped at 10; each increment gives +5% atk/def bonus.
+#[derive(Component, Clone, Copy)]
+pub struct Count(pub u8);
+
 // ─── ECS Resources ────────────────────────────────────────────────────────────
 
 #[derive(PartialEq, Clone, Default)]
@@ -290,17 +295,17 @@ pub fn navigation_system(
             Screen::Roster => {
                 let monster_count = monsters.iter().count();
                 match event {
-                    // Scroll up (SwipeUp → Confirm) – clears hover
+                    // Scroll down (SwipeUp → Confirm) – clears hover
                     InputEvent::Confirm => {
-                        if roster_scroll.0 > 0 {
-                            roster_scroll.0 -= 1;
+                        if roster_scroll.0 + 1 < monster_count {
+                            roster_scroll.0 += 1;
                             roster_hover.0 = None;
                         }
                     }
-                    // Scroll down (SwipeDown → SelectRoster) – clears hover
+                    // Scroll up (SwipeDown → SelectRoster) – clears hover
                     InputEvent::SelectRoster | InputEvent::ToggleCursor => {
-                        if roster_scroll.0 + 1 < monster_count {
-                            roster_scroll.0 += 1;
+                        if roster_scroll.0 > 0 {
+                            roster_scroll.0 -= 1;
                             roster_hover.0 = None;
                         }
                     }
@@ -605,7 +610,7 @@ pub fn setup_world() -> World {
 
     // ── Spawn starter monster (roster will be loaded from SD save data later) ──
     let entities = vec![
-        world.spawn((MonName("Ferrobit"), Level(5), Stats { atk: 25, def: 20 }, Health { hp: 50, max_hp: 50 }, Exp { current: 0, next: 600 }, RosterSlot(0))).id(),
+        world.spawn((MonName("Ferrobit"), Level(5), Stats { atk: 25, def: 20 }, Health { hp: 50, max_hp: 50 }, Exp { current: 0, next: 600 }, RosterSlot(0), Count(0))).id(),
     ];
 
     // ── Build enemy pool ──────────────────────────────────────────────────

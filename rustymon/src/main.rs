@@ -16,7 +16,7 @@ use esp_idf_svc::hal::{
     gpio::PinDriver,
 };
 use game::{
-    CapturedMonster, CurrentScreen, Exp, Health, InputEvent, InputQueue,
+    CapturedMonster, Count, CurrentScreen, Exp, Health, InputEvent, InputQueue,
     Level, MonName, PendingCapture, RosterEntities, RosterSlot, Screen, Stats,
 };
 use ui::{extract_render_data, render_screen};
@@ -226,8 +226,48 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 // ─── Capture helper ───────────────────────────────────────────────────────────
 
-/// Spawn a newly captured monster entity and append it to RosterEntities.
+/// Spawn a newly captured monster, or upgrade an existing duplicate.
+///
+/// Duplicate logic (same name already in roster):
+///   - Count < 10: increment Count, apply +5% atk/def bonus, grant EXP bonus.
+///   - Count >= 10 (maxed): silently ignore.
+/// No duplicate: spawn fresh entity with Count(0).
 fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
+    // Check for an existing roster monster with the same name.
+    let entity_ids: Vec<_> = world.resource::<RosterEntities>().0.clone();
+    for &entity in &entity_ids {
+        let existing_name = world.entity(entity).get::<MonName>().map(|m| m.0);
+        if existing_name != Some(cap.name) {
+            continue;
+        }
+        // Duplicate found — upgrade if not maxed.
+        let current_count = world.entity(entity).get::<Count>().map_or(0, |c| c.0);
+        if current_count >= 10 {
+            return; // already maxed
+        }
+        let new_count = current_count + 1;
+        // Read current stats to compute bonus.
+        let (cur_atk, cur_def) = {
+            let s = world.entity(entity).get::<Stats>().unwrap();
+            (s.atk, s.def)
+        };
+        // +5% per increment (min +1).
+        let bonus_atk = ((cur_atk as u32 * 5 + 99) / 100).max(1) as u16;
+        let bonus_def = ((cur_def as u32 * 5 + 99) / 100).max(1) as u16;
+        let exp_bonus = 40 + cap.level as u32 * 10;
+
+        let mut e = world.entity_mut(entity);
+        e.get_mut::<Count>().unwrap().0 = new_count;
+        {
+            let mut stats = e.get_mut::<Stats>().unwrap();
+            stats.atk += bonus_atk;
+            stats.def += bonus_def;
+        }
+        e.get_mut::<Exp>().unwrap().current += exp_bonus;
+        return;
+    }
+
+    // No duplicate — spawn a fresh entity.
     let slot = world.resource::<RosterEntities>().0.len();
     let entity = world.spawn((
         MonName(cap.name),
@@ -236,6 +276,7 @@ fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
         Health { hp: cap.hp, max_hp: cap.hp },
         Exp { current: 0, next: (cap.level as u32 + 1) * 100 },
         RosterSlot(slot),
+        Count(0),
     )).id();
     world.resource_mut::<RosterEntities>().0.push(entity);
 }

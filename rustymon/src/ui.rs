@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 
 use crate::game::{
-    ActiveSlot, CircleKind, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
+    ActiveSlot, CircleKind, Count, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
     MonName, RosterEntities, RosterHover, RosterScroll, RosterSlot, Screen, Stats, TapBattleState,
 };
 
@@ -26,6 +26,7 @@ pub struct MonData {
     pub max_hp: u16,
     pub exp: u32,
     pub exp_next: u32,
+    pub count: u8,
 }
 
 impl MonData {
@@ -130,6 +131,7 @@ pub fn extract_render_data(world: &World) -> RenderData {
                 max_hp:   e.get::<Health>().unwrap().max_hp,
                 exp:      e.get::<Exp>().unwrap().current,
                 exp_next: e.get::<Exp>().unwrap().next,
+                count:    e.get::<Count>().map_or(0, |c| c.0),
             };
             (slot, data)
         })
@@ -187,7 +189,12 @@ fn render_overview<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &Render
 
     let mon = &data.roster[data.active_slot];
 
-    draw_text(display, mon.name, 10, 52, &FONT_10X20, WHITE);
+    if mon.count > 0 {
+        let name_plus = format!("{} +{}", mon.name, mon.count);
+        draw_text(display, &name_plus, 10, 52, &FONT_10X20, WHITE);
+    } else {
+        draw_text(display, mon.name, 10, 52, &FONT_10X20, WHITE);
+    }
     let lv = format!("Lv.{}", mon.level);
     draw_text(display, &lv, 178, 52, &FONT_10X20, YELLOW);
 
@@ -252,7 +259,12 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
         let ind_color = if is_hovered { YELLOW } else { GREEN };
         draw_text(display, indicator, 12, y + 18, &FONT_10X20, ind_color);
 
-        draw_text(display, mon.name, 26, y + 18, &FONT_10X20, WHITE);
+        if mon.count > 0 {
+            let name_plus = format!("{} +{}", mon.name, mon.count);
+            draw_text(display, &name_plus, 26, y + 18, &FONT_10X20, WHITE);
+        } else {
+            draw_text(display, mon.name, 26, y + 18, &FONT_10X20, WHITE);
+        }
         let lv = format!("Lv.{}", mon.level);
         draw_text(display, &lv, 180, y + 18, &FONT_10X20, YELLOW);
 
