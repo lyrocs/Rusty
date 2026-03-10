@@ -12,7 +12,7 @@ use embedded_graphics::{
 
 use crate::game::{
     ActiveSlot, CircleKind, CurrentScreen, Exp, Health, Level, MenuCursor, MenuCursorRes,
-    MonName, RosterEntities, RosterSlot, Screen, Stats, TapBattleState,
+    MonName, RosterEntities, RosterHover, RosterScroll, RosterSlot, Screen, Stats, TapBattleState,
 };
 
 // ─── Render snapshot ─────────────────────────────────────────────────────────
@@ -59,6 +59,8 @@ pub struct TapBattleRenderData {
     pub circles: Vec<CircleSnapshot>,
     pub outcome: Option<bool>,          // Some(true)=won, Some(false)=lost
     pub result_cooldown_ms_left: u32,   // ms remaining before tap is accepted (0 = ready)
+    pub captured: bool,                 // enemy joined roster on victory
+    pub captured_name: &'static str,
 }
 
 pub struct RenderData {
@@ -66,14 +68,18 @@ pub struct RenderData {
     pub cursor: MenuCursor,
     pub active_slot: usize,
     pub roster: Vec<MonData>,
+    pub roster_scroll: usize,
+    pub roster_hover: Option<usize>,
     pub battle: Option<TapBattleRenderData>,
 }
 
 /// Extract a cheap snapshot from the ECS world each frame.
 pub fn extract_render_data(world: &World) -> RenderData {
-    let screen      = world.resource::<CurrentScreen>().0.clone();
-    let cursor      = world.resource::<MenuCursorRes>().0.clone();
-    let active_slot = world.resource::<ActiveSlot>().0;
+    let screen        = world.resource::<CurrentScreen>().0.clone();
+    let cursor        = world.resource::<MenuCursorRes>().0.clone();
+    let active_slot   = world.resource::<ActiveSlot>().0;
+    let roster_scroll = world.resource::<RosterScroll>().0;
+    let roster_hover  = world.resource::<RosterHover>().0;
 
     // ── Battle data ────────────────────────────────────────────────────────
     let bs = world.resource::<TapBattleState>();
@@ -101,6 +107,8 @@ pub fn extract_render_data(world: &World) -> RenderData {
             circles,
             outcome: bs.outcome,
             result_cooldown_ms_left,
+            captured: bs.captured,
+            captured_name: bs.enemy_name,
         })
     } else {
         None
@@ -133,6 +141,8 @@ pub fn extract_render_data(world: &World) -> RenderData {
         cursor,
         active_slot,
         roster: pairs.into_iter().map(|(_, d)| d).collect(),
+        roster_scroll,
+        roster_hover,
         battle,
     }
 }
@@ -214,21 +224,33 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
     fill_rect(display, 0, 0, 240, 284, BG);
 
     fill_rect(display, 0, 0, 240, 28, TITLE_BG);
-    draw_text(display, "ROSTER", 76, 20, &FONT_10X20, YELLOW);
+    // Show monster count in title
+    let title = format!("ROSTER  {}/{}", data.active_slot + 1, data.roster.len());
+    draw_text(display, &title, 10, 20, &FONT_10X20, YELLOW);
 
-    for (i, mon) in data.roster.iter().enumerate() {
-        let y = 32 + i as i32 * 80;
-        let is_active = i == data.active_slot;
+    const VISIBLE: usize = 3;
+    let start = data.roster_scroll;
+    let end = (start + VISIBLE).min(data.roster.len());
 
-        let card_col   = if is_active { CARD_ACTIVE } else { CARD_IDLE };
-        let border_col = if is_active { GREEN } else { Rgb888::new(50, 50, 90) };
+    for (visible_i, mon) in data.roster[start..end].iter().enumerate() {
+        let slot = start + visible_i;
+        let y = 32 + visible_i as i32 * 80;
+        let is_active = slot == data.active_slot;
+
+        let is_hovered = data.roster_hover == Some(slot);
+        let (card_col, border_col, indicator) = if is_hovered {
+            (Rgb888::new(40, 38, 10), YELLOW, ">")   // hover: yellow
+        } else if is_active {
+            (CARD_ACTIVE, GREEN, ">")                 // active: green
+        } else {
+            (CARD_IDLE, Rgb888::new(50, 50, 90), " ") // idle: dim
+        };
 
         fill_rect(display, 8, y, 224, 72, card_col);
         stroke_rect(display, 8, y, 224, 72, border_col);
 
-        if is_active {
-            draw_text(display, ">", 12, y + 18, &FONT_10X20, GREEN);
-        }
+        let ind_color = if is_hovered { YELLOW } else { GREEN };
+        draw_text(display, indicator, 12, y + 18, &FONT_10X20, ind_color);
 
         draw_text(display, mon.name, 26, y + 18, &FONT_10X20, WHITE);
         let lv = format!("Lv.{}", mon.level);
@@ -243,7 +265,15 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
         }
     }
 
-    draw_text(display, "Tap or swipe to go back", 6, 282, &FONT_6X10, DARK_GRAY);
+    // Scroll arrows
+    if data.roster_scroll > 0 {
+        draw_text(display, "^ more", 94, 32, &FONT_6X10, GRAY);
+    }
+    if end < data.roster.len() {
+        draw_text(display, "v more", 94, 272, &FONT_6X10, GRAY);
+    }
+
+    draw_text(display, "Tap=hover  Tap again=select", 14, 282, &FONT_6X10, DARK_GRAY);
 }
 
 // ─── Battle (tap game) ───────────────────────────────────────────────────────
@@ -304,10 +334,18 @@ fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
                 ("DEFEAT...", RED)
             };
             // Large result text centred in the game area
+            let box_h = if won && battle.captured { 80 } else { 64 };
             let lx = (240 - label.len() as i32 * 10) / 2;
-            fill_rect(display, 0, 100, 240, 64, Rgb888::new(10, 10, 20));
-            stroke_rect(display, 4, 104, 232, 56, color);
-            draw_text(display, label, lx, 138, &FONT_10X20, color);
+            fill_rect(display, 0, 100, 240, box_h, Rgb888::new(10, 10, 20));
+            stroke_rect(display, 4, 104, 232, box_h - 8, color);
+            draw_text(display, label, lx, 130, &FONT_10X20, color);
+
+            // Capture notification
+            if won && battle.captured {
+                let msg = format!("{} joined!", battle.captured_name);
+                let mx = (240 - msg.len() as i32 * 6) / 2;
+                draw_text(display, &msg, mx, 158, &FONT_6X10, YELLOW);
+            }
 
             if battle.result_cooldown_ms_left > 0 {
                 // Show seconds remaining before the screen becomes dismissable

@@ -78,8 +78,31 @@ pub struct MenuCursorRes(pub MenuCursor);
 #[derive(Resource, Default)]
 pub struct ActiveSlot(pub usize);
 
+/// First visible card index on the Roster screen.
+#[derive(Resource, Default)]
+pub struct RosterScroll(pub usize);
+
+/// Slot index of the card the user has tapped once (highlighted, not yet confirmed).
+#[derive(Resource, Default)]
+pub struct RosterHover(pub Option<usize>);
+
 #[derive(Resource)]
 pub struct RosterEntities(pub Vec<Entity>);
+
+// ─── Capture queue ────────────────────────────────────────────────────────────
+// Set by tap_battle_update_system on victory; consumed by main.rs to spawn the
+// new entity (direct World access is easier there than Commands in a system).
+
+pub struct CapturedMonster {
+    pub name: &'static str,
+    pub level: u8,
+    pub atk: u16,
+    pub def: u16,
+    pub hp: u16,
+}
+
+#[derive(Resource, Default)]
+pub struct PendingCapture(pub Option<CapturedMonster>);
 
 // ─── Tap Battle ───────────────────────────────────────────────────────────────
 
@@ -150,8 +173,9 @@ pub struct TapBattleState {
     // Game state
     pub circles: Vec<TapCircle>,
     pub last_spawn: Option<Instant>,
-    pub outcome: Option<bool>,      // Some(true)=won, Some(false)=lost
+    pub outcome: Option<bool>,         // Some(true)=won, Some(false)=lost
     pub outcome_time: Option<Instant>, // when outcome was set (for cooldown)
+    pub captured: bool,                // did the defeated enemy join the roster?
     pub exp_gained: u32,
 }
 
@@ -176,6 +200,7 @@ impl Default for TapBattleState {
             last_spawn: None,
             outcome: None,
             outcome_time: None,
+            captured: false,
             exp_gained: 0,
         }
     }
@@ -243,7 +268,9 @@ pub fn navigation_system(
     mut screen: ResMut<CurrentScreen>,
     mut cursor: ResMut<MenuCursorRes>,
     mut battle: ResMut<TapBattleState>,
-    active_slot: Res<ActiveSlot>,
+    mut active_slot: ResMut<ActiveSlot>,
+    mut roster_scroll: ResMut<RosterScroll>,
+    mut roster_hover: ResMut<RosterHover>,
     enemy_pool: Res<EnemyPool>,
     mut monsters: Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
@@ -254,12 +281,57 @@ pub fn navigation_system(
                 &mut screen,
                 &mut cursor,
                 &mut battle,
-                active_slot.0,
+                &mut active_slot,
+                &mut roster_scroll,
+                &mut roster_hover,
                 &enemy_pool,
                 &mut monsters,
             ),
             Screen::Roster => {
-                screen.0 = Screen::Overview;
+                let monster_count = monsters.iter().count();
+                match event {
+                    // Scroll up (SwipeUp → Confirm) – clears hover
+                    InputEvent::Confirm => {
+                        if roster_scroll.0 > 0 {
+                            roster_scroll.0 -= 1;
+                            roster_hover.0 = None;
+                        }
+                    }
+                    // Scroll down (SwipeDown → SelectRoster) – clears hover
+                    InputEvent::SelectRoster | InputEvent::ToggleCursor => {
+                        if roster_scroll.0 + 1 < monster_count {
+                            roster_scroll.0 += 1;
+                            roster_hover.0 = None;
+                        }
+                    }
+                    // Tap on a card: first tap = hover, second tap on same = confirm + leave
+                    InputEvent::TapAt { x, y } => {
+                        let in_card = x >= 8 && x <= 232 && y >= 32 && y < 264;
+                        if in_card {
+                            let visible_idx = (y as usize - 32) / 80;
+                            let slot = roster_scroll.0 + visible_idx;
+                            if slot < monster_count {
+                                if roster_hover.0 == Some(slot) {
+                                    // Second tap on same card → confirm
+                                    active_slot.0 = slot;
+                                    roster_hover.0 = None;
+                                    screen.0 = Screen::Overview;
+                                } else {
+                                    // First tap → highlight only
+                                    roster_hover.0 = Some(slot);
+                                }
+                            }
+                        } else {
+                            roster_hover.0 = None;
+                            screen.0 = Screen::Overview;
+                        }
+                    }
+                    // Back / other – exit roster
+                    _ => {
+                        roster_hover.0 = None;
+                        screen.0 = Screen::Overview;
+                    }
+                }
             }
             Screen::Battle => {
                 if battle.active {
@@ -343,7 +415,9 @@ fn handle_overview_event(
     screen: &mut ResMut<CurrentScreen>,
     cursor: &mut ResMut<MenuCursorRes>,
     battle: &mut ResMut<TapBattleState>,
-    active_slot: usize,
+    active_slot: &mut ResMut<ActiveSlot>,
+    roster_scroll: &mut ResMut<RosterScroll>,
+    roster_hover: &mut ResMut<RosterHover>,
     enemy_pool: &EnemyPool,
     monsters: &mut Query<(&MonName, &RosterSlot, &mut Level, &mut Stats, &mut Health, &mut Exp)>,
 ) {
@@ -357,15 +431,21 @@ fn handle_overview_event(
         InputEvent::CursorToBattle => cursor.0 = MenuCursor::Battle,
         InputEvent::CursorToRoster => cursor.0 = MenuCursor::Roster,
         InputEvent::Confirm => match cursor.0 {
-            MenuCursor::Battle => try_start_battle(screen, battle, active_slot, enemy_pool, monsters),
-            MenuCursor::Roster => screen.0 = Screen::Roster,
+            MenuCursor::Battle => try_start_battle(screen, battle, active_slot.0, enemy_pool, monsters),
+            MenuCursor::Roster => {
+                roster_scroll.0 = 0;
+                roster_hover.0 = None;
+                screen.0 = Screen::Roster;
+            }
         },
         InputEvent::SelectBattle => {
             cursor.0 = MenuCursor::Battle;
-            try_start_battle(screen, battle, active_slot, enemy_pool, monsters);
+            try_start_battle(screen, battle, active_slot.0, enemy_pool, monsters);
         }
         InputEvent::SelectRoster => {
             cursor.0 = MenuCursor::Roster;
+            roster_scroll.0 = 0;
+            roster_hover.0 = None;
             screen.0 = Screen::Roster;
         }
         InputEvent::Back | InputEvent::TapAt { .. } => {}
@@ -409,6 +489,7 @@ fn try_start_battle(
             last_spawn: None,
             outcome: None,
             outcome_time: None,
+            captured: false,
             exp_gained: 0,
         };
         screen.0 = Screen::Battle;
@@ -421,6 +502,7 @@ fn try_start_battle(
 pub fn tap_battle_update_system(
     screen: Res<CurrentScreen>,
     mut battle: ResMut<TapBattleState>,
+    mut pending_capture: ResMut<PendingCapture>,
 ) {
     if screen.0 != Screen::Battle || !battle.active {
         return;
@@ -428,6 +510,18 @@ pub fn tap_battle_update_system(
 
     // Win/lose check first (navigation may have dealt the killing blow).
     if battle.enemy_hp == 0 {
+        // 50% chance to capture the defeated enemy.
+        let captured = random_u32() % 2 == 0;
+        battle.captured = captured;
+        if captured {
+            pending_capture.0 = Some(CapturedMonster {
+                name: battle.enemy_name,
+                level: battle.enemy_level,
+                atk: battle.enemy_atk,
+                def: battle.enemy_def,
+                hp: battle.enemy_max_hp,
+            });
+        }
         battle.outcome = Some(true);
         battle.outcome_time = Some(Instant::now());
         battle.exp_gained = 40 + battle.enemy_level as u32 * 10;
@@ -482,7 +576,7 @@ pub fn tap_battle_update_system(
         let cx = 35 + (random_u32() % 170) as u16;
         let cy = 55 + (random_u32() % 170) as u16;
         let max_radius = 20 + (random_u32() % 13) as u16;
-        let kind = if random_u32() % 3 == 0 {
+        let kind = if random_u32() % 5 == 0 {
             CircleKind::EnemyAttack
         } else {
             CircleKind::HeroAttack
@@ -509,11 +603,9 @@ pub fn setup_world() -> World {
     let enemies: Vec<JsonEnemy> = serde_json::from_str(json)
         .expect("monsters.json is invalid – fix the JSON before flashing");
 
-    // ── Spawn default roster (will come from SD save data later) ─────────
+    // ── Spawn starter monster (roster will be loaded from SD save data later) ──
     let entities = vec![
-        world.spawn((MonName("Ferrobit"),  Level(5), Stats { atk: 25, def: 20 }, Health { hp: 50, max_hp: 50 }, Exp { current: 0, next: 600 }, RosterSlot(0))).id(),
-        world.spawn((MonName("Blazerust"), Level(3), Stats { atk: 32, def: 10 }, Health { hp: 35, max_hp: 35 }, Exp { current: 0, next: 400 }, RosterSlot(1))).id(),
-        world.spawn((MonName("Aquabyte"),  Level(4), Stats { atk: 20, def: 18 }, Health { hp: 45, max_hp: 45 }, Exp { current: 0, next: 500 }, RosterSlot(2))).id(),
+        world.spawn((MonName("Ferrobit"), Level(5), Stats { atk: 25, def: 20 }, Health { hp: 50, max_hp: 50 }, Exp { current: 0, next: 600 }, RosterSlot(0))).id(),
     ];
 
     // ── Build enemy pool ──────────────────────────────────────────────────
@@ -530,7 +622,10 @@ pub fn setup_world() -> World {
     world.insert_resource(CurrentScreen::default());
     world.insert_resource(MenuCursorRes::default());
     world.insert_resource(ActiveSlot::default());
+    world.insert_resource(RosterScroll::default());
+    world.insert_resource(RosterHover::default());
     world.insert_resource(TapBattleState::default());
+    world.insert_resource(PendingCapture::default());
     world.insert_resource(InputQueue::default());
     world.insert_resource(RosterEntities(entities));
     world.insert_resource(enemy_pool);

@@ -15,7 +15,10 @@ use esp_idf_svc::hal::{
     units::Hertz,
     gpio::PinDriver,
 };
-use game::{CurrentScreen, InputEvent, InputQueue, Screen};
+use game::{
+    CapturedMonster, CurrentScreen, Exp, Health, InputEvent, InputQueue,
+    Level, MonName, PendingCapture, RosterEntities, RosterSlot, Screen, Stats,
+};
 use ui::{extract_render_data, render_screen};
 
 use std::collections::VecDeque;
@@ -114,6 +117,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // ── Touch state tracker (main-loop side) ──────────────────────────────
     let mut touch_was_down = false;
     let mut touch_last: Option<TouchPoint> = None;
+    // Set to true when a scroll/swipe gesture fires during a touch sequence;
+    // prevents the lift from also generating a TapAt on the Roster screen.
+    let mut touch_gesture_fired = false;
 
     // ── ECS world + schedule ──────────────────────────────────────────────
     let mut world    = game::setup_world();
@@ -144,28 +150,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if matches!(screen, Screen::Battle) {
-                    // Battle: fire TapAt on EVERY frame that has an active
-                    // touch.  Circles are removed on first hit so there is no
-                    // double-counting.  Firing continuously (10 ms poll)
-                    // means a natural press-and-lift always registers at least
-                    // one hit regardless of which exact sample aligned with
-                    // the circle's centre.
+                    // Battle: fire TapAt on EVERY frame that has an active touch.
                     if is_down {
                         if let Some(ref p) = opt_point {
                             events.push(InputEvent::TapAt { x: p.x, y: p.y });
                         }
                     }
+                } else if matches!(screen, Screen::Roster) {
+                    // Roster: gestures scroll; TapAt only fires on a clean lift
+                    // (no scroll gesture detected during this touch sequence).
+                    if is_down && !touch_was_down {
+                        touch_gesture_fired = false; // new touch – reset
+                    }
+                    if let Some(ev) = gesture_to_input(gesture) {
+                        events.push(ev);
+                        touch_gesture_fired = true; // swipe consumed this sequence
+                    }
+                    if !is_down && touch_was_down && !touch_gesture_fired
+                        && matches!(gesture, Gesture::None | Gesture::SingleClick | Gesture::DoubleClick)
+                    {
+                        if let Some(pos) = touch_last {
+                            events.push(InputEvent::TapAt { x: pos.x, y: pos.y });
+                        }
+                    }
+                    if !is_down {
+                        touch_gesture_fired = false; // ready for next sequence
+                    }
                 } else {
-                    // Non-battle: gesture events fire immediately.
+                    // Overview: gestures + tap-on-lift mapped to semantic events.
                     if let Some(ev) = gesture_to_input(gesture) {
                         events.push(ev);
                     }
-                    // Tap fires on finger-lift (no active gesture).
                     if !is_down && touch_was_down
-                        && matches!(
-                            gesture,
-                            Gesture::None | Gesture::SingleClick | Gesture::DoubleClick
-                        )
+                        && matches!(gesture, Gesture::None | Gesture::SingleClick | Gesture::DoubleClick)
                     {
                         if let Some(pos) = touch_last {
                             if let Some(ev) = tap_to_input(pos.x, pos.y, &screen) {
@@ -193,6 +210,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // ── 3. Tick ECS schedule (navigation + tap battle update) ─────────
         schedule.run(&mut world);
 
+        // ── 3b. Spawn captured monster if one is pending ──────────────────
+        if let Some(cap) = world.resource_mut::<PendingCapture>().0.take() {
+            spawn_captured(&mut world, cap);
+        }
+
         // ── 4. Extract snapshot → render → flush ─────────────────────────
         let render_data = extract_render_data(&world);
         render_screen(&mut display, &render_data);
@@ -200,6 +222,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         FreeRtos::delay_ms(50_u32);
     }
+}
+
+// ─── Capture helper ───────────────────────────────────────────────────────────
+
+/// Spawn a newly captured monster entity and append it to RosterEntities.
+fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
+    let slot = world.resource::<RosterEntities>().0.len();
+    let entity = world.spawn((
+        MonName(cap.name),
+        Level(cap.level),
+        Stats { atk: cap.atk, def: cap.def },
+        Health { hp: cap.hp, max_hp: cap.hp },
+        Exp { current: 0, next: (cap.level as u32 + 1) * 100 },
+        RosterSlot(slot),
+    )).id();
+    world.resource_mut::<RosterEntities>().0.push(entity);
 }
 
 // ─── Input translation helpers ────────────────────────────────────────────────

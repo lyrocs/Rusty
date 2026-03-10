@@ -1,6 +1,6 @@
 [
-  { "name": "Toxibolt",  "level": 4, "atk": 22, "def": 14, "hp": 400 },
-  { "name": "Glitchrat", "level": 3, "atk": 18, "def": 12, "hp": 320 },
-  { "name": "Ironclad",  "level": 5, "atk": 20, "def": 22, "hp": 480 },
-  { "name": "Virebug",   "level": 4, "atk": 24, "def": 16, "hp": 380 }
+  { "name": "Toxibolt",  "level": 4, "atk": 22, "def": 14, "hp": 80 },
+  { "name": "Glitchrat", "level": 3, "atk": 18, "def": 12, "hp": 60 },
+  { "name": "Ironclad",  "level": 5, "atk": 20, "def": 22, "hp": 100 },
+  { "name": "Virebug",   "level": 4, "atk": 24, "def": 16, "hp": 70 }
 ]
