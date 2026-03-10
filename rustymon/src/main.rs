@@ -212,7 +212,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         // ── 3b. Spawn captured monster if one is pending ──────────────────
         if let Some(cap) = world.resource_mut::<PendingCapture>().0.take() {
-            spawn_captured(&mut world, cap);
+            let (is_upgrade, new_count) = spawn_captured(&mut world, cap);
+            if is_upgrade {
+                let mut battle = world.resource_mut::<game::TapBattleState>();
+                battle.capture_is_upgrade = true;
+                battle.capture_new_count  = new_count;
+            }
         }
 
         // ── 4. Extract snapshot → render → flush ─────────────────────────
@@ -228,11 +233,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Spawn a newly captured monster, or upgrade an existing duplicate.
 ///
+/// Returns `(is_upgrade, new_count)` so the caller can update the battle state.
+///
 /// Duplicate logic (same name already in roster):
 ///   - Count < 10: increment Count, apply +5% atk/def bonus, grant EXP bonus.
 ///   - Count >= 10 (maxed): silently ignore.
 /// No duplicate: spawn fresh entity with Count(0).
-fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
+fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) -> (bool, u8) {
     // Check for an existing roster monster with the same name.
     let entity_ids: Vec<_> = world.resource::<RosterEntities>().0.clone();
     for &entity in &entity_ids {
@@ -243,15 +250,13 @@ fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
         // Duplicate found — upgrade if not maxed.
         let current_count = world.entity(entity).get::<Count>().map_or(0, |c| c.0);
         if current_count >= 10 {
-            return; // already maxed
+            return (false, current_count); // already maxed, no visual change
         }
         let new_count = current_count + 1;
-        // Read current stats to compute bonus.
         let (cur_atk, cur_def) = {
             let s = world.entity(entity).get::<Stats>().unwrap();
             (s.atk, s.def)
         };
-        // +5% per increment (min +1).
         let bonus_atk = ((cur_atk as u32 * 5 + 99) / 100).max(1) as u16;
         let bonus_def = ((cur_def as u32 * 5 + 99) / 100).max(1) as u16;
         let exp_bonus = 40 + cap.level as u32 * 10;
@@ -264,7 +269,7 @@ fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
             stats.def += bonus_def;
         }
         e.get_mut::<Exp>().unwrap().current += exp_bonus;
-        return;
+        return (true, new_count);
     }
 
     // No duplicate — spawn a fresh entity.
@@ -279,6 +284,7 @@ fn spawn_captured(world: &mut bevy_ecs::world::World, cap: CapturedMonster) {
         Count(0),
     )).id();
     world.resource_mut::<RosterEntities>().0.push(entity);
+    (false, 0)
 }
 
 // ─── Input translation helpers ────────────────────────────────────────────────

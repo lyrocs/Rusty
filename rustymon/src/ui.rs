@@ -63,6 +63,8 @@ pub struct TapBattleRenderData {
     pub result_cooldown_ms_left: u32,   // ms remaining before tap is accepted (0 = ready)
     pub captured: bool,                 // enemy joined roster on victory
     pub captured_name: &'static str,
+    pub capture_is_upgrade: bool,       // true = duplicate (upgraded existing)
+    pub capture_new_count: u8,          // +N after upgrade
 }
 
 pub struct EncounterRenderData {
@@ -121,6 +123,8 @@ pub fn extract_render_data(world: &World) -> RenderData {
             result_cooldown_ms_left,
             captured: bs.captured,
             captured_name: bs.enemy_name,
+            capture_is_upgrade: bs.capture_is_upgrade,
+            capture_new_count:  bs.capture_new_count,
         })
     } else {
         None
@@ -343,12 +347,17 @@ fn render_roster<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
         let lv = format!("Lv.{}", mon.level);
         draw_text(display, &lv, 180, y + 18, &FONT_10X20, YELLOW);
 
+        let atk_s = format!("ATK:{}", mon.atk);
+        let def_s = format!("DEF:{}", mon.def);
+        draw_text(display, &atk_s, 26,  y + 36, &FONT_6X10, ORANGE);
+        draw_text(display, &def_s, 100, y + 36, &FONT_6X10, BLUE_BTN);
+
         let hp_s = format!("HP {}/{}", mon.hp, mon.max_hp);
-        draw_text(display, &hp_s, 26, y + 38, &FONT_6X10, WHITE);
-        draw_bar(display, 26, y + 42, 192, 8, mon.hp_pct(), hp_bar_color(mon.hp_pct()));
+        draw_text(display, &hp_s, 26, y + 50, &FONT_6X10, WHITE);
+        draw_bar(display, 26, y + 54, 192, 6, mon.hp_pct(), hp_bar_color(mon.hp_pct()));
 
         if mon.is_fainted() {
-            draw_text(display, "FAINTED", 150, y + 38, &FONT_6X10, RED);
+            draw_text(display, "FAINTED", 150, y + 50, &FONT_6X10, RED);
         }
     }
 
@@ -429,7 +438,11 @@ fn render_battle<D: DrawTarget<Color = Rgb888>>(display: &mut D, data: &RenderDa
 
             // Capture notification
             if won && battle.captured {
-                let msg = format!("{} joined!", battle.captured_name);
+                let msg = if battle.capture_is_upgrade {
+                    format!("{} upgraded to +{}!", battle.captured_name, battle.capture_new_count)
+                } else {
+                    format!("{} joined!", battle.captured_name)
+                };
                 let mx = (240 - msg.len() as i32 * 6) / 2;
                 draw_text(display, &msg, mx, 158, &FONT_6X10, YELLOW);
             }

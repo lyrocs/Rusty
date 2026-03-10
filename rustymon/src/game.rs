@@ -197,6 +197,8 @@ pub struct TapBattleState {
     pub outcome: Option<bool>,         // Some(true)=won, Some(false)=lost
     pub outcome_time: Option<Instant>, // when outcome was set (for cooldown)
     pub captured: bool,                // did the defeated enemy join the roster?
+    pub capture_is_upgrade: bool,      // true if it was a duplicate (upgraded existing)
+    pub capture_new_count: u8,         // the +N value after upgrade
     pub exp_gained: u32,
 }
 
@@ -222,6 +224,8 @@ impl Default for TapBattleState {
             outcome: None,
             outcome_time: None,
             captured: false,
+            capture_is_upgrade: false,
+            capture_new_count: 0,
             exp_gained: 0,
         }
     }
@@ -563,6 +567,8 @@ fn start_battle_from_encounter(
             outcome: None,
             outcome_time: None,
             captured: false,
+            capture_is_upgrade: false,
+            capture_new_count: 0,
             exp_gained: 0,
         };
         screen.0 = Screen::Battle;
