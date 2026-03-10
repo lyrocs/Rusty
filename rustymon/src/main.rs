@@ -1,5 +1,6 @@
 mod driver;
 mod game;
+mod sdcard;
 mod ui;
 
 use driver::{
@@ -37,18 +38,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let peripherals = Peripherals::take()?;
     let pins = peripherals.pins;
 
-    // ── Display (SPI: SCK=GPIO1, MOSI=GPIO2, CS=GPIO5, DC=GPIO3, RST=GPIO4, BL=GPIO6) ──
+    // ── Shared SPI bus (SCK=GPIO1, MOSI=GPIO2, MISO=GPIO16) ──────────────
+    // Leaked to 'static so two devices (display + SD card) can borrow it.
     let spi_driver = SpiDriver::new(
         peripherals.spi2,
         pins.gpio1,
         pins.gpio2,
-        None::<esp_idf_svc::hal::gpio::AnyIOPin>,
+        Some(pins.gpio16), // MISO – required by SD card
         &SpiDriverConfig::new(),
     )?;
+    let spi_bus: &'static SpiDriver<'static> = Box::leak(Box::new(spi_driver));
+
+    // ── Display SPI device (CS=GPIO5, 40 MHz) ─────────────────────────────
     let spi_device = SpiDeviceDriver::new(
-        &spi_driver,
+        spi_bus,
         Some(pins.gpio5),
         &SpiConfig::new().baudrate(Hertz(40_000_000)),
+    )?;
+
+    // ── SD card SPI device (CS=GPIO17, 20 MHz) ────────────────────────────
+    let spi_sd = SpiDeviceDriver::new(
+        spi_bus,
+        Some(pins.gpio17),
+        &SpiConfig::new().baudrate(Hertz(20_000_000)),
     )?;
 
     let dc  = PinDriver::output(pins.gpio3)?;
@@ -62,6 +74,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     display.backlight_on()?;
     display.clear(Rgb888::BLACK)?;
     display.flush()?;
+
+    // ── SD card (CS=GPIO17, shared SPI bus) ───────────────────────────────
+    match sdcard::SdCardResource::new(spi_sd) {
+        Ok(mut sd) => sd.ls_root(),
+        Err(e) => log::warn!("SD card unavailable: {:?}", e),
+    }
 
     // ── Touch controller (I2C: SDA=GPIO7, SCL=GPIO8) ─────────────────────
     let i2c_config = I2cConfig::new().baudrate(Hertz(400_000));

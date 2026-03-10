@@ -1,6 +1,9 @@
 pub mod button;
 pub mod cst816d;
+pub mod exio_pin;
+pub mod sd_cs_pin;
 pub mod st7789p;
+pub mod tca9554;
 
 pub use button::{ButtonDriver, ButtonEvent};
 pub use cst816d::{Cst816dDriver, Gesture, TouchPoint, CST816D_DEVICE_ADDRESS};
