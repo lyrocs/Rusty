@@ -84,9 +84,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Encounter sprite — loaded on demand when the Encounter screen opens.
     let mut encounter_sprite: Option<sprite::Sprite> = None;
-    // Enemy name for which `encounter_sprite` is currently loaded (avoids
+    // Enemy ID for which `encounter_sprite` is currently loaded (avoids
     // reloading when the same monster stays on screen during the 10-s window).
-    let mut loaded_sprite_for: Option<&'static str> = None;
+    let mut loaded_sprite_for: Option<u16> = None;
     let mut sprite_last_advance = std::time::Instant::now();
 
     // ── Touch controller (I2C: SDA=GPIO7, SCL=GPIO8) ─────────────────────
@@ -250,20 +250,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // Read the screen state AFTER the ECS tick so transitions are visible.
         let current_screen = world.resource::<CurrentScreen>().0.clone();
         let encounter_enemy = if matches!(current_screen, Screen::Encounter) {
-            world.resource::<game::EncounterState>().0.as_ref().map(|e| e.enemy_name)
+            world.resource::<game::EncounterState>().0.as_ref().map(|e| e.enemy_id)
         } else {
             None
         };
 
         match encounter_enemy {
-            Some(name) if loaded_sprite_for != Some(name) => {
-                // New enemy appeared — load its sprite.
+            Some(id) if loaded_sprite_for != Some(id) => {
+                // New enemy appeared — load its sprite by numeric ID (e.g. "1.SPR").
                 encounter_sprite = None;
-                loaded_sprite_for = Some(name);
+                loaded_sprite_for = Some(id);
                 if let Some(ref mut sd) = sd_card {
-                    // let filename = format!("{}.SPR", name.to_uppercase());
-                    // TODO add all monster SPR
-                    let filename = format!("{}.SPR", "PORING");
+                    let filename = format!("{}.SPR", id);
                     match sprite::load_sprite(sd, &filename) {
                         Ok(s)  => {
                             log::info!("Loaded {}", filename);

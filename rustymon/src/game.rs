@@ -113,6 +113,7 @@ pub struct PendingCapture(pub Option<CapturedMonster>);
 // ─── Encounter screen ─────────────────────────────────────────────────────────
 
 pub struct EncounterData {
+    pub enemy_id: u16,
     pub enemy_name: &'static str,
     pub enemy_level: u8,
     pub enemy_atk: u16,
@@ -253,6 +254,7 @@ pub struct InputQueue(pub Vec<InputEvent>);
 
 #[derive(Deserialize)]
 struct JsonEnemy {
+    id: u16,
     name: String,
     level: u8,
     atk: u16,
@@ -270,6 +272,7 @@ fn leak_name(s: String) -> &'static str {
 // ─── Enemy pool ───────────────────────────────────────────────────────────────
 
 pub struct EnemyDef {
+    pub id: u16,
     pub name: &'static str,
     pub level: u8,
     pub atk: u16,
@@ -690,6 +693,7 @@ pub fn encounter_update_system(
     if timed_out {
         let e = pick_random_enemy(&enemy_pool);
         encounter.0 = Some(EncounterData {
+            enemy_id:    e.id,
             enemy_name:  e.name,
             enemy_level: e.level,
             enemy_atk:   e.atk,
@@ -718,11 +722,12 @@ pub fn setup_world() -> World {
     // ── Build enemy pool ──────────────────────────────────────────────────
     let enemy_pool = EnemyPool(
         enemies.into_iter().map(|e| EnemyDef {
-            name: leak_name(e.name),
+            id:    e.id,
+            name:  leak_name(e.name),
             level: e.level,
-            atk: e.atk,
-            def: e.def,
-            hp: e.hp,
+            atk:   e.atk,
+            def:   e.def,
+            hp:    e.hp,
         }).collect(),
     );
 
